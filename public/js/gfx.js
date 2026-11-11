@@ -3,7 +3,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { sheen, tex, grid, rnd, setGlossLevel } from './mats.js';
 import { buildLevel, terrainY, ROOMS, H, STAIR, FOOT, YARD, DOOR_H } from './core/level.js';
 
-export const MATS = {};
+export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
 function initMats() {
   if (MATS.plaster) return;
   const S = (t, gloss, extra) => sheen(Object.assign({ map: t }, extra), gloss);
@@ -19,17 +19,26 @@ function initMats() {
     water: sheen({ color: 0x16303a, transparent: true, opacity: 0.86 }, 'water'), ocean: sheen({ color: 0x0e2230 }, 'water'), glass: sheen({ color: 0x0b1216, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }, 'glass'),
     glow: new THREE.MeshBasicMaterial({ color: 0xffe6bd, fog: false }), dark: new THREE.MeshBasicMaterial({ color: 0x0b0c0e }),
   });
+  // Painted-on shading. Real-time ambient occlusion is a full-screen effect a headset browser cannot afford, so the darkening where surfaces meet
+  // (wall to floor, wall to ceiling, under furniture and people) is drawn once as soft gradients instead. Same look, almost no cost.
+  const cv = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d')); const t = new THREE.CanvasTexture(c); return t; };
+  const grad = cv(4, 64, g => { const gr = g.createLinearGradient(0, 64, 0, 0); gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.35, 'rgba(0,0,0,0.42)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 4, 64); });
+  const softRect = cv(64, 64, g => { for (let i = 0; i < 14; i++) { g.fillStyle = 'rgba(0,0,0,0.085)'; const m = i * 1.5; g.fillRect(m, m, 64 - 2 * m, 64 - 2 * m); } });
+  SOFT.spot = cv(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
+  const decal = (map, color, opacity, extra) => new THREE.MeshBasicMaterial(Object.assign({ map, color, opacity, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }, extra));
+  MATS.ao = decal(grad, 0x000000, 0.55); MATS.aoBlob = decal(softRect, 0x000000, 0.75); MATS.lightpool = decal(SOFT.spot, 0xffd9a0, 0.2, { blending: THREE.AdditiveBlending });
+  SOFT.blob = decal(SOFT.spot, 0x000000, 0.5);
   MATS.door = sheen({ map: MATS.walnut.map }, 'polished'); MATS.steel = sheen({ color: 0xb8bcc2 }, 'metal');
 }
 
 // Accumulates quads with world-space UVs into one mesh per material.
 class Builder {
   constructor() { this.p = []; this.n = []; this.uv = []; this.idx = []; }
-  quad(a, b, c, d, nrm, s = 0.5) {
+  quad(a, b, c, d, nrm, s = 0.5, uv4 = null) {   // uv4: explicit corner UVs for a, b, c, d (used by the shading decals)
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
     const flip = ((uy * vz - uz * vy) * nrm[0] + (uz * vx - ux * vz) * nrm[1] + (ux * vy - uy * vx) * nrm[2]) < 0;
-    const vs = flip ? [a, d, c, b] : [a, b, c, d], base = this.p.length / 3, ax = Math.abs(nrm[0]), ay = Math.abs(nrm[1]);
-    for (const v of vs) { this.p.push(v[0], v[1], v[2]); this.n.push(nrm[0], nrm[1], nrm[2]); if (ay > 0.5) this.uv.push(v[0] * s, v[2] * s); else if (ax > 0.5) this.uv.push(v[2] * s, v[1] * s); else this.uv.push(v[0] * s, v[1] * s); }
+    const vs = flip ? [a, d, c, b] : [a, b, c, d], uo = flip ? [0, 3, 2, 1] : [0, 1, 2, 3], base = this.p.length / 3, ax = Math.abs(nrm[0]), ay = Math.abs(nrm[1]); let vi = 0;
+    for (const v of vs) { this.p.push(v[0], v[1], v[2]); this.n.push(nrm[0], nrm[1], nrm[2]); if (uv4) { const u = uv4[uo[vi++]]; this.uv.push(u[0], u[1]); } else if (ay > 0.5) this.uv.push(v[0] * s, v[2] * s); else if (ax > 0.5) this.uv.push(v[2] * s, v[1] * s); else this.uv.push(v[0] * s, v[1] * s); }
     this.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
   box(x0, x1, y0, y1, z0, z1, faces = 'xXYzZ', s = 0.5) {   // faces: lowercase = negative side
@@ -107,11 +116,13 @@ export function buildWorld(scene) {
   // glass balustrade along the cliff edge, and a ground-floor deck sheltering the walk-out
   const rail = (x0, x1, z, y) => { b('glass').quad([x0, y, z], [x1, y, z], [x1, y + 1.05, z], [x0, y + 1.05, z], [0, 0, 1]); b('fascia').box(x0, x1, y + 1.05, y + 1.09, z - 0.03, z + 0.03, ALL, 1); };
   rail(YARD.x0, YARD.x1, YARD.z0 + 0.15, -H);
+  const UVQ = [[0, 0], [1, 0], [1, 1], [0, 1]], ao = (k, a, c, d, e, n) => b(k).quad(a, c, d, e, n, 1, UVQ);
   // floors, ceilings with recessed downlights
   for (const [f, , x0, z0, x1, z1, mat] of ROOMS) {
     const y = f * H + 0.004; b(mat).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], 0.5);
     const cy = f * H + H - 0.012; b('ceiling').quad([x0, cy, z0], [x1, cy, z0], [x1, cy, z1], [x0, cy, z1], [0, -1, 0], 0.5);
-    for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
+    for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) { b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
+      ao('lightpool', [x - 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z + 1.5], [x - 1.5, y + 0.03, z + 1.5], [0, 1, 0]); }   // pool of light on the floor under each fitting
   }
   b('ceiling').quad([STAIR.x0, 2 * H - 0.012, STAIR.z0], [STAIR.x1, 2 * H - 0.012, STAIR.z0], [STAIR.x1, 2 * H - 0.012, STAIR.z1], [STAIR.x0, 2 * H - 0.012, STAIR.z1], [0, -1, 0]);
   // walls: plaster inside, stacked stone outside, glass with dark mullions
@@ -124,13 +135,18 @@ export function buildWorld(scene) {
       const faces = hz ? 'zZ' + (wall && w.capA ? 'x' : '') + (wall && w.capB ? 'X' : '') : 'xX' + (wall && w.capA ? 'z' : '') + (wall && w.capB ? 'Z' : '');
       b('plaster').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, faces.replace(out, '') + (wall ? '' : 'y'));
       if (out) b('stone').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, out, 1);
+      if (wall) for (const f of (hz ? 'zZ' : 'xX')) {   // contact shading along the foot and head of every inside wall face, and on the floor beside it
+        if (f === out) continue; const s = f === 'z' || f === 'x' ? -1 : 1, e = 0.006, y0 = w.y0, y1 = w.y1;
+        if (hz) { const zf = (s < 0 ? w.z0 : w.z1) + s * e; ao('ao', [w.x0, y0, zf], [w.x1, y0, zf], [w.x1, y0 + 0.55, zf], [w.x0, y0 + 0.55, zf], [0, 0, s]); ao('ao', [w.x0, y1, zf], [w.x1, y1, zf], [w.x1, y1 - 0.4, zf], [w.x0, y1 - 0.4, zf], [0, 0, s]); ao('ao', [w.x0, y0 + 0.012, zf], [w.x1, y0 + 0.012, zf], [w.x1, y0 + 0.012, zf + s * 0.5], [w.x0, y0 + 0.012, zf + s * 0.5], [0, 1, 0]); }
+        else { const xf = (s < 0 ? w.x0 : w.x1) + s * e; ao('ao', [xf, y0, w.z0], [xf, y0, w.z1], [xf, y0 + 0.55, w.z1], [xf, y0 + 0.55, w.z0], [s, 0, 0]); ao('ao', [xf, y1, w.z0], [xf, y1, w.z1], [xf, y1 - 0.4, w.z1], [xf, y1 - 0.4, w.z0], [s, 0, 0]); ao('ao', [xf, y0 + 0.012, w.z0], [xf, y0 + 0.012, w.z1], [xf + s * 0.5, y0 + 0.012, w.z1], [xf + s * 0.5, y0 + 0.012, w.z0], [0, 1, 0]); }
+      }
     } else if (w.kind === 'glass') {
       const hz = w.horiz, a = hz ? w.x0 : w.z0, e = hz ? w.x1 : w.z1, c = hz ? (w.z0 + w.z1) / 2 : (w.x0 + w.x1) / 2, n = Math.max(1, Math.round((e - a) / 1.5));
       const bx = (m, u0, u1, y0, y1, t) => hz ? b(m).box(u0, u1, y0, y1, c - t, c + t, ALL, 1) : b(m).box(c - t, c + t, y0, y1, u0, u1, ALL, 1);
       if (hz) b('glass').quad([a, w.y0 + 0.1, c], [e, w.y0 + 0.1, c], [e, w.y1 - 0.12, c], [a, w.y1 - 0.12, c], [0, 0, 1]); else b('glass').quad([c, w.y0 + 0.1, a], [c, w.y0 + 0.1, e], [c, w.y1 - 0.12, e], [c, w.y1 - 0.12, a], [1, 0, 0]);
       bx('fascia', a, e, w.y0, w.y0 + 0.1, 0.05); bx('fascia', a, e, w.y1 - 0.12, w.y1, 0.05);
       for (let i = 0; i <= n; i++) { const u = a + (e - a) * i / n; bx('fascia', u - 0.035, u + 0.035, w.y0 + 0.1, w.y1 - 0.12, 0.05); }
-    } else if (w.kind === 'furn') furnish(b, w);
+    } else if (w.kind === 'furn') { furnish(b, w); if (!['pool', 'hedge', 'wall'].includes(w.sub)) { const e = 0.28, y = w.y0 + 0.016; ao('aoBlob', [w.x0 - e, y, w.z0 - e], [w.x1 + e, y, w.z0 - e], [w.x1 + e, y, w.z1 + e], [w.x0 - e, y, w.z1 + e], [0, 1, 0]); } }
   }
   // stairs: floating treads, one flight up and one directly beneath it down to the basement
   const run = (STAIR.z1 - STAIR.z0) * 0.85, N = 16;
@@ -156,14 +172,15 @@ export function buildWorld(scene) {
   for (let i = 0; i < 9; i++) { const a = i * 2.4, r = 0.25 + (i % 3) * 0.22, x = 12 + Math.cos(a) * r, z = 12.4 + Math.sin(a) * r, y = 2.0 + (i % 4) * 0.2; b('fascia').box(x - 0.005, x + 0.005, y + 0.1, H, z - 0.005, z + 0.005, 'xXzZ'); b('glow').box(x - 0.05, x + 0.05, y, y + 0.1, z - 0.05, z + 0.05, ALL); }
   b('dark').box(2, 4.2, 1.0, 2.1, 8.1, 8.14, 'Z'); b('fascia').box(1.96, 4.24, 0.96, 2.14, 8.1, 8.13, 'xXYyZ', 1);
   b('walnut').box(9.11, 9.14, 1.1, 2.3, 14, 15.4, 'X', 1); b('top').box(14.86, 14.89, 1.2, 2.2, 14.2, 15.2, 'x', 1);
-  for (const k in B) { const m = B[k].mesh(MATS[k]); if (k === 'glass' || k === 'water') m.renderOrder = 5; scene.add(m); }
+  const NOSHADE = { glass: 1, water: 1, glow: 1, ao: 1, aoBlob: 1, lightpool: 1, ocean: 1 };
+  for (const k in B) { const m = B[k].mesh(MATS[k]); if (k === 'glass' || k === 'water') m.renderOrder = 5; if (k === 'ao' || k === 'aoBlob' || k === 'lightpool') m.renderOrder = 2; else if (!NOSHADE[k]) { m.castShadow = k !== 'gravel'; m.receiveShadow = true; } scene.add(m); }
 
   // doors: flush walnut slabs with steel levers; the concealed service door is clad like the wall around it
   const doors = level.doors.map(d => {
     const len = d.horiz ? d.x1 - d.x0 : d.z1 - d.z0, g = new THREE.Group(); g.position.set(d.x0, d.y, d.z0);
     const leaf = new THREE.Mesh(new THREE.BoxGeometry(len - 0.03, DOOR_H - 0.02, d.hidden ? 0.2 : 0.05), d.hidden ? MATS.stone : MATS.door); leaf.position.set(len / 2, DOOR_H / 2, 0); g.add(leaf);
     const hm = MATS.steel.clone(), handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.025, 0.17), hm); handle.position.set(len - 0.12, 1.0, 0); handle.visible = !d.hidden; g.add(handle);
-    const base = d.horiz ? 0 : -Math.PI / 2; g.rotation.y = base; scene.add(g);
+    leaf.castShadow = leaf.receiveShadow = true; const base = d.horiz ? 0 : -Math.PI / 2; g.rotation.y = base; scene.add(g);
     // tripwire: a thin red line at shin height and a charge on the frame; shown on whichever side the server says it is rigged
     const trap = new THREE.Group(), wire = new THREE.Mesh(new THREE.BoxGeometry(len, 0.004, 0.004), new THREE.MeshBasicMaterial({ color: 0xff3030 })), charge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.06), new THREE.MeshLambertMaterial({ color: 0x4a4f3a })), led = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.01), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
     wire.position.set(len / 2, 0.28, 0); charge.position.set(0.05, 0.3, 0); led.position.set(0.05, 0.35, 0.034); trap.add(wire, charge, led); trap.position.set(d.x0, d.y, d.z0); trap.rotation.y = base; trap.visible = false; scene.add(trap);
@@ -171,7 +188,11 @@ export function buildWorld(scene) {
   });
   // light: dusk sky, low warm sun for highlights, two warm interior lamps; night = power cut; NVG = green amplification
   scene.background = new THREE.Color(0x2a3040); scene.fog = new THREE.FogExp2(0x3a4152, 0.006);
-  const hemi = new THREE.HemisphereLight(0xb9c4dc, 0x7a6a58, 1.25), sun = new THREE.DirectionalLight(0xffc9a0, 0.75), amp = new THREE.HemisphereLight(0x46ff58, 0x0a3410, 0); sun.position.set(-30, 14, 34); scene.add(hemi, sun, amp);
+  const hemi = new THREE.HemisphereLight(0xb9c4dc, 0x7a6a58, 1.25), sun = new THREE.DirectionalLight(0xffc9a0, 0.75), amp = new THREE.HemisphereLight(0x46ff58, 0x0a3410, 0); scene.add(hemi, sun, amp);
+  // The low sun (moon at night) casts real shadows from the house, trees and car, and shines in through the glass. The scene is static, so the
+  // shadow map is drawn once (and again when the plants and car arrive), not every frame.
+  sun.target.position.set(12, 0, 7); sun.position.set(12 - 30 * 1.7, 14 * 1.7, 7 + 34 * 1.7); scene.add(sun.target); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -36, right: 36, top: 36, bottom: -36, near: 5, far: 170 }); sun.shadow.camera.updateProjectionMatrix(); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.07;
   const lamps = [[12, 2.5, 12.4], [4.5, 2.7, 12]].map(([x, y, z]) => { const l = new THREE.PointLight(0xffd9a8, 10, 11, 1.8); l.position.set(x, y, z); scene.add(l); return l; });
   const FOGD = { clear: [0.006, 0.011], rain: [0.012, 0.016], storm: [0.016, 0.02], fog: [0.07, 0.075] };
   const look = (night, nvg, wx = 'clear') => {
@@ -179,7 +200,8 @@ export function buildWorld(scene) {
     hemi.intensity = (night ? 0.2 : 1.25) * k * dim; hemi.color.set(night ? 0x6f83a8 : cast ? 0xa9afba : 0xb9c4dc); hemi.groundColor.set(night ? 0x20242c : 0x7a6a58);
     sun.intensity = (night ? 0.18 : 0.75) * k * (cast ? 0.35 : 1); sun.color.set(night ? 0xa9bcff : 0xffc9a0); for (const l of lamps) l.intensity = night ? 0 : 10 * k;
     amp.intensity = nvg ? (night ? 0.8 : 0.5) : 0; setGlossLevel((nvg ? 0.2 : night ? 0.12 : 1) * (wet ? 1.35 : 1));   // wet surfaces shine more
-    MATS.glow.color.set(nvg ? (night ? 0x0b3410 : 0x9cff9c) : night ? 0x14120e : 0xffe6bd);
+    MATS.glow.color.set(nvg ? (night ? 0x0b3410 : 0x9cff9c) : night ? 0x14120e : 0xffe6bd); MATS.lightpool.opacity = night ? 0 : nvg ? 0.07 : 0.2; MATS.lightpool.color.set(nvg ? 0x60ff70 : 0xffd9a0);
+    MATS.ao.opacity = night && !nvg ? 0.3 : 0.55; MATS.aoBlob.opacity = night && !nvg ? 0.4 : 0.75;
     sky.material.color.set(nvg ? (night ? 0x0d3011 : 0x2f8a3a) : night ? (cast ? 0x161a22 : 0x283040) : cast ? 0x7d828c : 0xffffff); sky.visible = hills.visible = wx !== 'fog';
     stars.visible = moon.visible = !cast; stars.material.opacity = night ? 1 : 0.45; stars.material.color.set(nvg ? 0x8cff9c : 0xffffff); moon.material.color.set(nvg ? 0xa8ffb4 : 0xe9edff); moon.material.opacity = night || nvg ? 1 : 0.7;
     hillM.color.set(nvg ? 0x05160a : night ? 0x040608 : 0x1b1d22);
@@ -191,5 +213,5 @@ export function buildWorld(scene) {
 export function label(text, color = '#fff', w = 256, h = 64) {
   const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
   g.font = 'bold 34px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, 0, w, h); g.fillStyle = color; g.fillText(text, w / 2, h / 2);
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true })); s.scale.set(0.9, 0.9 * h / w, 1); s.renderOrder = 10; return s;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true, toneMapped: false })); s.scale.set(0.9, 0.9 * h / w, 1); s.renderOrder = 10; return s;
 }

@@ -1,6 +1,8 @@
 // Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
 import { sheen, vertexSheen } from './mats.js';
+import { SOFT } from './gfx.js';
+let blobGeo = null; const makeBlob = r => { if (!blobGeo) { blobGeo = new THREE.PlaneGeometry(1, 1); blobGeo.rotateX(-Math.PI / 2); } const m = new THREE.Mesh(blobGeo, SOFT.blob); m.scale.set(r * 2, 1, r * 2); m.renderOrder = 3; return m; };   // soft round shadow on the floor
 import { WIRE_HEX } from './shared.js';
 
 const geos = new Map();
@@ -113,7 +115,7 @@ export class Human {
     if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
     this.kind = kind; this.st = ''; this.first = true; this.flashT = 0; this.flinch = 0; this.phase = Math.random() * 6; this.idle = Math.random() * 9; this.speed = 0;
     this.p0 = new THREE.Vector3(); this.p1 = new THREE.Vector3(); this.y0 = 0; this.y1 = 0; this.it = 0; this.dur = 0.07; this.lastT = 0;
-    this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST);
+    this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST); this.blob = makeBlob(0.5); g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
   }
   // A new server position arrives ~15 times a second: glide to it at constant speed over one interval instead of chasing it.
   target(x, y, z, yaw, st, armed) {
@@ -143,7 +145,8 @@ export class Human {
     this.upper.rotation.set(c.spine + 0.07 * w + 0.12 * run + br + fl * 0.25, Math.sin(ph) * 0.07 * w + fl * 0.4, -Math.sin(ph) * 0.03 * w - sway);
     const [la, ra] = this.arms, bob = Math.sin(ph * 2) * 0.04 * w;
     la.sh.rotation.set(c.slx + bob + br + hurt - kick, 0, c.slz); la.el.rotation.x = c.el; ra.sh.rotation.set(c.srx + bob + br - kick, 0, c.srz); ra.el.rotation.x = c.er - kick;
-    this.g.rotation.x = c.lie; p.y = baseY + c.yOff;
+    this.g.rotation.x = c.lie; p.y = baseY + c.yOff; const lying = Math.abs(c.lie) / HP, off = -0.8 * lying * Math.sign(c.lie || 1);   // a fallen body's shadow lies under the body, not at its feet
+    this.blob.position.set(p.x + Math.sin(this.g.rotation.y) * off, baseY + 0.024, p.z + Math.cos(this.g.rotation.y) * off); this.blob.scale.set(1 + lying * 0.3, 1, 1 + lying * 0.9); this.blob.rotation.y = this.g.rotation.y;
     if (this.gun) { if (this.flashT > 0) this.flashT -= dt; this.gun.userData.flash.visible = this.flashT > 0; }
   }
   muzzle(out) { return out.set(this.g.position.x + Math.sin(this.g.rotation.y) * 0.6, this.g.position.y + 1.35, this.g.position.z + Math.cos(this.g.rotation.y) * 0.6); }
@@ -186,11 +189,12 @@ export class Body {
     this.torso = new THREE.Mesh(torsoGeo, cloth); this.legs = new THREE.Mesh(legGeo, cloth); g.add(this.torso, this.legs);
     const sleeve = sheen({ color: NAVY }, 'cloth');
     this.arms = [-1, 1].map(sx => { const up = new THREE.Mesh(limbGeo, sleeve), fore = new THREE.Mesh(limbGeo, sleeve), glove = new THREE.Mesh(gloveGeo, vertexSheen('plastic')); glove.scale.x = sx; g.add(up, fore, glove); return { sx, up, fore, glove }; });
+    this.blob = makeBlob(0.42); g.add(this.blob); this.torso.receiveShadow = this.legs.receiveShadow = true;
   }
   // hands: [left, right], each { pos, quat } or null
   update(headPos, yaw, hands, feetY) {
     const s = Math.sin(yaw), c = Math.cos(yaw);
-    this.torso.position.set(headPos.x + s * 0.05, headPos.y, headPos.z + c * 0.05); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = headPos.y - feetY > 1.25;
+    this.torso.position.set(headPos.x + s * 0.05, headPos.y, headPos.z + c * 0.05); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;
     this.arms.forEach((a, i) => {
       const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
       const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat);

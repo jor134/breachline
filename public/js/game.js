@@ -14,6 +14,8 @@ const $ = id => document.getElementById(id), Q = new URLSearchParams(location.se
 const V = () => new THREE.Vector3(), v1 = V(), v2 = V(), v3 = V(), v4 = V(), q1 = new THREE.Quaternion(), m1 = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.setSize(innerWidth, innerHeight); renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
+renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.08;   // rolls off hot spots (flashlight, glass glare) without washing out colour
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // static sun shadows, drawn once
 try { renderer.xr.setFoveation(1); } catch { }
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.04, 220), rig = new THREE.Group();
@@ -21,8 +23,9 @@ camera.rotation.order = 'YXZ'; rig.add(camera); scene.add(rig);
 addEventListener('resize', () => { if (renderer.xr.isPresenting) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 const world = buildWorld(scene), level = world.level;
 if (!new URLSearchParams(location.search).get('lite')) {   // ?lite=1 skips the heavy models (used by the automated tests)
-  loadVegetation(scene).catch(e => console.warn('vegetation not loaded', e));
-  loadCar(scene, CAR.x, 0, CAR.z, Math.PI, CAR.length).catch(e => console.warn('car not loaded', e));
+  const reshade = m => { if (m && m.isMesh) m.castShadow = m.receiveShadow = true; renderer.shadowMap.needsUpdate = true; };
+  loadVegetation(scene).then(v => reshade(v.mesh)).catch(e => console.warn('vegetation not loaded', e));
+  loadCar(scene, CAR.x, 0, CAR.z, Math.PI, CAR.length).then(reshade).catch(e => console.warn('car not loaded', e));
 }
 
 const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
@@ -134,7 +137,7 @@ function closeWheel(h) { const k = wheelPick(h); wheel.open = false; wheel.mesh.
 class Panel {
   constructor() {
     this.c = document.createElement('canvas'); this.c.width = 1024; this.c.height = 768; this.tex = new THREE.CanvasTexture(this.c); this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.2), new THREE.MeshBasicMaterial({ map: this.tex, fog: false })); scene.add(this.mesh);
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.2), new THREE.MeshBasicMaterial({ map: this.tex, fog: false, toneMapped: false })); scene.add(this.mesh);
     this.cursor = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 6), new THREE.MeshBasicMaterial({ color: 0x40ff80, depthTest: false })); this.cursor.renderOrder = 999; this.cursor.visible = false; scene.add(this.cursor);
     this.btns = []; this.key = '';
   }
@@ -187,7 +190,7 @@ function tryPanel(o, d) {
 
 // wrist display (VR) + DOM HUD (desktop)
 const wc = document.createElement('canvas'); wc.width = 256; wc.height = 160; const wtex = new THREE.CanvasTexture(wc);
-const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0625), new THREE.MeshBasicMaterial({ map: wtex, fog: false })); wrist.visible = false; scene.add(wrist);
+const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0625), new THREE.MeshBasicMaterial({ map: wtex, fog: false, toneMapped: false })); wrist.visible = false; scene.add(wrist);
 let hudT = 0;
 function hudText() {
   const t = Math.max(0, S.timer), mm = Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
@@ -208,8 +211,8 @@ function drawHud() {
 
 // ---------- server messages ----------
 function applyInit(init) {
-  for (const a of S.actors.values()) scene.remove(a.g); S.actors.clear(); for (const b of S.bombs) scene.remove(b.g); S.bombs = [];
-  for (const [id, kind, v] of init.npcs) { const a = new Human(kind, v); scene.add(a.g); S.actors.set(id, a); }
+  for (const a of S.actors.values()) scene.remove(a.g, a.blob); S.actors.clear(); for (const b of S.bombs) scene.remove(b.g); S.bombs = [];
+  for (const [id, kind, v] of init.npcs) { const a = new Human(kind, v); scene.add(a.g, a.blob); S.actors.set(id, a); }
   S.civs = init.npcs.filter(n => n[1] === 'c').length; if (S.night !== !!init.night || S.wx !== init.weather) { S.night = !!init.night; S.wx = init.weather || 'clear'; applyLook(); }
   for (const [x, y, z, wires, order] of init.bombs) { const b = new Bomb(x, y, z, wires, order); b.order = order; b.n = 0; scene.add(b.g); S.bombs.push(b); }
 }
@@ -222,7 +225,7 @@ function onMsg(m) {
 function applySnap(m) {
   const prev = S.phase; S.phase = m.ph; S.timer = m.tm; let sec = 0;
   for (const [id, x, y, z, yaw, st, armed] of m.N) { const a = S.actors.get(id); if (a) a.target(x, y, z, yaw, st, armed); if (id > 100 && st === 'u') sec++; }
-  for (const a of S.actors.values()) a.g.visible = m.ph !== 'lobby'; for (const b of S.bombs) b.g.visible = m.ph !== 'lobby';
+  for (const a of S.actors.values()) a.g.visible = a.blob.visible = m.ph !== 'lobby'; for (const b of S.bombs) b.g.visible = m.ph !== 'lobby';
   S.secured = sec; for (let i = 0; i < S.doorOpen.length; i++) { S.doorOpen[i] = m.D[i] === '1'; S.doorLocked[i] = m.L[i] === '1'; }
   S.defused = 0; m.B.forEach((b, i) => { const o = S.bombs[i]; if (o) { o.set(b[0], b[1]); o.n = b[2]; } if (b[1]) S.defused++; });
   const seen = new Set(); S.squad = m.P.map(p => p[1]);
@@ -527,7 +530,7 @@ function smokeDraw() {
 }
 // ---------- under-door camera: a second small view rendered to a hand-held screen ----------
 const dcam = { cam: new THREE.PerspectiveCamera(105, 4 / 3, 0.03, 40), rt: new THREE.WebGLRenderTarget(256, 192), door: -1, hand: null, n: 0 };
-dcam.screen = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.15), new THREE.MeshBasicMaterial({ map: dcam.rt.texture, fog: false, depthTest: false })); dcam.screen.renderOrder = 992; dcam.screen.visible = false; scene.add(dcam.screen);
+dcam.screen = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.15), new THREE.MeshBasicMaterial({ map: dcam.rt.texture, fog: false, toneMapped: false, depthTest: false })); dcam.screen.renderOrder = 992; dcam.screen.visible = false; scene.add(dcam.screen);
 function doorCam(dt) {
   if (S.deskCam) { if ((S.deskCam.t -= dt) <= 0 || S.doorOpen[S.deskCam.id] || S.tool !== 'cam') S.deskCam = null; else { dcam.door = S.deskCam.id; dcam.hand = null; } }
   const i = dcam.door; dcam.door = -1; dcam.screen.visible = i >= 0; if (i < 0) return;
