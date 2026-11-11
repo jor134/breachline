@@ -20,8 +20,11 @@ export class RoomHost {
       case 'cuff': s.cuff(id, m.n); break;
       case 'revive': s.revive(id, m.p); break;
       case 'door': s.door(id, m.d); break;
+      case 'pick': s.pick(id, m.d); break;
+      case 'kick': s.kick(id, m.d); break;
       case 'cut': s.cut(id, m.b, m.w); break;
-      case 'start': if (s.phase !== 'active') { s.start((Date.now() ^ (Math.random() * 1e9)) >>> 0); this.send(null, { t: 'init', init: s.init() }); } break;
+      case 'restart':
+      case 'start': if (m.t === 'restart' || s.phase !== 'active') { s.start((Date.now() ^ (Math.random() * 1e9)) >>> 0); this.send(null, { t: 'init', init: s.init() }); } break;
     }
   }
   tick(dt = TICK) { this.sim.tick(dt); this.send(null, this.sim.snapshot()); }

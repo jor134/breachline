@@ -18,9 +18,14 @@ export const ROOMS = [
 const OPENINGS = [
   [0, 11.5, 16, 12.5, 16, 'door'], [0, 9, 12, 9, 13.5, 'arch'], [0, 15, 12, 15, 13.5, 'arch'], [0, 10.5, 9, 11.5, 9, 'door'],
   [0, 13.5, 9, 15, 9, 'gap'], [0, 9, 5.5, 9, 6.5, 'door'], [0, 11, 4, 12, 4, 'door'], [0, 19, 8, 20, 8, 'door'],
-  [0, 15, 1.5, 15, 2.5, 'door'], [0, 20, 0, 21, 0, 'door'], [0, 4, 8, 5, 8, 'door'],
+  [0, 15, 1.5, 15, 2.5, 'door'], [0, 20, 0, 21, 0, 'door'], [0, 4, 8, 5, 8, 'door'], [0, 10, 0, 11, 0, 'door', 'hidden'],
   [1, 9, 4, 15, 4, 'gap'], [1, 9, 12, 9, 13, 'door'], [1, 9, 1.5, 9, 2.5, 'door'], [1, 9, 5.5, 9, 6.5, 'door'],
   [1, 10.5, 9, 11.5, 9, 'door'], [1, 15, 12, 15, 13, 'door'], [1, 15, 1.5, 15, 2.5, 'door'],
+];
+// Floor-to-ceiling glazing on the outside walls: [floor, x0, z0, x1, z1]. Blocks movement, not bullets or (close) sight.
+const GLASS = [
+  [0, 1, 16, 8.5, 16], [0, 15.5, 16, 23, 16], [1, 1, 16, 8.5, 16], [1, 9.5, 16, 14.5, 16], [1, 15.5, 16, 23, 16],
+  [0, 0, 9, 0, 15], [1, 0, 9, 0, 15], [1, 24, 9, 24, 15],
 ];
 // [floor, x0, z0, x1, z1, height, kind]
 export const FURNITURE = [
@@ -29,7 +34,8 @@ export const FURNITURE = [
   [0, 18, 3, 21, 4.2, 0.92, 'counter'], [0, 23.2, 0.3, 23.8, 6, 0.92, 'counter'], [0, 15.3, 5, 15.9, 7.5, 0.92, 'counter'], [0, 16, 0.3, 19.5, 0.9, 0.92, 'counter'],
   [0, 3, 3, 5, 4, 0.76, 'table'], [0, 0.2, 0.3, 0.7, 6, 2, 'shelf'], [0, 2, 0.2, 7, 0.7, 2, 'shelf'], [0, 6.5, 5, 7.5, 6, 0.8, 'sofa'],
   [0, 9.3, 10, 9.8, 11.5, 0.85, 'cabinet'], [0, 9.3, 0.3, 9.8, 3, 1.8, 'shelf'], [0, 13.5, 0.3, 14.7, 1, 0.9, 'counter'],
-  [0, 5, 20, 7, 24.5, 1.4, 'car'], [0, 9, 19, 10.5, 19.6, 0.9, 'planter'], [0, 13.5, 19, 15, 19.6, 0.9, 'planter'], [0, 17, 21, 19, 25.5, 1.4, 'car'],
+  [0, 2.5, 19.5, 10, 23.5, 0.55, 'pool'], [0, 14.5, 19.6, 20, 20, 0.9, 'wall'], [0, 21, 22, 23, 26.4, 1.5, 'car'], [0, -4, 18, -3.4, 24, 0.9, 'wall'],
+  [0, 8.4, -1.7, 9.4, -0.5, 1.5, 'hedge'], [0, 11.6, -1.7, 12.6, -0.5, 1.5, 'hedge'], [0, 8.8, -3.4, 12.2, -2.9, 1.7, 'hedge'], [0, 26, 4, 26.6, 12, 1.1, 'wall'],
   [1, 3, 11, 5.2, 13.2, 0.6, 'bed'], [1, 0.2, 8.3, 0.8, 11, 2, 'shelf'], [1, 6, 15.2, 8, 15.8, 0.85, 'cabinet'],
   [1, 2, 1, 4, 3, 0.6, 'bed'], [1, 6.5, 0.2, 8, 0.8, 0.76, 'table'], [1, 3, 5.5, 5, 6.5, 0.76, 'table'], [1, 0.2, 4.3, 0.7, 7, 1.6, 'shelf'],
   [1, 10.5, 13, 13.5, 14, 0.8, 'sofa'], [1, 11, 11, 13, 12, 0.45, 'table'], [1, 19, 11, 21.2, 13.2, 0.6, 'bed'], [1, 23.2, 9, 23.8, 12, 2, 'shelf'],
@@ -71,8 +77,13 @@ export function buildLevel() {
     for (let i = i0; i < i1; i++) { edges.add(k(f, i, j0, 'h')); edges.add(k(f, i, j1, 'h')); }
     for (let j = j0; j < j1; j++) { edges.add(k(f, i0, j, 'v')); edges.add(k(f, i1, j, 'v')); }
   }
-  const boxes = [], doors = [], openEnds = new Set();
-  for (const [f, x0, z0, x1, z1, kind] of OPENINGS) {
+  const boxes = [], doors = [], openEnds = new Set(), gedges = new Set();
+  for (const [f, x0, z0, x1, z1] of GLASS) {
+    openEnds.add(f + '|' + x0 + '|' + z0); openEnds.add(f + '|' + x1 + '|' + z1);
+    if (z0 === z1) for (let i = x0 / U; i < x1 / U; i++) { if (edges.delete(k(f, i, z0 / U, 'h'))) gedges.add(k(f, i, z0 / U, 'h')); }
+    else for (let j = z0 / U; j < z1 / U; j++) { if (edges.delete(k(f, x0 / U, j, 'v'))) gedges.add(k(f, x0 / U, j, 'v')); }
+  }
+  for (const [f, x0, z0, x1, z1, kind, tag] of OPENINGS) {
     if (z0 === z1) for (let i = x0 / U; i < x1 / U; i++) edges.delete(k(f, i, z0 / U, 'h'));
     else for (let j = z0 / U; j < z1 / U; j++) edges.delete(k(f, x0 / U, j, 'v'));
     const hz = z0 === z1;
@@ -80,27 +91,30 @@ export function buildLevel() {
     if (kind !== 'gap') boxes.push({ f, kind: 'lintel', x0: hz ? x0 : x0 - T / 2, x1: hz ? x1 : x0 + T / 2, z0: hz ? z0 - T / 2 : z0, z1: hz ? z0 + T / 2 : z1, y0: f * H + DOOR_H, y1: f * H + H });
     if (kind === 'door') {
       const d = 0.04;
-      doors.push({ id: doors.length, f, x0, z0, x1, z1, horiz: hz, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, y: f * H, exterior: z0 === 16 || (z0 === 0 && z1 === 0),
+      doors.push({ id: doors.length, f, x0, z0, x1, z1, horiz: hz, hidden: tag === 'hidden', cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, y: f * H, exterior: z0 === 16 || (z0 === 0 && z1 === 0),
         box: { kind: 'door', x0: hz ? x0 : x0 - d, x1: hz ? x1 : x0 + d, z0: hz ? z0 - d : z0, z1: hz ? z0 + d : z1, y0: f * H, y1: f * H + DOOR_H } });
     }
   }
-  // merge unit edges into wall runs
-  const runs = new Map();
-  for (const e of edges) { const [f, i, j, o] = e.split('|'); const key = f + '|' + o + '|' + (o === 'h' ? j : i); (runs.get(key) || runs.set(key, []).get(key)).push(+(o === 'h' ? i : j)); }
-  for (const [key, arr] of runs) {
-    const [f, o, c] = key.split('|'); const fl = +f, line = +c * U; arr.sort((a, b) => a - b);
-    let a = arr[0], p = arr[0];
-    const flush = () => {
-      let s = a * U, e = (p + 1) * U;
-      const pt = v => o === 'h' ? fl + '|' + v + '|' + line : fl + '|' + line + '|' + v;
-      if (!openEnds.has(pt(s))) s -= T / 2; if (!openEnds.has(pt(e))) e += T / 2;
-      const ext = o === 'h' ? (line === FOOT.z0 || line === FOOT.z1) : (line === FOOT.x0 || line === FOOT.x1);
-      boxes.push(o === 'h' ? { f: fl, kind: 'wall', ext, x0: s, x1: e, z0: line - T / 2, z1: line + T / 2, y0: fl * H, y1: fl * H + H }
-        : { f: fl, kind: 'wall', ext, x0: line - T / 2, x1: line + T / 2, z0: s, z1: e, y0: fl * H, y1: fl * H + H });
-    };
-    for (let n = 1; n < arr.length; n++) { if (arr[n] !== p + 1) { flush(); a = arr[n]; } p = arr[n]; }
-    flush();
-  }
+  // merge unit edges into wall runs (solid walls, then glass panes)
+  const merge = (set, kind, th) => {
+    const runs = new Map();
+    for (const e of set) { const [f, i, j, o] = e.split('|'); const key = f + '|' + o + '|' + (o === 'h' ? j : i); (runs.get(key) || runs.set(key, []).get(key)).push(+(o === 'h' ? i : j)); }
+    for (const [key, arr] of runs) {
+      const [f, o, c] = key.split('|'); const fl = +f, line = +c * U; arr.sort((a, b) => a - b);
+      let a = arr[0], p = arr[0];
+      const flush = () => {
+        let s = a * U, e = (p + 1) * U;
+        const pt = v => o === 'h' ? fl + '|' + v + '|' + line : fl + '|' + line + '|' + v;
+        if (kind === 'wall') { if (!openEnds.has(pt(s))) s -= T / 2; if (!openEnds.has(pt(e))) e += T / 2; }
+        const ext = o === 'h' ? (line === FOOT.z0 || line === FOOT.z1) : (line === FOOT.x0 || line === FOOT.x1);
+        boxes.push(o === 'h' ? { f: fl, kind, ext, horiz: true, x0: s, x1: e, z0: line - th / 2, z1: line + th / 2, y0: fl * H, y1: fl * H + H }
+          : { f: fl, kind, ext, horiz: false, x0: line - th / 2, x1: line + th / 2, z0: s, z1: e, y0: fl * H, y1: fl * H + H });
+      };
+      for (let n = 1; n < arr.length; n++) { if (arr[n] !== p + 1) { flush(); a = arr[n]; } p = arr[n]; }
+      flush();
+    }
+  };
+  merge(edges, 'wall', T); merge(gedges, 'glass', 0.06);
   for (const [f, x0, z0, x1, z1, h, kind] of FURNITURE) boxes.push({ f, kind: 'furn', sub: kind, x0, x1, z0, z1, y0: f * H, y1: f * H + h });
   const level = { boxes, doors, walk: null };
   // nav grid, two layers
@@ -110,7 +124,7 @@ export function buildLevel() {
     let ok, y = l * H;
     if (inStair(x, z)) { ok = (stairT(z) > 0.85 ? 1 : 0) === l; y = groundY(x, z, 0); }
     else ok = l === 0 ? true : inFoot(x, z);
-    if (ok && circleHits(level, null, x, z, 0.22, y)) ok = false;
+    if (ok && circleHits(level, null, x, z, 0.235, y)) ok = false;
     walk[l * NX * NZ + j * NX + i] = ok ? 1 : 0;
   }
   level.walk = walk;
@@ -156,9 +170,9 @@ function rayBox(b, ox, oy, oz, dx, dy, dz, max) {
   return t0;
 }
 // Distance along a unit ray to the first solid surface (walls, furniture, closed doors, floors), or max.
-export function rayStatic(level, doorOpen, ox, oy, oz, dx, dy, dz, max) {
+export function rayStatic(level, doorOpen, ox, oy, oz, dx, dy, dz, max, solidGlass = false) {
   let best = max;
-  for (const b of level.boxes) { const t = rayBox(b, ox, oy, oz, dx, dy, dz, best); if (t >= 0 && t < best) best = t; }
+  for (const b of level.boxes) { if (b.kind === 'glass' && !solidGlass) continue; const t = rayBox(b, ox, oy, oz, dx, dy, dz, best); if (t >= 0 && t < best) best = t; }
   if (doorOpen) for (const d of level.doors) if (!doorOpen[d.id]) { const t = rayBox(d.box, ox, oy, oz, dx, dy, dz, best); if (t >= 0 && t < best) best = t; }
   if (Math.abs(dy) > 1e-9) for (const py of [0, H, 2 * H]) {
     const t = (py - oy) / dy; if (t <= 1e-6 || t >= best) continue;

@@ -15,5 +15,9 @@ Co-op tactical entry game for Quest (WebXR), up to 4 officers. One level: a two-
 - `src/worker.js` Worker + Durable Object.
 - `test/` `node test/core.test.mjs`, `node test/worker.test.mjs`; `vr.py` + `xrmock.js` drive the VR path in headless Chromium with a fake headset.
 
+## Art and sound
+All models are built in code (no downloaded assets yet). Materials come from `public/js/mats.js` (Phong shine plus a tiny reflection map, same approach as Kerbside).
+Recorded sound effects can be dropped into `public/sfx/` and listed in `manifest.json`; see the README there.
+
 ## Not in yet
-Voice chat, flashbangs / less-lethal, real textures and models (current art is placeholder), windows you can see through, AI teammates.
+Voice chat, flashbangs / less-lethal, downloaded furniture/character models and recorded sounds, AI teammates.

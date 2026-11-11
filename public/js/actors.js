@@ -1,46 +1,96 @@
-// Characters (placeholder mannequins), remote officers, bombs, weapon models.
+// Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
+import { sheen, vertexSheen } from './mats.js';
 import { WIRE_HEX } from './shared.js';
-const cache = new Map();
-export const mat = c => cache.get(c) || cache.set(c, new THREE.MeshLambertMaterial({ color: c })).get(c);
-const box = (w, h, d, c, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c)); m.position.set(x, y, z); return m; };
 
-export function makeRifle() {
-  const g = new THREE.Group(), k = 0x1b1d20;
-  g.add(box(0.05, 0.07, 0.24, k, 0, 0.045, -0.04), box(0.046, 0.05, 0.3, 0x24272b, 0, 0.05, -0.3), box(0.02, 0.02, 0.16, k, 0, 0.05, -0.52), box(0.04, 0.06, 0.24, k, 0, 0.035, 0.2), box(0.034, 0.09, 0.04, k, 0, -0.03, 0.02));
-  g.add(box(0.006, 0.03, 0.006, k, 0, 0.09, -0.42), box(0.004, 0.035, 0.03, k, -0.02, 0.1, -0.06), box(0.004, 0.035, 0.03, k, 0.02, 0.1, -0.06), box(0.044, 0.004, 0.03, k, 0, 0.118, -0.06), box(0.03, 0.02, 0.05, k, 0, 0.085, 0.09));
-  const mag = box(0.03, 0.14, 0.055, 0x2c3035, 0, -0.06, -0.1); g.add(mag);
-  const bolt = box(0.006, 0.02, 0.06, 0xd0a040, 0.026, 0.055, -0.05); bolt.visible = false; g.add(bolt);
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffd070 })); flash.position.set(0, 0.05, -0.64); flash.visible = false; g.add(flash);
-  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff2020, depthTest: false, transparent: true })); dot.position.set(0, 0.1, -40); dot.visible = false; dot.renderOrder = 20; g.add(dot);
-  g.userData = { kind: 'rifle', mag, bolt, flash, dot, muzzle: new THREE.Vector3(0, 0.05, -0.6), magwell: new THREE.Vector3(0, -0.03, -0.1), rack: new THREE.Vector3(0, 0.085, 0.09), fore: new THREE.Vector3(0, 0.02, -0.3), sightY: 0.1 };
+const geos = new Map();
+const G = (key, make) => geos.get(key) || geos.set(key, make().toNonIndexed()).get(key);
+const BOX = (w, h, d) => G(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d));
+const CYL = (r, len, r2 = r, seg = 10, open = false) => G(`c${r},${len},${r2},${seg},${open}`, () => new THREE.CylinderGeometry(r2, r, len, seg, 1, open));
+const CAP = (r, len) => G(`k${r},${len}`, () => new THREE.CapsuleGeometry(r, len, 3, 8));
+const SPH = r => G(`s${r}`, () => new THREE.SphereGeometry(r, 12, 9));
+const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3(1, 1, 1), _m = new THREE.Matrix4(), _n = new THREE.Matrix3(), _c = new THREE.Color(), _v = new THREE.Vector3();
+// part: [geometry, colour, x, y, z, rx, ry, rz]
+export function merge(parts, gloss = 'satin') {
+  const pos = [], nor = [], col = [];
+  for (const [geo, color, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0] of parts) {
+    _m.compose(_p.set(x, y, z), _q.setFromEuler(_e.set(rx, ry, rz)), _s); _n.getNormalMatrix(_m); _c.set(color);
+    const pa = geo.attributes.position, na = geo.attributes.normal;
+    for (let i = 0; i < pa.count; i++) { _v.fromBufferAttribute(pa, i).applyMatrix4(_m); pos.push(_v.x, _v.y, _v.z); _v.fromBufferAttribute(na, i).applyMatrix3(_n).normalize(); nor.push(_v.x, _v.y, _v.z); col.push(_c.r, _c.g, _c.b); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return new THREE.Mesh(g, vertexSheen(gloss));
+}
+const HP = Math.PI / 2;
+const basic = c => new THREE.MeshBasicMaterial({ color: c });
+
+// ---------- weapons ----------
+let rifleGeo = null, rifleMagGeo = null;
+export function makeRifle() {   // original M4-pattern carbine: flat-top, railed handguard, red-dot optic, light, suppressor
+  const K = 0x17181a, TAN = 0x6f6352, GR = 0x2a2c2f, g = new THREE.Group();
+  if (!rifleGeo) {
+    rifleGeo = merge([
+      [BOX(0.044, 0.05, 0.2), K, 0, 0.05, -0.04], [BOX(0.04, 0.045, 0.17), K, 0, 0.008, -0.035], [BOX(0.037, 0.06, 0.062), K, 0, -0.03, -0.1],
+      [CYL(0.014, 0.19), K, 0, 0.05, 0.15, HP], [BOX(0.04, 0.085, 0.15), TAN, 0, 0.03, 0.2], [BOX(0.042, 0.11, 0.02), K, 0, 0.022, 0.283], [BOX(0.03, 0.02, 0.09), TAN, 0, -0.02, 0.17, -0.5],
+      [BOX(0.032, 0.09, 0.04), K, 0, -0.052, 0.036, 0.32], [BOX(0.01, 0.006, 0.06), K, 0, -0.018, -0.03],
+      [BOX(0.05, 0.052, 0.27), TAN, 0, 0.05, -0.275], [BOX(0.022, 0.008, 0.44), K, 0, 0.08, -0.17], [BOX(0.058, 0.02, 0.24), GR, 0, 0.05, -0.275], [BOX(0.02, 0.058, 0.24), GR, 0, 0.05, -0.275],
+      [CYL(0.009, 0.1), K, 0, 0.05, -0.45, HP], [CYL(0.019, 0.17), 0x4f4b44, 0, 0.05, -0.565, HP], [CYL(0.016, 0.085, 0.013), K, 0, -0.018, -0.3],
+      [BOX(0.03, 0.022, 0.05), K, 0, 0.094, -0.05], [CYL(0.021, 0.062, 0.021, 14, true), K, 0, 0.126, -0.05, HP], [CYL(0.008, 0.016), K, 0.024, 0.126, -0.05, 0, 0, HP], [BOX(0.03, 0.012, 0.03), K, 0, 0.106, -0.05],
+      [BOX(0.04, 0.026, 0.075), TAN, 0, 0.097, -0.3], [CYL(0.013, 0.11), K, 0.04, 0.05, -0.36, HP], [CYL(0.016, 0.03), K, 0.04, 0.05, -0.425, HP], [CYL(0.011, 0.004), 0xfff4d0, 0.04, 0.05, -0.442, HP],
+      [BOX(0.034, 0.014, 0.045), K, 0, 0.078, 0.075], [BOX(0.006, 0.026, 0.006), K, 0, 0.096, -0.39],
+    ], 'metal').geometry;
+    rifleMagGeo = merge([[BOX(0.027, 0.09, 0.056), GR, 0, -0.09, -0.1], [BOX(0.027, 0.08, 0.056), GR, 0, -0.165, -0.112, -0.28]], 'metal').geometry;
+  }
+  g.add(new THREE.Mesh(rifleGeo, vertexSheen('metal')));
+  const mag = new THREE.Mesh(rifleMagGeo, vertexSheen('metal')); g.add(mag);
+  const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.02, 0.06), basic(0xd0a040)); bolt.position.set(0.025, 0.055, -0.05); bolt.visible = false; g.add(bolt);
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), basic(0xffd070)); flash.position.set(0, 0.05, -0.69); flash.visible = false; g.add(flash);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff2020, depthTest: false, transparent: true, fog: false })); dot.position.set(0, 0.126, -40); dot.visible = false; dot.renderOrder = 20; g.add(dot);
+  g.userData = { kind: 'rifle', mag, bolt, flash, dot, muzzle: new THREE.Vector3(0, 0.05, -0.65), light: new THREE.Vector3(0.04, 0.05, -0.45), magwell: new THREE.Vector3(0, -0.05, -0.1), rack: new THREE.Vector3(0, 0.078, 0.075), fore: new THREE.Vector3(0, -0.01, -0.3), sightY: 0.126 };
   return g;
 }
+let pistolGeo = null;
 export function makePistol() {
-  const g = new THREE.Group(), k = 0x1b1d20;
-  const slide = box(0.028, 0.035, 0.19, 0x26292d, 0, 0.045, -0.05); g.add(slide, box(0.03, 0.11, 0.045, k, 0, -0.02, 0.018), box(0.005, 0.012, 0.005, k, 0, 0.068, -0.135), box(0.014, 0.012, 0.005, k, 0, 0.068, 0.035));
-  const mag = box(0.032, 0.012, 0.05, 0x3a3f45, 0, -0.08, 0.018); g.add(mag);
-  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffd070 })); flash.position.set(0, 0.045, -0.18); flash.visible = false; g.add(flash);
-  g.userData = { kind: 'pistol', mag, slide, flash, muzzle: new THREE.Vector3(0, 0.045, -0.15), magwell: new THREE.Vector3(0, -0.09, 0.018), rack: new THREE.Vector3(0, 0.05, 0.03), sightY: 0.074 };
+  const K = 0x17181a, g = new THREE.Group();
+  if (!pistolGeo) pistolGeo = merge([[BOX(0.03, 0.11, 0.046), K, 0, -0.02, 0.018, 0.2], [BOX(0.028, 0.02, 0.15), K, 0, 0.022, -0.045], [BOX(0.008, 0.03, 0.05), K, 0, -0.003, -0.02], [BOX(0.026, 0.02, 0.05), 0x24262a, 0, 0.005, -0.1]], 'plastic').geometry;
+  g.add(new THREE.Mesh(pistolGeo, vertexSheen('plastic')));
+  const slide = merge([[BOX(0.029, 0.03, 0.19), 0x2a2d31, 0, 0, 0], [BOX(0.005, 0.012, 0.005), 0xf0f0f0, 0, 0.02, -0.085], [BOX(0.016, 0.012, 0.006), K, 0, 0.02, 0.085]], 'metal'); slide.position.set(0, 0.047, -0.05); g.add(slide);
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.012, 0.05), sheen({ color: 0x3a3f45 }, 'metal')); mag.position.set(0, -0.082, 0.03); g.add(mag);
+  const flash = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), basic(0xffd070)); flash.position.set(0, 0.045, -0.18); flash.visible = false; g.add(flash);
+  g.userData = { kind: 'pistol', mag, slide, slideZ: -0.05, flash, muzzle: new THREE.Vector3(0, 0.045, -0.15), light: new THREE.Vector3(0, 0.02, -0.15), magwell: new THREE.Vector3(0, -0.09, 0.03), rack: new THREE.Vector3(0, 0.05, 0.03), sightY: 0.074 };
   return g;
 }
-export const makeMag = kind => kind === 'pistol' ? box(0.026, 0.11, 0.04, 0x3a3f45) : box(0.03, 0.14, 0.055, 0x2c3035);
+export const makeMag = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
 
-const SUS = [[0x23262b, 0x1a1c20], [0x3b2f24, 0x20242a], [0x2a3327, 0x1c1c1c], [0x30303a, 0x242424]];
-const CIV = [[0xc9c2b0, 0x4a5568], [0x8fa8c8, 0x3b3b3b], [0xc88f8f, 0x565a70], [0xd8d2c0, 0x6b5a48]];
+// ---------- people ----------
+const SKIN = [0x8a5a3c, 0xc79a7b, 0x6b4630, 0xd8ad8c];
+// suspects: v even = field jacket, face wrap, sunglasses, backpack; v odd = hooded sweatshirt and bandana. Colours vary per suspect.
+const JACKET = [[0x5f6340, 0x33291f, 0x1f232b, 0x8b8b86], [0x4a4f5c, 0x2a2a2a, 0x2b2f38, 0x6e6a60]];
+const HOODIE = [[0x2e2e30, 0x4a4b4e, 0x7a3fa0, 0x2aa0b0], [0x3b3f48, 0x2a2c30, 0xa03030, 0x1a1a1a]];
+const CIVC = [[0xd9d2c2, 0x4a5568, 0x3a2a1c], [0x8fa8c8, 0x3b3b3b, 0x151515], [0xc88f8f, 0x565a70, 0x6a4a2a], [0xe0d8c8, 0x6b5a48, 0x9a9a9a]];
 export class Human {
   constructor(kind, v) {
-    const s = kind === 's', [top, bottom] = (s ? SUS : CIV)[v % 4], skin = 0xc79a7b;
+    const s = kind === 's', skin = SKIN[v % 4]; let up, sleeve, hand, leg, shoe, sole = 0xe8e8e8;
+    if (s && v % 2 === 0) {
+      const [jk, inner, jeans, wrap] = JACKET[(v >> 1) % 2]; sleeve = jk; hand = skin; leg = jeans; shoe = 0x3a2e26;
+      up = [[BOX(0.45, 0.56, 0.27), jk, 0, 0.3, 0], [BOX(0.47, 0.1, 0.29), jk, 0, 0.03, 0], [BOX(0.11, 0.52, 0.02), inner, 0, 0.3, 0.136], [BOX(0.12, 0.09, 0.02), jk, -0.14, 0.4, 0.14], [BOX(0.12, 0.09, 0.02), jk, 0.14, 0.4, 0.14], [BOX(0.13, 0.11, 0.02), jk, -0.14, 0.13, 0.14], [BOX(0.13, 0.11, 0.02), jk, 0.14, 0.13, 0.14],
+        [BOX(0.3, 0.4, 0.15), 0x4a3d2c, 0, 0.3, -0.2], [BOX(0.04, 0.5, 0.02), 0x4a3d2c, -0.15, 0.33, 0.137], [BOX(0.04, 0.5, 0.02), 0x4a3d2c, 0.15, 0.33, 0.137],
+        [CYL(0.1, 0.14, 0.085), wrap, 0, 0.62, 0], [SPH(0.118), wrap, 0, 0.75, 0], [BOX(0.15, 0.05, 0.03), skin, 0, 0.77, 0.095], [BOX(0.17, 0.042, 0.03), 0x0c0c0c, 0, 0.775, 0.108], [BOX(0.17, 0.1, 0.05), wrap, 0, 0.7, 0.09]];
+    } else if (s) {
+      const [hd, jeans, band, glove] = HOODIE[(v >> 1) % 2]; sleeve = hd; hand = glove; leg = jeans; shoe = 0x8a7a66; sole = 0x8a7a66;
+      up = [[BOX(0.47, 0.6, 0.28), hd, 0, 0.29, 0], [BOX(0.27, 0.13, 0.02), hd, 0, 0.1, 0.146], [BOX(0.47, 0.06, 0.29), hd, 0, 0.01, 0],
+        [CYL(0.11, 0.12, 0.1), hd, 0, 0.62, 0], [SPH(0.138), hd, 0, 0.755, -0.012], [BOX(0.13, 0.05, 0.03), skin, 0, 0.785, 0.112], [BOX(0.16, 0.09, 0.04), band, 0, 0.715, 0.108], [CYL(0.075, 0.1, 0.005, 4), band, 0, 0.635, 0.105, Math.PI, 0.785]];
+    } else {
+      const [shirt, pants, hair] = CIVC[v % 4]; sleeve = shirt; hand = skin; leg = pants; shoe = 0x2a2a2a;
+      up = [[BOX(0.42, 0.56, 0.24), shirt, 0, 0.3, 0], [CYL(0.05, 0.1), skin, 0, 0.62, 0], [SPH(0.112), skin, 0, 0.74, 0], [BOX(0.2, 0.09, 0.21), hair, 0, 0.82, -0.015], [BOX(0.2, 0.14, 0.05), hair, 0, 0.74, -0.095]];
+    }
     const g = this.g = new THREE.Group(); g.rotation.order = 'YXZ'; const body = this.body = new THREE.Group(); g.add(body);
-    this.upper = new THREE.Group(); this.upper.position.y = 0.9; body.add(this.upper);
-    this.upper.add(box(0.42, 0.56, 0.24, top, 0, 0.3, 0), box(0.1, 0.08, 0.1, skin, 0, 0.62, 0));
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 10, 8), mat(s ? 0x15161a : skin)); head.position.y = 0.74; this.upper.add(head);
-    if (s) this.upper.add(box(0.16, 0.035, 0.02, skin, 0, 0.76, 0.105));
-    this.arms = [-1, 1].map(sx => { const a = new THREE.Group(); a.position.set(sx * 0.265, 0.52, 0); a.add(box(0.11, 0.6, 0.11, top, 0, -0.28, 0), box(0.09, 0.09, 0.09, skin, 0, -0.6, 0)); this.upper.add(a); return a; });
-    this.legs = [-1, 1].map(sx => { const l = new THREE.Group(); l.position.set(sx * 0.1, 0.9, 0); l.add(box(0.16, 0.9, 0.18, bottom, 0, -0.45, 0)); body.add(l); return l; });
-    body.add(box(0.4, 0.16, 0.23, bottom, 0, 0.86, 0));
-    if (s) { this.gun = makeRifle(); this.gun.userData.dot.visible = false; this.gun.position.set(0, -0.6, 0.02); this.gun.rotation.set(-Math.PI / 2, 0, Math.PI); this.arms[1].add(this.gun); }
-    this.kind = kind; this.st = ''; this.tx = 0; this.ty = 0; this.tz = 0; this.tyaw = 0; this.phase = 0; this.first = true; this.flashT = 0;
+    this.upper = new THREE.Group(); this.upper.position.y = 0.9; body.add(this.upper); this.upper.add(merge(up, 'cloth'));
+    this.arms = [-1, 1].map(sx => { const a = new THREE.Group(); a.position.set(sx * 0.275, 0.5, 0); a.add(merge([[CAP(0.055, 0.5), sleeve, 0, -0.28, 0], [SPH(0.05), hand, 0, -0.61, 0]], 'cloth')); this.upper.add(a); return a; });
+    this.legs = [-1, 1].map(sx => { const l = new THREE.Group(); l.position.set(sx * 0.1, 0.9, 0); l.add(merge([[CAP(0.078, 0.7), leg, 0, -0.43, 0], [BOX(0.11, 0.07, 0.26), shoe, 0, -0.85, 0.05], [BOX(0.115, 0.025, 0.265), sole, 0, -0.89, 0.05]], 'cloth')); body.add(l); return l; });
+    body.add(merge([[BOX(0.4, 0.18, 0.24), leg, 0, 0.86, 0]], 'cloth'));
+    if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.6, 0.02); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].add(this.gun); }
+    this.kind = kind; this.st = ''; this.tx = 0; this.ty = 0; this.tz = 0; this.tyaw = 0; this.phase = 0; this.first = true; this.flashT = 0; this.yOff = 0;
   }
   target(x, y, z, yaw, st, armed) {
     this.tx = x; this.ty = y; this.tz = z; this.tyaw = yaw;
@@ -49,52 +99,97 @@ export class Human {
     if (st !== this.st) { this.st = st; this.pose(); }
   }
   pose() {
-    const s = this.st, kneel = s === 'k' || s === 'y' || s === 'u' || s === 'w', [l, r] = this.arms;
-    this.g.rotation.x = s === 'd' ? -Math.PI / 2 : 0; this.yOff = s === 'd' ? 0.14 : 0;
+    const s = this.st, kneel = s === 'k' || s === 'y' || s === 'u' || s === 'w', lying = s === 'd' || s === 'i' || s === 'j', [l, r] = this.arms;
+    this.g.rotation.x = s === 'j' ? HP : lying ? -HP : 0; this.yOff = lying ? 0.15 : 0;
     this.body.position.y = kneel ? -0.42 : 0; for (const leg of this.legs) { leg.scale.y = kneel ? 0.53 : 1; leg.rotation.x = 0; }
     this.upper.rotation.x = s === 'w' ? 0.55 : 0; l.rotation.z = r.rotation.z = 0;
-    const ax = { g: -0.75, a: -1.1, c: -1.5, s: -3.0, k: -2.7, y: -2.7, u: 0.55, w: -2.5, d: -0.2 }[s] ?? 0;
-    r.rotation.x = ax; l.rotation.x = (s === 'g' || s === 'a') ? -0.5 : ax; if (s === 'c') { l.rotation.z = 0.5; }
+    const ax = { g: -0.75, a: -1.1, c: -1.5, s: -3.0, k: -2.7, y: -2.7, u: 0.55, w: -2.5, d: -0.2, i: -0.3, j: 0.5 }[s] ?? 0;
+    r.rotation.x = ax; l.rotation.x = (s === 'g' || s === 'a') ? -0.5 : ax; if (s === 'c') l.rotation.z = 0.5;
     if (s === 's' || s === 'k' || s === 'y') { l.rotation.z = -0.25; r.rotation.z = 0.25; }
+    if (s === 'd' || s === 'i') { l.rotation.z = -0.7; r.rotation.z = 0.5; }
   }
   update(dt) {
     const p = this.g.position, k = 1 - Math.exp(-12 * dt), dx = this.tx - p.x, dz = this.tz - p.z, sp = Math.hypot(dx, dz) / Math.max(dt, 1e-3) * k;
-    p.x += dx * k; p.z += dz * k; p.y += (this.ty + (this.yOff || 0) - p.y) * k;
+    p.x += dx * k; p.z += dz * k; p.y += (this.ty + this.yOff - p.y) * k;
     let d = this.tyaw - this.g.rotation.y; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; this.g.rotation.y += d * k;
     const standing = this.st === 'g' || this.st === 'a' || this.st === 'c';
     if (standing && sp > 0.3) { this.phase += dt * 8; const a = Math.sin(this.phase) * 0.5; this.legs[0].rotation.x = a; this.legs[1].rotation.x = -a; } else if (standing) { this.legs[0].rotation.x *= 0.8; this.legs[1].rotation.x *= 0.8; }
+    if (this.st === 'i') this.arms[0].rotation.x = -0.3 + Math.sin((this.phase += dt * 2)) * 0.12;   // wounded, still moving
     if (this.gun) { if (this.flashT > 0) { this.flashT -= dt; this.gun.userData.flash.visible = this.flashT > 0; } }
   }
   muzzle(out) { return out.set(this.g.position.x + Math.sin(this.g.rotation.y) * 0.6, this.g.position.y + 1.4, this.g.position.z + Math.cos(this.g.rotation.y) * 0.6); }
 }
 
+// ---------- officer body: vest, belt, holders, legs, and arms that reach to the hands ----------
+// Offsets are from the head, with -z forward. These are also the grab zones used by the game.
+export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.03, -0.42, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1] };
+const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
+let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null;
+export class Body {
+  constructor() {
+    const NAVY = 0x1b2230, VEST = 0x15181d, WEB = 0x23272e;
+    if (!torsoGeo) {
+      torsoGeo = merge([
+        [BOX(0.4, 0.56, 0.2), NAVY, 0, -0.52, 0.08], [BOX(0.35, 0.42, 0.25), VEST, 0, -0.47, 0.08], [BOX(0.07, 0.08, 0.22), VEST, -0.13, -0.25, 0.08], [BOX(0.07, 0.08, 0.22), VEST, 0.13, -0.25, 0.08],
+        [BOX(0.2, 0.05, 0.006), 0xc9ccd2, 0, -0.34, -0.047], [BOX(0.2, 0.05, 0.006), 0xc9ccd2, 0, -0.34, 0.207], [BOX(0.11, 0.1, 0.11), NAVY, -0.24, -0.27, 0.08], [BOX(0.11, 0.1, 0.11), NAVY, 0.24, -0.27, 0.08],
+        [BOX(0.43, 0.06, 0.27), WEB, 0, -0.76, 0.08],
+        [BOX(0.06, 0.13, 0.045), WEB, -0.27, -0.64, -0.07], [BOX(0.06, 0.13, 0.045), WEB, -0.2, -0.64, -0.075], [BOX(0.06, 0.13, 0.045), WEB, -0.13, -0.64, -0.075], [BOX(0.028, 0.03, 0.05), 0x2a2c2f, -0.27, -0.565, -0.07], [BOX(0.028, 0.03, 0.05), 0x2a2c2f, -0.2, -0.565, -0.075], [BOX(0.028, 0.03, 0.05), 0x2a2c2f, -0.13, -0.565, -0.075],
+        [BOX(0.06, 0.11, 0.04), 0x0e0f11, -0.13, -0.3, -0.065], [CYL(0.006, 0.12), 0x0e0f11, -0.15, -0.2, -0.065], [BOX(0.02, 0.02, 0.008), 0x30d060, -0.115, -0.265, -0.087],
+        [BOX(0.07, 0.17, 0.11), 0x0e0f11, 0.245, -0.78, 0.04], [BOX(0.09, 0.07, 0.04), WEB, 0.1, -0.67, -0.06], [BOX(0.07, 0.012, 0.045), 0xe8e8e8, 0.1, -0.63, -0.06],
+        [BOX(0.09, 0.09, 0.05), WEB, 0.02, -0.66, -0.06],
+      ], 'cloth').geometry;
+      legGeo = merge([[CAP(0.085, 0.72), NAVY, -0.1, -1.2, 0.08], [CAP(0.085, 0.72), NAVY, 0.1, -1.2, 0.08], [BOX(0.11, 0.1, 0.28), 0x0e0f11, -0.1, -1.62, 0.04], [BOX(0.11, 0.1, 0.28), 0x0e0f11, 0.1, -1.62, 0.04]], 'cloth').geometry;
+      gloveGeo = merge([[BOX(0.085, 0.034, 0.105), 0x121315, 0, -0.012, 0.035], [BOX(0.08, 0.028, 0.05), 0x1c1e22, 0, -0.012, -0.035], [BOX(0.028, 0.028, 0.06), 0x121315, 0, 0.005, 0.0, 0, 0.7], [BOX(0.075, 0.04, 0.05), 0x1b2230, 0, -0.012, 0.11]], 'plastic').geometry;
+      limbGeo = new THREE.CylinderGeometry(0.036, 0.045, 1, 8);
+    }
+    const g = this.g = new THREE.Group(), cloth = vertexSheen('cloth');
+    this.torso = new THREE.Mesh(torsoGeo, cloth); this.legs = new THREE.Mesh(legGeo, cloth); g.add(this.torso, this.legs);
+    const sleeve = sheen({ color: NAVY }, 'cloth');
+    this.arms = [-1, 1].map(sx => { const up = new THREE.Mesh(limbGeo, sleeve), fore = new THREE.Mesh(limbGeo, sleeve), glove = new THREE.Mesh(gloveGeo, vertexSheen('plastic')); glove.scale.x = sx; g.add(up, fore, glove); return { sx, up, fore, glove }; });
+  }
+  // hands: [left, right], each { pos, quat } or null
+  update(headPos, yaw, hands, feetY) {
+    const s = Math.sin(yaw), c = Math.cos(yaw);
+    this.torso.position.set(headPos.x + s * 0.05, headPos.y, headPos.z + c * 0.05); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = headPos.y - feetY > 1.25;
+    this.arms.forEach((a, i) => {
+      const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
+      const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat);
+      const wrist = a2.set(0, -0.012, 0.13).applyQuaternion(h.quat).add(h.pos), dir = a3.copy(wrist).sub(sh), d = Math.max(0.05, dir.length()); dir.multiplyScalar(1 / d);
+      const L1 = 0.3, L2 = 0.29, dd = Math.min(d, L1 + L2 - 0.005), along = (L1 * L1 - L2 * L2 + dd * dd) / (2 * dd), out = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+      const pole = a4.set(a.sx * 0.55 * c + 0.35 * s, -0.8, -a.sx * 0.55 * s + 0.35 * c); pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+      const el = pole.multiplyScalar(out).addScaledVector(dir, along).add(sh);
+      this.limb(a.up, sh, el); this.limb(a.fore, el, wrist);
+    });
+  }
+  limb(m, p, q) { const d = _v.copy(q).sub(p), len = Math.max(0.01, d.length()); m.position.copy(p).addScaledVector(d, 0.5); m.quaternion.setFromUnitVectors(UPY, d.multiplyScalar(1 / len)); m.scale.set(1, len, 1); }
+}
+
 export class Officer {   // another player
   constructor(name, tag) {
     this.g = new THREE.Group();
-    this.head = new THREE.Group(); const h = new THREE.Mesh(new THREE.SphereGeometry(0.125, 10, 8), mat(0x20242a)); this.head.add(h, box(0.2, 0.06, 0.03, 0x0a0a0a, 0, 0.01, -0.11));
-    this.torso = box(0.44, 0.6, 0.26, 0x23272e); this.legs = box(0.34, 0.85, 0.2, 0x1c1f24);
-    this.hands = [0, 1].map(() => { const g = new THREE.Group(); g.add(box(0.08, 0.1, 0.12, 0x15171a)); const r = makeRifle(), p = makePistol(), m = makeMag('rifle'); r.visible = p.visible = m.visible = false; g.add(r, p, m); g.userData = { items: [null, r, p, m] }; return g; });
+    this.head = merge([[SPH(0.125), 0x20242a, 0, 0.01, 0], [BOX(0.2, 0.06, 0.03), 0x0a0a0a, 0, 0.0, -0.11], [BOX(0.15, 0.09, 0.02), 0xc79a7b, 0, -0.06, -0.1], [BOX(0.27, 0.06, 0.1), 0x15181d, 0, 0.0, 0]], 'plastic');
+    this.body = new Body();
+    this.items = [0, 1].map(() => { const g = new THREE.Group(), r = makeRifle(), p = makePistol(), m = makeMag('rifle'); r.visible = p.visible = m.visible = false; g.add(r, p, m); g.userData = { items: [null, r, p, m] }; return g; });
     this.tag = tag; tag.position.y = 0.3; this.head.add(tag);
-    this.g.add(this.head, this.torso, this.legs, ...this.hands); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ');
+    this.g.add(this.head, this.body.g, ...this.items); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ'); this.hp = [{ pos: new THREE.Vector3(), quat: new THREE.Quaternion() }, { pos: new THREE.Vector3(), quat: new THREE.Quaternion() }];
   }
   set(h, l, r, items, down) {
-    if (!h) return; this.head.position.set(h[0], h[1], h[2]); this.q.set(h[3], h[4], h[5], h[6]); this.head.quaternion.slerp(this.q, 0.6);
-    this.e.setFromQuaternion(this.q); const yaw = this.e.y;
-    this.torso.position.set(h[0], h[1] - 0.5, h[2]); this.torso.rotation.y = yaw; this.legs.position.set(h[0], h[1] - 1.2, h[2]); this.legs.rotation.y = yaw; this.legs.visible = h[1] > 1.2 && !down;
-    [l, r].forEach((a, i) => { const g = this.hands[i]; g.visible = !!a; if (!a) return; g.position.set(a[0], a[1], a[2]); g.quaternion.set(a[3], a[4], a[5], a[6]); g.userData.items.forEach((m, k) => { if (m) m.visible = k === (items ? items[i] : 0); }); });
+    if (!h) return; this.head.position.set(h[0], h[1], h[2]); this.q.set(h[3], h[4], h[5], h[6]); this.head.quaternion.slerp(this.q, 0.6); this.e.setFromQuaternion(this.q);
+    const hands = [l, r].map((a, i) => { const g = this.items[i]; g.visible = !!a; if (!a) return null; const o = this.hp[i]; o.pos.set(a[0], a[1], a[2]); o.quat.set(a[3], a[4], a[5], a[6]); g.position.copy(o.pos); g.quaternion.copy(o.quat); g.userData.items.forEach((m, k) => { if (m) m.visible = k === (items ? items[i] : 0); }); return o; });
+    this.body.update(this.head.position, this.e.y, hands, down ? 99 : h[1] - 1.7);
   }
 }
 
 export class Bomb {
   constructor(x, y, z, wires, order) {
     const g = this.g = new THREE.Group(); g.position.set(x, y, z);
-    g.add(box(0.34, 0.1, 0.22, 0x2b2b2b, 0, 0.05, 0), box(0.3, 0.02, 0.02, 0x8a1c1c, 0, 0.11, 0.1), box(0.3, 0.02, 0.02, 0x8a1c1c, 0, 0.11, 0));
-    this.wires = wires.map((c, i) => { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.1, 6), mat(WIRE_HEX[c])); w.rotation.x = Math.PI / 2; w.position.set(-0.105 + i * 0.07, 0.125, 0.05); g.add(w); return w; });
+    g.add(merge([[BOX(0.34, 0.1, 0.22), 0x2b2b2b, 0, 0.05, 0], [BOX(0.3, 0.02, 0.02), 0x8a1c1c, 0, 0.11, 0.1], [BOX(0.3, 0.02, 0.02), 0x8a1c1c, 0, 0.11, 0]], 'plastic'));
+    this.wires = wires.map((c, i) => { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.1, 6), sheen({ color: WIRE_HEX[c] }, 'plastic')); w.rotation.x = HP; w.position.set(-0.105 + i * 0.07, 0.125, 0.05); g.add(w); return w; });
     const c = document.createElement('canvas'); c.width = 256; c.height = 96; const k = c.getContext('2d'); k.fillStyle = '#111'; k.fillRect(0, 0, 256, 96); k.fillStyle = '#fff'; k.font = 'bold 30px sans-serif'; k.fillText('CUT', 10, 58);
     order.forEach((wi, n) => { k.fillStyle = '#' + WIRE_HEX[wires[wi]].toString(16).padStart(6, '0'); k.fillRect(90 + n * 80, 20, 60, 56); k.fillStyle = '#000'; k.fillText(String(n + 1), 110 + n * 80, 60); });
-    const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.075), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) })); lab.rotation.x = -Math.PI / 2; lab.position.set(0, 0.102, -0.06); g.add(lab);
+    const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.075), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) })); lab.rotation.x = -HP; lab.position.set(0, 0.102, -0.06); g.add(lab);
     this.led = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff0000 })); this.led.position.set(0.145, 0.115, -0.06); g.add(this.led);
-    this.defused = false; this.v = new THREE.Vector3();
+    this.defused = false;
   }
   wirePos(i, out) { return this.wires[i].getWorldPosition(out); }
   set(cutMask, defused) { this.wires.forEach((w, i) => { w.visible = cutMask[i] !== '1'; }); this.defused = !!defused; this.led.material.color.set(defused ? 0x00ff40 : 0xff0000); }

@@ -6,7 +6,7 @@ import * as W from '../public/js/core/weapon.js';
 let n = 0; const t = (name, fn) => { fn(); n++; console.log('ok', name); };
 const L = buildLevel();
 
-t('level builds walls and 14 doors', () => { assert.ok(L.boxes.filter(b => b.kind === 'wall').length > 30); assert.equal(L.doors.length, 14); });
+t('level builds walls and 14 doors', () => { assert.ok(L.boxes.filter(b => b.kind === 'wall').length > 30); assert.equal(L.doors.length, 15); assert.ok(L.boxes.filter(b => b.kind === 'glass').length >= 8); });
 t('every spot is walkable and reachable from spawn', () => {
   for (const [f, x, z] of [...SUSPECT_SPOTS, ...CIV_SPOTS]) {
     assert.ok(!circleHits(L, null, x, z, 0.25, f * H), `spot blocked ${f},${x},${z}`);
@@ -68,13 +68,13 @@ t('suspect spots a player, reacts, shoots, and can down them', () => {
 t('closed door hides the player', () => {
   const [s, p] = mkSim(7); const n = s.npcs[0]; n.x = 12; n.z = 14; n.y = 0; n.yaw = 0; n.sweep = 0; n.patrol = null;   // foyer, facing the front door
   for (const o of s.npcs) if (o !== n) o.st = 'u';
-  put(s, p, 12, 1.65, 18); for (let i = 0; i < 30; i++) s.tick(1 / 15); assert.equal(n.st, 'g');
+  s.doorLocked[0] = false; put(s, p, 12, 1.65, 18); for (let i = 0; i < 30; i++) s.tick(1 / 15); assert.equal(n.st, 'g');
   s.door(1, 0); assert.ok(s.doorOpen[0]); for (let i = 0; i < 30; i++) s.tick(1 / 15); assert.equal(n.st, 'c');
 });
 t('ROE: shooting an unaware suspect is penalised, shooting a hostile is not', () => {
   let [s, p] = mkSim(9); let n = s.npcs[0]; beside(s, p, n); n.yaw += Math.PI;
   aimAt(s, p, n, 1.62); assert.equal(n.st, 'd'); assert.equal(s.log.unauth, 1);
-  [s, p] = mkSim(9); n = s.npcs[0]; beside(s, p, n); s.engage(n, p, 5); aimAt(s, p, n, 1.62); assert.equal(n.st, 'd'); assert.equal(s.log.unauth, 0); assert.ok(n.killJust);
+  [s, p] = mkSim(9); n = s.npcs[0]; beside(s, p, n); s.engage(n, p, 5); aimAt(s, p, n, 1.62); assert.equal(n.st, 'd'); assert.equal(s.log.unauth, 0); assert.ok(n.just);
   [s, p] = mkSim(9); n = s.npcs[0]; beside(s, p, n); s.surrender(n); aimAt(s, p, n, 1.3); assert.equal(s.log.execution, 1);
   [s, p] = mkSim(9); n = s.npcs.find(q => q.kind === 'c'); beside(s, p, n); aimAt(s, p, n, 0.8); assert.equal(s.log.civHit, 1);
 });
@@ -112,7 +112,7 @@ t('host protocol: join, start, snapshot, 5th player refused, restart after end',
   for (let i = 1; i <= 4; i++) assert.ok(h.join(i, 'P' + i)); assert.equal(h.join(5, 'X'), false); assert.equal(out.at(-1)[1].t, 'full');
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); h.message(2, { t: 'start' }); 
   h.message(1, { t: 'pose', h: [12, 1.65, 27, 0, 0, 0, 1], g: [1, 0] }); h.message(1, 'garbage'); h.message(1, { t: 'pose', h: [NaN] }); h.tick();
-  const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 13); assert.equal(snap.D.length, 14);
+  const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 13); assert.equal(snap.D.length, 15); assert.equal(snap.L.length, 15);
   assert.ok(JSON.stringify(snap).length < 3000, 'snapshot size ' + JSON.stringify(snap).length);
   h.leave(2); h.leave(3); h.leave(4); h.sim.players.get(1).down = true; h.tick(); assert.equal(h.sim.phase, 'ended');
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); assert.ok(!h.sim.players.get(1).down);
@@ -121,5 +121,38 @@ t('full-mission soak: 40 random-seed missions run 60s with a wandering shooter w
   for (let seed = 100; seed < 140; seed++) { const [s, p] = mkSim(seed); let a = 0;
     for (let i = 0; i < 15 * 60; i++) { a += 0.05; put(s, p, 12 + Math.sin(a) * 6, 1.65, 12 + Math.cos(a * 0.7) * 6); if (i % 20 === 0) s.shot(1, { o: [p.hx, 1.5, p.hz], d: [Math.sin(a * 3), 0, Math.cos(a * 3)], w: 'rifle' }); if (i % 45 === 0) s.shout(1); s.tick(1 / 15); const snap = s.snapshot(); assert.ok(snap.N.every(q => Number.isFinite(q[1]) && Number.isFinite(q[3]))); }
   }
+});
+t('locked doors: rattle, pick quietly, or kick loudly', () => {
+  const [s, p] = mkSim(31); const d = L.doors[1]; s.doorOpen[1] = false; s.doorLocked[1] = true; put(s, p, d.cx, 1.65, d.cz + 1);
+  s.events.length = 0; s.door(1, 1); assert.ok(!s.doorOpen[1]); assert.equal(s.events.at(-1).e, 'locked');
+  s.pick(1, 1); assert.ok(!s.doorLocked[1]); assert.ok(s.npcs.every(n => n.st !== 'a'), 'picking is silent'); s.door(1, 1); assert.ok(s.doorOpen[1]);
+  let opened = 0; for (let seed = 1; seed <= 40; seed++) { const [s2, p2] = mkSim(seed); s2.doorOpen[1] = false; s2.doorLocked[1] = true; put(s2, p2, d.cx, 1.65, d.cz + 1); s2.kick(1, 1); if (s2.doorOpen[1]) opened++; assert.ok(s2.npcs.some(n => n.st === 'a') || s2.npcs.every(n => n.kind === 'c' || Math.hypot(n.x - d.cx, n.z - d.cz) >= 16), 'kick makes noise'); }
+  assert.ok(opened > 12 && opened < 34, 'locked door kick success ' + opened + '/40');
+  const [s3, p3] = mkSim(5); s3.doorOpen[1] = false; s3.doorLocked[1] = false; put(s3, p3, d.cx, 1.65, d.cz + 1); s3.kick(1, 1); assert.ok(s3.doorOpen[1], 'unlocked door always kicks open');
+  for (let seed = 1; seed < 30; seed++) { const [s4] = mkSim(seed); const h = L.doors.findIndex(q => q.hidden); assert.ok(h >= 0 && !s4.doorLocked[h] && !s4.doorOpen[h], 'hidden rear door is closed and never locked'); }
+});
+t('hidden rear entry is reachable from spawn without entering through the front', () => {
+  const h = L.doors.find(q => q.hidden), legs = [[12, 27], [28, 17], [28, -2], [16, -4.5], [h.cx, h.cz - 1]];
+  for (let i = 1; i < legs.length; i++) { const path = findPath(L, legs[i - 1][0], legs[i - 1][1], 0, legs[i][0], legs[i][1], 0); assert.ok(path && path.every(c => !(c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16)), 'leg ' + i + ' stays outside'); const e = path.at(-1); assert.ok(Math.hypot(e[0] - legs[i][0], e[1] - legs[i][1]) < 0.8, 'leg ' + i + ' arrives'); }
+  assert.ok(findPath(L, h.cx, h.cz - 0.8, 0, 12, 2, 0).length < 12, 'door leads straight into the utility room');
+});
+t('glass: stops people, not bullets; suspects only see through it up close', () => {
+  const [x] = resolveCircle(L, null, 0.2, 12, 0.25, 0); assert.ok(x >= 0.27, 'cannot walk through the west glass');
+  assert.ok(rayStatic(L, null, -3, 1.5, 12, 1, 0, 0, 50) > 4); assert.ok(rayStatic(L, null, -3, 1.5, 12, 1, 0, 0, 50, true) < 3.1);
+  const [s, p] = mkSim(7); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; Object.assign(n, { x: 5, z: 15, y: 0, yaw: 0, sweep: 0, patrol: null });
+  put(s, p, 5, 1.65, 26); for (let i = 0; i < 20; i++) s.tick(1 / 15); assert.equal(n.st, 'g', 'not seen at 11 m through glass');
+  put(s, p, 5, 1.65, 18.5); for (let i = 0; i < 20; i++) s.tick(1 / 15); assert.equal(n.st, 'c', 'seen at 3.5 m through glass');
+});
+t('downed suspects can be arrested for full marks; shooting them again is penalised', () => {
+  let inc = 0, dead = 0;
+  for (let seed = 1; seed <= 40; seed++) { const [s, p] = mkSim(seed); const n = s.npcs[0]; beside(s, p, n); s.engage(n, p, 9); aimAt(s, p, n, 1.3); aimAt(s, p, n, 1.3); s.t += 1; aimAt(s, p, n, 1.3); if (n.st === 'i') inc++; else if (n.st === 'd') dead++; else if (n.st !== 's') assert.fail('state ' + n.st); }
+  assert.ok(inc > 15 && dead > 2, `incapacitated ${inc} dead ${dead}`);
+  const run = arrest => { const [s, p] = mkSim(2); for (const o of s.npcs) o.st = 'u'; for (const b of s.bombs) b.defused = true; const n = s.npcs[0]; n.st = 'i'; n.just = true; s.tick(0.1); assert.equal(s.phase, 'active', 'mission waits for the downed suspect to be secured'); beside(s, p, n); if (arrest) s.cuff(1, n.id); else { n.st = 'd'; } s.tick(0.1); return s.report.total; };
+  assert.equal(run(true), 100); assert.ok(run(false) < 100);
+  const [s, p] = mkSim(2); const n = s.npcs[0]; n.st = 'i'; beside(s, p, n); aimAt(s, p, n, 0.2); assert.equal(n.st, 'd'); assert.equal(s.log.execution, 1);
+});
+t('restart works mid-mission', () => {
+  const h = new RoomHost(() => { }); h.join(1, 'A'); h.message(1, { t: 'start' }); const seed = h.sim.seed; h.sim.timer = 100; h.message(1, { t: 'start' }); assert.equal(h.sim.timer, 100, 'start is ignored while active');
+  h.message(1, { t: 'restart' }); assert.equal(h.sim.timer, MISSION_TIME); assert.equal(h.sim.phase, 'active');
 });
 console.log(n + ' tests passed');
