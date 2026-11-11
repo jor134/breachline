@@ -16,7 +16,7 @@ Co-op tactical entry game for Quest (WebXR), up to 4 officers. One level: a thre
 - `test/` `node test/core.test.mjs`, `node test/worker.test.mjs`; `vr.py` + `xrmock.js` drive the VR path in headless Chromium with a fake headset.
 
 ## Art and sound
-All models are built in code (no downloaded assets yet). Materials come from `public/js/mats.js` (Phong shine plus a tiny reflection map, same approach as Kerbside).
+People, weapons, furniture and the house are built in code. Downloaded models: plants (`public/models/nature`, CC0) and the parked car (`public/models/car`, CC-BY 4.0, Car Concept by Eric Chadwick / Darmstadt Graphics Group, simplified); see the LICENSE.md in each folder. Materials come from `public/js/mats.js` (Phong shine plus a tiny reflection map, same approach as Kerbside).
 Recorded sound effects can be dropped into `public/sfx/` and listed in `manifest.json`; see the README there.
 
 ## Not in yet

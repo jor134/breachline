@@ -5,6 +5,7 @@ export const YARD = { x0: -8, z0: -16, x1: 32, z1: 30 };   // front yard at stre
 export const STAIR = { x0: 13.5, x1: 15, z0: 4, z1: 9 };
 // Main electrical breaker: on the plant room's rear wall, just inside the concealed service door.
 export const BREAKER = { x: 22.6, y: -H + 1.4, z: 0.13 };
+export const CAR = { x: 22, z: 24.2, length: 4.4 };
 export const SPAWN = [[10.5, 27], [11.5, 27], [12.5, 27], [13.5, 27]];
 
 // [floor, name, x0, z0, x1, z1, floorMaterial]
@@ -42,7 +43,7 @@ export const FURNITURE = [
   [0, 18, 3, 21, 4.2, 0.92, 'counter'], [0, 23.2, 0.3, 23.8, 6, 0.92, 'counter'], [0, 15.3, 5, 15.9, 7.5, 0.92, 'counter'], [0, 16, 0.3, 19.5, 0.9, 0.92, 'counter'],
   [0, 3, 3, 5, 4, 0.76, 'table'], [0, 0.2, 0.3, 0.7, 6, 2, 'shelf'], [0, 2, 0.2, 7, 0.7, 2, 'shelf'], [0, 6.5, 5, 7.5, 6, 0.8, 'sofa'],
   [0, 9.3, 10, 9.8, 11.5, 0.85, 'cabinet'], [0, 9.3, 0.3, 9.8, 3, 1.8, 'shelf'], [0, 13.5, 0.3, 14.7, 1, 0.9, 'counter'],
-  [0, 2.5, 19.5, 10, 23.5, 0.55, 'pool'], [0, 14.5, 19.6, 20, 20, 0.9, 'wall'], [0, 21, 22, 23, 26.4, 1.5, 'car'], [0, -4, 18, -3.4, 24, 0.9, 'wall'],
+  [0, 2.5, 19.5, 10, 23.5, 0.55, 'pool'], [0, 14.5, 19.6, 20, 20, 0.9, 'wall'], [0, 20.75, 22, 23.25, 26.4, 1.2, 'car'], [0, -4, 18, -3.4, 24, 0.9, 'wall'],
   [-1, 5, -13.5, 19, -7.5, 0.35, 'pool'], [-1, 15.5, -4.6, 18.5, -3.7, 0.8, 'sofa'], [-1, 21, -11, 22.4, -9.6, 0.5, 'wall'], [-1, 1, -6, 1.8, -4, 0.4, 'bed'], [-1, 2.6, -6, 3.4, -4, 0.4, 'bed'],
   [-1, 18.6, -1.6, 19.6, -0.5, 1.5, 'hedge'], [-1, 21.4, -1.6, 22.4, -0.5, 1.5, 'hedge'], [-1, 18.8, -3.3, 22.2, -2.8, 1.7, 'hedge'],
   [-1, 3.2, 3, 5.6, 4.3, 0.8, 'table'], [-1, 0.3, 6.6, 4, 7.2, 1.05, 'counter'], [-1, 6, 1.5, 6.9, 4, 0.8, 'sofa'],
@@ -234,6 +235,15 @@ export function rayStatic(level, doorOpen, ox, oy, oz, dx, dy, dz, max, solidGla
   const den = dy - 0.4 * dz;   // the sloped ground beside the house: y = 0.4 z - 4.8 for z in 4..12
   if (Math.abs(den) > 1e-9) { const t = -(oy - 0.4 * oz + 4.8) / den; if (t > 1e-6 && t < best) { const x = ox + dx * t, z = oz + dz * t; if (z > 4 && z < 12 && !inFoot(x, z)) best = t; } }
   return best;
+}
+// Is this point inside something solid (wall, glass, furniture, closed door, floor slab, ground)? Used for thrown objects.
+export function solidAt(level, doorOpen, x, y, z) {
+  for (const b of level.boxes) if (x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1 && z > b.z0 && z < b.z1) return true;
+  if (doorOpen) for (const d of level.doors) if (!doorOpen[d.id]) { const b = d.box; if (x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1 && z > b.z0 && z < b.z1) return true; }
+  if (y < -H) return true;
+  if (!inFoot(x, z)) return y < terrainY(z);
+  if (inStair(x, z)) return false;
+  return (y < 0 && y > -0.2) || (y < H && y > H - 0.2) || (y < 2 * H + 0.3 && y > 2 * H - 0.2);
 }
 export function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
   const mx = ox - cx, my = oy - cy, mz = oz - cz, b = mx * dx + my * dy + mz * dz, c = mx * mx + my * my + mz * mz - r * r;

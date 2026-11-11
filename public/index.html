@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>BREACHLINE</title>
 <meta name="theme-color" content="#0a1020">
 <link rel="manifest" href="manifest.webmanifest">
@@ -29,7 +29,7 @@ button{padding:13px 16px;font-size:16px;font-weight:700;border:0;border-radius:6
 #status,#vrnote{font-size:13px;color:#ffcf8a;margin-top:10px;min-height:1em}
 details{margin-top:12px;font-size:13px;color:#b9c6d4}summary{cursor:pointer;color:#8fb4dc}
 #touch{display:none;position:fixed;inset:0;z-index:6;pointer-events:none;user-select:none;-webkit-user-select:none;touch-action:none}
-#touch>*{pointer-events:auto;touch-action:none}
+#touch>*{pointer-events:auto}#touch,#touch *{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 body.touching{touch-action:none;overscroll-behavior:none}body.touching canvas{touch-action:none}
 body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:center}
 #tstick{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:22px;width:128px;height:128px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.3)}
@@ -58,16 +58,16 @@ body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:c
   <button id="install">Install as app</button>
   <div id="status"></div>
   <details><summary>Controls</summary>
-  <p><b>VR:</b> left stick walk (click = jog), right stick snap turn. Grip near chest = rifle, right hip = pistol, left belt = magazine. Grip again to stow. Trigger fires. Gun hand A/X drops the mag, B/Y releases the bolt, stick click = semi/auto. Pull the charging handle / slide back with your other hand to rack. Grab the handguard with your other hand to steady the rifle. Other hand B/Y = shout for compliance; tap A/X = flashlight, hold A/X = tool wheel (lockpick, wire cutters, med kit, hands, night vision); stick click = kick a door. Grip at your helmet = night vision. Grip the radio on your left chest = menu. Hold grip on a kneeling person to cuff. Cut bomb wires with the trigger of an empty hand.</p>
+  <p><b>VR:</b> left stick walk (click = jog), right stick snap turn. Grip near chest = rifle, right hip = pistol, left belt = magazine. Grip again to stow. Trigger fires. Gun hand A/X drops the mag, B/Y releases the bolt, stick click = semi/auto. Pull the charging handle / slide back with your other hand to rack. Grab the handguard with your other hand to steady the rifle. Other hand B/Y = shout for compliance; tap A/X = flashlight, hold A/X = tool wheel (lockpick, wire cutters, door camera, med kit, hands, night vision). Flashbangs and smoke are on the front of your vest: grip one, swing, let go to throw; stick click = kick a door. Grip at your helmet = night vision. Grip the radio on your left chest = menu. Hold grip on a kneeling person to cuff. Cut bomb wires with the trigger of an empty hand.</p>
   <p><b>Phone / tablet:</b> hold the device sideways. Left thumb moves, drag anywhere else to look. USE opens doors, cuffs, picks locks (TOOL set to PICK) and cuts wires (TOOL set to CUTTER).</p>
-  <p><b>Desktop:</b> WASD, mouse, left click fire, right click aim, R reload, F shout, E use / cuff / cut, V semi/auto, 1/2 weapon, 3/4/5 hands/lockpick/cutters, H med kit, N night vision, Q kick, M menu, C crouch, T flashlight, O weather choice, Enter start. E at the main breaker (plant room, basement) cuts the power.</p></details>
+  <p><b>Desktop:</b> WASD, mouse, left click fire, right click aim, R reload, F shout, E use / cuff / cut, V semi/auto, 1/2 weapon, 3/4/5/8 hands/lockpick/cutters/door camera, 6 flashbang, 7 smoke, H med kit, N night vision, Q kick, M menu, C crouch, T flashlight, O weather choice, Enter start. E at the main breaker (plant room, basement) cuts the power.</p></details>
 </div></div>
 <div id="hud"></div>
 <div id="touch">
   <div id="tstick"><div id="tknob"></div></div>
   <div class="tb" id="bFire">FIRE</div><div class="tb" id="bAim">AIM</div><div class="tb" id="bReload">RELOAD</div><div class="tb" id="bUse">USE</div><div class="tb" id="bShout">SHOUT</div>
   <div class="tr" id="trTop"><div class="tb" id="bSwap">GUN</div><div class="tb" id="bTool">HANDS</div><div class="tb" id="bMed">MED</div><div class="tb" id="bNvg">NVG</div><div class="tb" id="bLight">LIGHT</div></div>
-  <div class="tr" id="trLeft"><div class="tb" id="bMenu">MENU</div><div class="tb" id="bCrouch">CROUCH</div><div class="tb" id="bKick">KICK</div></div>
+  <div class="tr" id="trLeft"><div class="tb" id="bMenu">MENU</div><div class="tb" id="bCrouch">CROUCH</div><div class="tb" id="bKick">KICK</div><div class="tb" id="bFlash">FLASH 2</div><div class="tb" id="bSmoke">SMOKE 1</div></div>
   <div id="tstart"><div class="tb" id="bWx">WEATHER: RANDOM</div><div class="tb" id="bDusk">START MISSION</div></div>
 </div>
 <script type="module" src="js/game.js"></script>

@@ -1,5 +1,5 @@
 // BREACHLINE mission simulation: suspects, civilians, bombs, rules of engagement, scoring. Pure logic.
-import { buildLevel, groundY, rayStatic, raySphere, findPath, H, BREAKER, SPAWN, SUSPECT_SPOTS, CIV_SPOTS, BOMB_SPOTS } from './level.js';
+import { buildLevel, groundY, rayStatic, raySphere, findPath, solidAt, layerOf, inStair, NX, NZ, YARD, U, H, BREAKER, SPAWN, SUSPECT_SPOTS, CIV_SPOTS, BOMB_SPOTS } from './level.js';
 
 export function rng32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const DMG = { rifle: { head: 200, torso: 60, legs: 30 }, pistol: { head: 200, torso: 40, legs: 20 } };
@@ -8,7 +8,7 @@ const r2 = v => Math.round(v * 100) / 100;
 export const PARTS = ['head', 'torso', 'armL', 'armR', 'legL', 'legR'];   // wound bits 1,2,4,8,16,32
 export const WEATHER = ['clear', 'rain', 'fog', 'storm'];
 const SIGHT = { clear: 1, rain: 0.8, fog: 0.4, storm: 0.7 }, HEAR = { clear: 1, rain: 0.7, fog: 1, storm: 0.5 };   // weather hides you and covers noise
-const KNEEL = { k: 1, y: 1, u: 1, w: 1 }, DONE = { d: 1, u: 1, i: 1, j: 1 }, SECURED = { d: 1, u: 1, j: 1 };
+const KNEEL = { k: 1, y: 1, u: 1, w: 1, h: 1 }, DONE = { d: 1, u: 1, i: 1, j: 1 }, SECURED = { d: 1, u: 1, j: 1 };
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
 export class Sim {
@@ -27,12 +27,15 @@ export class Sim {
       fakeChance: rnd() < 0.18, fake: false, shouts: 0, spd: 0, strafe: false, path: null, pi: 0, react: 0, cool: 0, burst: 3, lost: 0, tA: 0, tS: 0, hold: false, tgt: 0, lk: null, armed: true, flagged: false }));
     pick(CIV_SPOTS, N_CIVS).forEach(([f, x, z], i) => this.npcs.push({ id: 101 + i, kind: 'c', v: Math.floor(rnd() * 4), x, z, y: f * H, yaw: rnd() * 6.28, hp: 100, st: 'w', stubborn: rnd() < 0.25, flagged: false }));
     this.doorOpen = this.level.doors.map(d => !d.exterior && rnd() < 0.3);
+    this.gren = []; this.smokes = [];
     this.doorLocked = this.level.doors.map((d, i) => d.hidden ? false : d.exterior ? rnd() < 0.6 : !this.doorOpen[i] && rnd() < 0.3);
+    // tripwires: a few closed inside doors are rigged; 1 or 2 = which side the wire is on
+    this.doorTrap = this.level.doors.map(() => 0); pick(this.level.doors.filter((d, i) => !d.exterior && !this.doorOpen[i]).map(d => d.id), 3).forEach(i => { this.doorTrap[i] = rnd() < 0.5 ? 1 : 2; });
     this.bombs = pick(BOMB_SPOTS, N_BOMBS).map(([f, x, z, h]) => {
       const wires = pick([0, 1, 2, 3], 4), order = pick([0, 1, 2, 3], 2);
       return { x, z, y: f * H + h, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
-    for (const p of this.players.values()) { p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; }
+    for (const p of this.players.values()) { p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; }
   }
   start(seed, night = false, wx = this.wxPick) { this.night = !!night;   // every mission starts with the power on; night falls when someone throws the breaker
     this.wxPick = wx === 'random' || WEATHER.includes(wx) ? wx : this.wxPick; this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
@@ -40,7 +43,7 @@ export class Sim {
   addPlayer(id, name) {
     const used = new Set([...this.players.values()].map(p => p.slot)); let slot = 0; while (used.has(slot)) slot++;
     const [x, z] = SPAWN[slot % 4];
-    const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: false, w: 0, med: false };
+    const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: false, w: 0, med: false, fl: 2, sm: 1 };
     this.players.set(id, p); return p;
   }
   removePlayer(id) { this.players.delete(id); }
@@ -54,7 +57,7 @@ export class Sim {
   }
   near(p, x, y, z, d) { return Math.hypot(p.hx - x, p.hz - z) < d && Math.abs(p.y - y) < 1.8; }
   clear(ax, ay, az, bx, by, bz, solidGlass = false) { const dx = bx - ax, dy = by - ay, dz = bz - az, d = Math.hypot(dx, dy, dz); if (d < 0.05) return true; return rayStatic(this.level, this.doorOpen, ax, ay, az, dx / d, dy / d, dz / d, d, solidGlass) >= d - 0.02; }
-  eyeY(n) { return n.y + (KNEEL[n.st] ? 1.0 : 1.58); }
+  eyeY(n) { return n.y + (KNEEL[n.st] || n.crouch ? 1.0 : 1.58); }
 
   // ---- player actions ----
   shot(id, m) {
@@ -69,14 +72,14 @@ export class Sim {
     if (kind === 'n') this.hitNpc(tn, DMG[w][part], p, part);
     else if (kind === 'p') { this.log.ff++; this.hurt(tp, DMG[w].torso * 0.6); }
   }
-  spheres(n) { if (n.st === 'i' || n.st === 'j') return [[n.x, n.y + 0.2, n.z, 0.28, 'torso']]; const k = KNEEL[n.st] ? 0.62 : 1; return [[n.x, n.y + 1.62 * k, n.z, 0.13, 'head'], [n.x, n.y + 1.32 * k, n.z, 0.2, 'torso'], [n.x, n.y + 1.02 * k, n.z, 0.2, 'torso'], [n.x, n.y + 0.55 * k, n.z, 0.18, 'legs']]; }
+  spheres(n) { if (n.st === 'i' || n.st === 'j') return [[n.x, n.y + 0.2, n.z, 0.28, 'torso']]; const k = KNEEL[n.st] || n.crouch ? 0.62 : 1; return [[n.x, n.y + 1.62 * k, n.z, 0.13, 'head'], [n.x, n.y + 1.32 * k, n.z, 0.2, 'torso'], [n.x, n.y + 1.02 * k, n.z, 0.2, 'torso'], [n.x, n.y + 0.55 * k, n.z, 0.18, 'legs']]; }
   hitNpc(n, dmg, p, part) {
     n.hp -= dmg; const dead = n.hp <= 0;
     if (n.kind === 'c') { if (!n.flagged) { n.flagged = true; this.log.civHit++; } if (dead) { n.st = 'd'; this.log.civKilled++; } this.ev({ e: 'hit', n: n.id, dead }); return; }
     const justified = n.st === 'c', wasDown = n.st === 'i' || n.st === 'j';
     if (!justified && !n.flagged) { n.flagged = true; if (n.st === 's' || n.st === 'k' || n.st === 'u' || wasDown) this.log.execution++; else this.log.unauth++; }
     if (wasDown) { n.st = 'd'; n.just = false; }
-    else if (dead) { n.st = part === 'head' || this.rnd() < 0.25 ? 'd' : 'i'; n.just = justified; n.armed = false; n.path = null; }   // most body hits incapacitate: the suspect can still be arrested
+    else if (dead) { n.cov = null; n.crouch = false; n.stun = 0; n.st = part === 'head' || this.rnd() < 0.25 ? 'd' : 'i'; n.just = justified; n.armed = false; n.path = null; }   // most body hits incapacitate: the suspect can still be arrested
     else if (n.st === 'g' || n.st === 'a') this.engage(n, p, 0.3);
     else if (n.st === 'c' && n.hp < 60 && this.rnd() < 0.35) this.surrender(n);
     this.ev({ e: 'hit', n: n.id, dead });
@@ -96,13 +99,13 @@ export class Sim {
       if (n.kind === 'c') { if (n.st === 'w') { if (n.stubborn) { n.stubborn = false; this.ev({ e: 'say', n: n.id, k: 'plead' }); } else { n.st = 'y'; this.ev({ e: 'say', n: n.id, k: 'comply' }); } } continue; }
       if (n.st !== 'g' && n.st !== 'a' && n.st !== 'c') continue;
       n.shouts++;
-      let pr = (1 - n.resolve) * (n.st === 'g' ? 1.3 : n.st === 'c' ? 0.6 : 1) * (n.hp < 60 ? 1.6 : 1) + 0.1 * (n.shouts - 1);
+      let pr = ((1 - n.resolve) * (n.st === 'g' ? 1.3 : n.st === 'c' ? 0.6 : 1) * (n.hp < 60 ? 1.6 : 1) + 0.1 * (n.shouts - 1)) * (n.stun > 0 ? 2.5 : 1);   // a stunned suspect gives up far more readily
       if (this.rnd() < pr) this.surrender(n);
-      else { this.ev({ e: 'say', n: n.id, k: 'defy' }); if (n.st !== 'c') this.engage(n, p, 0.5 + this.rnd() * 0.4); }
+      else if (!(n.stun > 0)) { this.ev({ e: 'say', n: n.id, k: 'defy' }); if (n.st !== 'c') this.engage(n, p, 0.5 + this.rnd() * 0.4); }
     }
   }
-  surrender(n) { n.st = 's'; n.tS = 0; n.path = null; n.armed = false; n.fake = n.fakeChance; n.fakeChance = false; n.fakeAt = 3.5 + this.rnd() * 4; this.ev({ e: 'say', n: n.id, k: 'surrender' }); }
-  engage(n, p, react) { n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
+  surrender(n) { n.cov = null; n.crouch = false; n.stun = 0; n.st = 's'; n.tS = 0; n.path = null; n.armed = false; n.fake = n.fakeChance; n.fakeChance = false; n.fakeAt = 3.5 + this.rnd() * 4; this.ev({ e: 'say', n: n.id, k: 'surrender' }); }
+  engage(n, p, react) { n.wantCover = !n.cov && this.rnd() < 0.85; n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
   cuff(id, nid) {
     const p = this.players.get(id), n = this.npcs.find(q => q.id === nid); if (!p || p.down || !n || this.phase !== 'active') return;
     if ((n.st === 's' || n.st === 'k' || n.st === 'y' || n.st === 'i') && this.near(p, n.x, n.y, n.z, 1.9)) { n.st = n.st === 'i' ? 'j' : 'u'; n.fake = false; this.ev({ e: 'cuff', n: n.id, p: id }); }
@@ -112,6 +115,7 @@ export class Sim {
   door(id, did) {
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
     if (!this.doorOpen[did] && this.doorLocked[did]) return this.ev({ e: 'locked', d: did });
+    if (!this.doorOpen[did] && this.doorTrap[did]) this.trip(did, p);
     this.doorOpen[did] = !this.doorOpen[did]; this.ev({ e: 'door', d: did, open: this.doorOpen[did] });
   }
   // Throwing the main breaker kills every light in the house. One suspect may come down to switch it back on.
@@ -121,6 +125,80 @@ export class Sim {
     if (this.night && this.rnd() < 0.7) { let best = null, bd = 1e9; for (const n of this.npcs) if (n.kind === 's' && n.st === 'g') { const d = Math.hypot(n.x - BREAKER.x, n.z - BREAKER.z) + Math.abs(n.y + H) * 3; if (d < bd) { bd = d; best = n; } }
       if (best) { best.st = 'a'; best.tA = 0; best.hold = false; best.path = null; best.fix = true; best.fixT = 0; best.lk = [BREAKER.x, BREAKER.z + 0.7, -H]; } }
   }
+  // A rigged door goes off when it is opened: hurts anyone close and wakes the house. Cut the wire first (cutters).
+  trip(did, p) {
+    const d = this.level.doors[did]; this.doorTrap[did] = 0; this.ev({ e: 'trap', d: did });
+    for (const q of this.players.values()) if (!q.down && this.near(q, d.cx, d.y, d.cz, 3.5)) this.hurt(q, 28 + this.rnd() * 18, this.rnd() < 0.5 ? 'legL' : this.rnd() < 0.5 ? 'legR' : 'torso');
+    if (this.phase === 'active') this.noise(d.cx, d.cz, 38, p);
+  }
+  disarm(id, did) {
+    const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.doorTrap[did] || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
+    this.doorTrap[did] = 0; this.ev({ e: 'disarm', d: did });
+  }
+  // ---- grenades ----
+  throw(id, m) {
+    const p = this.players.get(id), k = m.k === 'smoke' ? 'smoke' : 'flash'; if (!p || p.down || this.phase !== 'active' || !Array.isArray(m.o) || !Array.isArray(m.v) || ![...m.o, ...m.v].every(Number.isFinite) || !this.near(p, m.o[0], p.y, m.o[2], 1.8)) return;
+    if (k === 'flash' ? p.fl <= 0 : p.sm <= 0) return; if (k === 'flash') p.fl--; else p.sm--;
+    let [vx, vy, vz] = m.v; const sp = Math.hypot(vx, vy, vz), cap = 15; if (sp > cap) { vx *= cap / sp; vy *= cap / sp; vz *= cap / sp; }
+    this.gren.push({ k, x: m.o[0], y: m.o[1], z: m.o[2], vx, vy, vz, t: 0, fuse: k === 'flash' ? 1.7 : 1.3, by: id }); this.ev({ e: 'throw', p: id, k });
+  }
+  tickGrenades(dt) {
+    for (const g of this.gren) {
+      g.t += dt; g.vy -= 9.8 * dt; const sp = Math.hypot(g.vx, g.vy, g.vz), n = Math.max(1, Math.ceil(sp * dt / 0.08)), h = dt / n;
+      for (let i = 0; i < n; i++) {   // small steps, one axis at a time, so it bounces off whatever it meets
+        if (solidAt(this.level, this.doorOpen, g.x + g.vx * h, g.y, g.z)) { g.vx *= -0.35; g.vz *= 0.8; } else g.x += g.vx * h;
+        if (solidAt(this.level, this.doorOpen, g.x, g.y, g.z + g.vz * h)) { g.vz *= -0.35; g.vx *= 0.8; } else g.z += g.vz * h;
+        if (solidAt(this.level, this.doorOpen, g.x, g.y + g.vy * h, g.z)) { if (g.vy < -1.5) this.ev({ e: 'clink', x: r2(g.x), y: r2(g.y), z: r2(g.z) }); g.vy *= -0.3; g.vx *= 0.6; g.vz *= 0.6; if (Math.abs(g.vy) < 0.6) g.vy = 0; } else g.y += g.vy * h;
+      }
+      if (g.t >= g.fuse) { g.done = true; if (g.k === 'flash') this.flash(g); else { this.smokes.push({ x: g.x, y: g.y, z: g.z, t: 0 }); this.ev({ e: 'smoke', x: r2(g.x), y: r2(g.y), z: r2(g.z) }); } }
+    }
+    this.gren = this.gren.filter(g => !g.done); for (const s of this.smokes) s.t += dt; this.smokes = this.smokes.filter(s => s.t < 20);
+  }
+  flash(g) {
+    this.ev({ e: 'flash', x: r2(g.x), y: r2(g.y), z: r2(g.z) }); const by = this.players.get(g.by);
+    for (const n of this.npcs) {
+      if (n.kind !== 's' || !(n.st === 'g' || n.st === 'a' || n.st === 'c')) continue; const d = Math.hypot(n.x - g.x, n.y + 1.2 - g.y, n.z - g.z);
+      if (d > 8 || !this.clear(g.x, g.y + 0.15, g.z, n.x, this.eyeY(n), n.z)) continue;
+      n.stun = d < 4 ? 6 : 4.5; n.cov = null; n.crouch = false; n.strafe = false; n.path = null; n.spd = 0; n.wantCover = false; n.st = 'a'; n.tA = 0; n.hold = true; n.fix = false; n.lk = [g.x, g.z, n.y];   // blind and deaf: no longer a threat until it wears off
+    }
+    if (by) this.noise(g.x, g.z, 30, by);
+  }
+  inSmoke(ax, ay, az, bx, by, bz) {   // does the sight line pass through a smoke cloud?
+    for (const s of this.smokes) { const r = Math.min(3.4, 0.8 + s.t * 1.6) * (s.t > 16 ? (20 - s.t) / 4 : 1), dx = bx - ax, dy = by - ay, dz = bz - az, L2 = dx * dx + dy * dy + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((s.x - ax) * dx + (s.y + 1 - ay) * dy + (s.z - az) * dz) / L2)), px = ax + dx * t - s.x, py = ay + dy * t - s.y - 1, pz = az + dz * t - s.z; if (px * px + py * py * 0.5 + pz * pz < r * r) return true; }
+    return false;
+  }
+  // ---- cover ----
+  // Look nearby for somewhere a crouched body is hidden from this officer: behind furniture (stand up to shoot) or round a corner (step out to shoot).
+  findCover(n, p) {
+    const L = this.level, N = NX * NZ, li = layerOf(n.x, n.z, n.y), ci = Math.floor((n.x - YARD.x0) / U), cj = Math.floor((n.z - YARD.z0) / U); let best = null, bs = 1e9;
+    const ok = (i, j) => { if (i < 0 || j < 0 || i >= NX || j >= NZ) return NaN; const id = li * N + j * NX + i; return L.walk[id] && Math.abs(L.cy[id] - n.y) < 0.3 ? L.cy[id] : NaN; };
+    for (let dj = -11; dj <= 11; dj++) for (let di = -11; di <= 11; di++) {
+      const i = ci + di, j = cj + dj, y = ok(i, j); if (Number.isNaN(y)) continue; const x = YARD.x0 + (i + 0.5) * U, z = YARD.z0 + (j + 0.5) * U; if (inStair(x, z)) continue;
+      const d = Math.hypot(x - n.x, z - n.z), dp = Math.hypot(x - p.hx, z - p.hz); if (d > 5.5 || dp < 3.5) continue;
+      if (this.clear(x, y + 0.5, z, p.hx, p.hy, p.hz) || this.clear(x, y + 0.9, z, p.hx, p.hy, p.hz)) continue;
+      let fx = x, fz = z; const low = this.clear(x, y + 1.5, z, p.hx, p.hy, p.hz);
+      if (!low) { let found = false; for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]]) { if (Number.isNaN(ok(i + a, j + b)) || Number.isNaN(ok(i + Math.sign(a), j + Math.sign(b)))) continue; const x2 = x + a * U, z2 = z + b * U; if (this.clear(x2, y + 1.5, z2, p.hx, p.hy, p.hz)) { fx = x2; fz = z2; found = true; break; } } if (!found) continue; }
+      const score = d + (low ? 0 : 1.2) + Math.abs(dp - 8) * 0.12; if (score < bs) { bs = score; best = { hx: x, hz: z, fx, fz, low, phase: 'go', t: 0, age: 0, shots: 0, seenT: 0 }; }
+    }
+    return best;
+  }
+  tickCover(n, dt, seen, dist) {
+    const C = n.cov, p = this.players.get(n.tgt); if (!p || p.down) { n.cov = null; n.crouch = false; return; }
+    if (seen) { n.lk = [seen.hx, seen.hz, seen.y]; n.lost = 0; n.tgt = seen.id; C.seenT += dt; } else { n.lost += dt; C.seenT = 0; }
+    C.age += dt; n.react -= dt;
+    if (C.phase === 'go') { n.crouch = false; if (!this.walk(n, dt, 3.1)) { C.phase = 'hide'; C.t = 0.5 + this.rnd() * 1.2; C.age = 0; } }
+    else if (C.phase === 'hide') {
+      n.crouch = C.low; this.face(n, n.lk[0], n.lk[1], dt, 6); C.t -= dt;
+      if (C.seenT > 0.7 || (C.age > 5 && this.clear(n.x, n.y + 0.5, n.z, p.hx, p.hy, p.hz))) { const nc = this.findCover(n, p); n.crouch = false; if (nc && this.goto(n, nc.hx, nc.hz, n.y)) n.cov = nc; else { n.cov = null; } return; }   // flanked: move or fight in the open
+      if (C.t <= 0) { C.phase = 'peek'; C.shots = 2 + Math.floor(this.rnd() * 3); C.t = 2.6; n.cool = 0.25; if (!C.low) { n.path = [[n.x, n.z, 0], [C.fx, C.fz, 0]]; n.pi = 1; } }
+    } else if (C.phase === 'peek') {
+      n.crouch = false; this.face(n, n.lk[0], n.lk[1], dt, 8); if (n.path) { this.walk(n, dt, 2.2, true); return; }
+      C.t -= dt; if (seen && n.react <= 0) { n.cool -= dt; if (n.cool <= 0) { this.npcFire(n, seen, dist); C.shots--; n.cool = 0.17; } }
+      if (C.shots <= 0 || C.t <= 0) { C.phase = C.low ? 'hide' : 'back'; C.t = 0.9 + this.rnd() * 1.6; C.age = 0; if (!C.low) { n.path = [[n.x, n.z, 0], [C.hx, C.hz, 0]]; n.pi = 1; } }
+    } else { this.face(n, n.lk[0], n.lk[1], dt, 8); if (!this.walk(n, dt, 2.4, true)) { C.phase = 'hide'; } }
+    if (n.lost > 14) { n.cov = null; n.crouch = false; n.st = 'a'; n.tA = 0; n.hold = true; n.path = null; }
+  }
   pick(id, did) {   // quiet: the client sends this after the lock has been worked for a few seconds
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.near(p, d.cx, d.y, d.cz, 2.2) || !this.doorLocked[did]) return;
     this.doorLocked[did] = false; this.ev({ e: 'unlock', d: did });
@@ -128,7 +206,7 @@ export class Sim {
   kick(id, did) {   // loud: opens an unlocked door, has a chance to break a locked one
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || this.doorOpen[did] || !this.near(p, d.cx, d.y, d.cz, 2.2) || this.t - p.lastKick < 0.7) return;
     p.lastKick = this.t; const ok = !this.doorLocked[did] || this.rnd() < 0.55;
-    if (ok) { this.doorLocked[did] = false; this.doorOpen[did] = true; }
+    if (ok) { if (this.doorTrap[did]) this.trip(did, p); this.doorLocked[did] = false; this.doorOpen[did] = true; }
     this.ev({ e: 'kick', d: did, ok }); if (this.phase === 'active') this.noise(d.cx, d.cz, 16, p);
   }
   cut(id, bi, wi) {
@@ -143,6 +221,7 @@ export class Sim {
     const lit = this.night && p.light;                 // in the dark a flashlight gives you away at any range, even through glass
     if (d > Math.max(3.5, (this.night && !lit ? 7 : 22) * SIGHT[this.weather])) return false;
     if (d > 2.5) { const a = Math.atan2(p.hx - n.x, p.hz - n.z); if (Math.abs(angDiff(a, n.yaw)) > 1.05) return false; }
+    if (this.smokes.length && this.inSmoke(n.x, this.eyeY(n), n.z, p.hx, p.hy, p.hz)) return false;
     return this.clear(n.x, this.eyeY(n), n.z, p.hx, p.hy, p.hz, d > 8 && !lit);   // a lit room's glass only shows what is close
   }
   face(n, x, z, dt, rate) { const a = Math.atan2(x - n.x, z - n.z), d = angDiff(a, n.yaw), s = rate * dt; n.yaw += Math.abs(d) < s ? d : Math.sign(d) * s; }
@@ -158,7 +237,7 @@ export class Sim {
     let rem = n.spd * dt;                                               // carry leftover distance past each corner so speed never hiccups
     while (rem > 0 && n.pi < n.path.length) { const [wx, wz] = n.path[n.pi], ex = wx - n.x, ez = wz - n.z, e = Math.hypot(ex, ez); if (e <= rem + 0.02) { n.x = wx; n.z = wz; n.pi++; rem -= e; } else { n.x += ex / e * rem; n.z += ez / e * rem; rem = 0; } }
     n.y = groundY(n.x, n.z, n.y);
-    this.level.doors.forEach((dr, i) => { if (!this.doorOpen[i] && Math.abs(dr.y - n.y) < 1 && Math.hypot(dr.cx - n.x, dr.cz - n.z) < 1.1) { this.doorOpen[i] = true; this.doorLocked[i] = false; this.ev({ e: 'door', d: i, open: true }); } });
+    this.level.doors.forEach((dr, i) => { if (!this.doorOpen[i] && Math.abs(dr.y - n.y) < 1 && Math.hypot(dr.cx - n.x, dr.cz - n.z) < 1.1) { this.doorOpen[i] = true; this.doorLocked[i] = false; this.doorTrap[i] = 0; this.ev({ e: 'door', d: i, open: true }); } });   // suspects know their own tripwires
     return true;
   }
   // In a firefight, shift a step or two sideways between bursts instead of standing rooted.
@@ -169,6 +248,7 @@ export class Sim {
   }
   tickSuspect(n, dt) {
     if (DONE[n.st]) return;
+    if (n.stun > 0) { n.stun -= dt; return; }
     if (n.st === 's' || n.st === 'k') {
       n.tS += dt;
       if (n.fake && n.tS > n.fakeAt) { n.fake = false; n.armed = true; let bp = null, bd = 1e9; for (const p of this.players.values()) { const d = Math.hypot(p.hx - n.x, p.hz - n.z); if (!p.down && d < bd) { bd = d; bp = p; } } if (bp) { this.engage(n, bp, 0.55); this.ev({ e: 'say', n: n.id, k: 'fake' }); } }
@@ -191,6 +271,8 @@ export class Sim {
       else this.walk(n, dt, 2.2);
       if (n.tA > (n.fix ? 90 : 25)) { n.fix = false; n.st = 'g'; n.hold = false; this.goto(n, n.post[0], n.post[1], n.post[2]); }
     } else if (n.st === 'c') {
+      if (n.wantCover) { n.wantCover = false; const p = seen || this.players.get(n.tgt); const c = p && this.findCover(n, p); if (c && this.goto(n, c.hx, c.hz, n.y)) { n.cov = c; n.strafe = false; } }
+      if (n.cov) return this.tickCover(n, dt, seen, best);
       if (seen) {
         n.tgt = seen.id; n.lost = 0; n.lk = [seen.hx, seen.hz, seen.y]; this.face(n, seen.hx, seen.hz, dt, 8); n.react -= dt;
         if (n.strafe) { if (!this.walk(n, dt, 1.9, true)) n.strafe = false; }
@@ -212,7 +294,7 @@ export class Sim {
   tick(dt) {
     this.t += dt;
     if (this.phase !== 'active') return;
-    this.timer -= dt;
+    this.timer -= dt; if (this.gren.length || this.smokes.length) this.tickGrenades(dt);
     for (const n of this.npcs) if (n.kind === 's') this.tickSuspect(n, dt);
     const sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c'), ps = [...this.players.values()];
     let result = null;
@@ -242,10 +324,10 @@ export class Sim {
     return { result, lines, total, grade, time: Math.round(MISSION_TIME - this.timer) };
   }
   snapshot() {
-    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0)]);
-    const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.st, n.kind === 's' && n.armed ? 1 : 0]);
+    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9)]);
+    const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.stun > 0 && (n.st === 'a' || n.st === 'g' || n.st === 'c') ? 'z' : n.st === 'c' && n.crouch ? 'h' : n.st, n.kind === 's' && n.armed ? 1 : 0]);
     const E = this.events; this.events = [];
-    const s = { t: 's', ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };
+    const s = { t: 's', ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };
     if (this.report) s.R = this.report;
     return s;
   }

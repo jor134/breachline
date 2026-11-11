@@ -61,7 +61,7 @@ await t('mission populates deterministically per seed', () => {
 await t('suspect spots a player, reacts, shoots, and can down them', () => {
   const [s, p] = mkSim(7); const n = s.npcs[0]; beside(s, p, n, 2);
   for (const o of s.npcs) if (o !== n) o.st = 'u';
-  let fired = false; for (let i = 0; i < 15 * 30 && !p.down; i++) { s.tick(1 / 15); if (s.events.some(e => e.e === 'ns')) fired = true; }
+  let fired = false; for (let i = 0; i < 15 * 90 && !p.down; i++) { s.tick(1 / 15); if (s.events.some(e => e.e === 'ns')) fired = true; s.events.length = 0; }
   assert.equal(n.st, 'c'); assert.ok(fired); assert.ok(p.down, 'player should eventually go down at 2m');
   s.tick(1 / 15); assert.equal(s.phase, 'ended'); assert.equal(s.report.result, 'SQUAD DOWN'); assert.ok(s.report.total <= 49);
 });
@@ -113,7 +113,7 @@ await t('host protocol: join, start, snapshot, 5th player refused, restart after
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); h.message(2, { t: 'start' }); 
   h.message(1, { t: 'pose', h: [12, 1.65, 27, 0, 0, 0, 1], g: [1, 0] }); h.message(1, 'garbage'); h.message(1, { t: 'pose', h: [NaN] }); h.tick();
   const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 14); assert.equal(snap.D.length, 23); assert.equal(snap.L.length, 23);
-  assert.ok(JSON.stringify(snap).length < 3300, 'snapshot size ' + JSON.stringify(snap).length);
+  assert.ok(JSON.stringify(snap).length < 3500, 'snapshot size ' + JSON.stringify(snap).length);
   h.leave(2); h.leave(3); h.leave(4); h.sim.players.get(1).down = true; h.tick(); assert.equal(h.sim.phase, 'ended');
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); assert.ok(!h.sim.players.get(1).down);
 });
@@ -180,7 +180,7 @@ await t('wounds: hits land on a body part, limbs get flagged, one med kit clears
   const [s, p] = mkSim(7); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; const seen = new Set();
   for (let k = 0; k < 400; k++) { p.hp = 100; p.down = false; s.events.length = 0; s.npcFire(n, p, 1); for (const e of s.events) if (e.e === 'hurt') seen.add(e.part); }
   assert.deepEqual([...seen].sort(), ['armL', 'armR', 'head', 'legL', 'legR', 'torso']); assert.equal(p.w, 63);
-  p.hp = 30; p.down = false; assert.equal(s.snapshot().P[0][9], 63); s.heal(1); assert.equal(p.hp, 90); assert.equal(p.w, 0); assert.equal(s.snapshot().P[0][9], 64);
+  p.hp = 30; p.down = false; assert.equal(s.snapshot().P[0][9] & 63, 63); s.heal(1); assert.equal(p.hp, 90); assert.equal(p.w, 0); assert.equal(s.snapshot().P[0][9] & 127, 64);
   p.hp = 20; p.w = 16; s.heal(1); assert.equal(p.hp, 20, 'second med kit refused'); s.start(8); assert.ok(!p.med && p.w === 0, 'new mission, new kit');
 });
 await t('walls that run into other walls have no end faces; ends at doorways and glass do', () => {
@@ -215,5 +215,31 @@ await t('planting: trunks and pots are solid, nothing is planted in a doorway or
   const [tx, tz] = VEG.trees[0]; assert.ok(circleHits(L, null, tx, tz, 0.1, 0)); const [pf, px, pz] = VEG.pots[0]; assert.ok(circleHits(L, null, px, pz, 0.1, pf * H));
   for (const [f, x, z] of VEG.pots) { assert.ok(x > 0.3 && x < 23.7 && z > 0.3 && z < 15.7); for (const d of L.doors) assert.ok(d.f !== f || Math.hypot(d.cx - x, d.cz - z) > 1.0, `pot at ${f},${x},${z} crowds a door`); }
   for (const [x, z] of [...VEG.trees, ...VEG.shrubs]) { assert.ok(!(x > -0.3 && x < 24.3 && z > -0.3 && z < 16.3), 'planted inside the house'); assert.ok(Math.hypot(x - 12, z - 27) > 3, 'planted on the spawn'); for (const d of L.doors) if (d.exterior) assert.ok(Math.hypot(d.cx - x, d.cz - z) > 1.2, 'blocks an outside door'); }
+});
+await t('grenades: thrown ones arc, bounce and stay out of walls; flashbangs stun in sight only; smoke blocks sight', async () => {
+  const { solidAt } = await import('../public/js/core/level.js');
+  let [s, p] = mkSim(5); for (const o of s.npcs) o.st = 'u'; put(s, p, 12, 1.65, 14); s.throw(1, { k: 'flash', o: [12, 1.5, 13.8], v: [0, 3, -9] }); assert.equal(p.fl, 1); let maxY = 0, flashed = null;
+  for (let i = 0; i < 40; i++) { s.tick(1 / 15); for (const g of s.gren) { maxY = Math.max(maxY, g.y); assert.ok(!solidAt(L, s.doorOpen, g.x, g.y, g.z), 'grenade inside something solid'); assert.ok(g.z > 9.1 && g.y > -0.01, 'went through the hall wall or floor'); } for (const e of s.events) if (e.e === 'flash') flashed = e; s.events.length = 0; }
+  assert.ok(maxY > 1.6 && flashed && flashed.y < 0.4 && flashed.z < 11.5, 'arcs, lands and goes off on the floor: ' + JSON.stringify(flashed));
+  s.throw(1, { k: 'flash', o: [12, 1.5, 13.8], v: [0, 3, -9] }); s.throw(1, { k: 'flash', o: [12, 1.5, 13.8], v: [0, 3, -9] }); assert.equal(p.fl, 0); assert.equal(s.gren.length, 1, 'only two flashbangs');
+  [s, p] = mkSim(5); const [a, b] = s.npcs; for (const o of s.npcs) if (o !== a && o !== b) o.st = 'u'; Object.assign(a, { x: 12, z: 11, y: 0, st: 'c', tgt: 1 }); Object.assign(b, { x: 12, z: 7, y: 0, st: 'g' }); s.doorOpen[1] = false; put(s, p, 12, 1.65, 26);
+  s.flash({ x: 12, y: 0.1, z: 13, by: 1 }); assert.ok(a.stun > 0 && a.st === 'a', 'in the room: stunned and no longer a threat'); assert.ok(!(b.stun > 0), 'behind the wall and closed door: not stunned');
+  assert.equal(s.snapshot().N.find(q => q[0] === a.id)[5], 'z'); const hp = p.hp; for (let i = 0; i < 45; i++) s.tick(1 / 15); assert.equal(p.hp, hp, 'stunned suspects do not shoot');
+  aimAt(s, p, a, 1.3); let sur = 0; for (let seed = 1; seed <= 30; seed++) { const [s2, p2] = mkSim(seed); const n = s2.npcs[0]; beside(s2, p2, n); n.resolve = 0.8; n.stun = 5; n.st = 'a'; s2.shout(1); if (n.st === 's') sur++; } assert.ok(sur >= 12, 'stunned suspects surrender more: ' + sur + '/30');
+  [s, p] = mkSim(7); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; Object.assign(n, { x: 8, z: 15.2, y: 0, yaw: Math.atan2(1.4 - 8, 8.8 - 15.2), sweep: 0, patrol: null }); put(s, p, 1.4, 1.65, 8.8);
+  s.smokes.push({ x: 4.7, y: 0, z: 12, t: 5 }); for (let i = 0; i < 20; i++) s.tick(1 / 15); assert.equal(n.st, 'g', 'smoke between them hides the officer'); s.smokes.length = 0; for (let i = 0; i < 20; i++) s.tick(1 / 15); assert.equal(n.st, 'c');
+});
+await t('tripwires: three rigged doors, opening one hurts and alerts, cutters disarm it', () => {
+  const [s, p] = mkSim(9); const traps = s.doorTrap.map((v, i) => v ? i : -1).filter(i => i >= 0); assert.equal(traps.length, 3); for (const i of traps) assert.ok(!L.doors[i].exterior && !s.doorOpen[i]);
+  assert.equal(s.snapshot().T.length, 23); const d = L.doors[traps[0]]; s.doorLocked[traps[0]] = false; put(s, p, d.cx + (d.horiz ? 0 : 0.8), d.y + 1.65, d.cz + (d.horiz ? 0.8 : 0)); s.events.length = 0;
+  s.door(1, traps[0]); assert.ok(p.hp < 100 && s.doorOpen[traps[0]] && !s.doorTrap[traps[0]]); assert.ok(s.events.some(e => e.e === 'trap'));
+  const d2 = L.doors[traps[1]]; s.doorLocked[traps[1]] = false; put(s, p, d2.cx + (d2.horiz ? 0 : 0.8), d2.y + 1.65, d2.cz + (d2.horiz ? 0.8 : 0)); const hp = p.hp; s.disarm(1, traps[1]); assert.ok(!s.doorTrap[traps[1]]); s.door(1, traps[1]); assert.equal(p.hp, hp, 'disarmed door is safe');
+});
+await t('cover: a suspect under fire moves out of the line of fire and shoots from there', () => {
+  let covered = 0, fired = 0, runs = 0;
+  for (let seed = 1; seed <= 14; seed++) { const [s, p] = mkSim(seed); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; Object.assign(n, { x: 4.5, z: 10, y: 0 }); put(s, p, 7.5, 1.65, 15); p.hp = 1e6; s.engage(n, p, 0.5); n.wantCover = true; runs++;
+    let hid = false, shot = false; for (let i = 0; i < 15 * 25; i++) { s.tick(1 / 15); assert.ok(!circleHits(L, null, n.x, n.z, 0.15, n.y), 'in a wall'); if (n.cov && n.cov.phase === 'hide' && !s.clear(n.x, n.y + 0.5, n.z, p.hx, p.hy, p.hz)) hid = true; if (s.events.some(e => e.e === 'ns')) shot = true; s.events.length = 0; }
+    if (hid) covered++; if (hid && shot) fired++; }
+  assert.ok(covered >= runs * 0.7, `took cover in ${covered}/${runs}`); assert.ok(fired >= covered * 0.7, `fired from cover in ${fired}/${covered}`);
 });
 console.log(n + ' tests passed');

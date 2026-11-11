@@ -43,6 +43,9 @@ export function setAmbience(rain, inside) {
 }
 export const sfx = {
   power(pos, on) { if (sample(on ? 'poweron' : 'poweroff', pos)) return; tone(pos, 120, 60, 0.12, 1.2, 'square'); burst(pos, 0.08, 1200, 0.9); if (on) tone(null, 50, 110, 0.5, 0.25, 'sawtooth'); else tone(null, 110, 28, 1.3, 0.35, 'sawtooth'); },
+  bang(pos) { if (sample('flashbang', pos, 1.4)) return; burst(pos, 0.5, 6000, 3.2); tone(pos, 300, 40, 0.3, 2.6, 'square'); burst(pos, 1.6, 500, 1.2); },
+  ring(k) { if (!ctx || k < 0.05) return; const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 4100; g.gain.setValueAtTime(0.22 * Math.min(1, k * 1.5), t); g.gain.exponentialRampToValueAtTime(0.001, t + 1 + k * 4); o.connect(g); g.connect(master); o.start(t); o.stop(t + 1.2 + k * 4); },
+  hiss(pos) { if (sample('smoke', pos)) return; burst(pos, 3.5, 5000, 0.6, 'highpass'); },
   thunder() { if (sample('thunder', null)) return; burst(null, 3.2, 160, 2.2); tone(null, 70, 24, 2.6, 1.6); setTimeout(() => burst(null, 2.2, 110, 1.2), 500); },
   nvg(on) { tone(null, on ? 500 : 2600, on ? 2800 : 400, on ? 0.5 : 0.25, 0.12, 'sine'); burst(null, 0.03, 4000, 0.3, 'highpass'); },
   rattle(pos) { if (sample('locked', pos)) return; for (let i = 0; i < 3; i++) setTimeout(() => burst(pos, 0.04, 1500, 0.5, 'bandpass', 4), i * 70); },

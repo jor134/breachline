@@ -36,8 +36,11 @@
   await aim(bw); out.probe = B.panel.cursor.visible; await tap('right', 0); await wait(400); out.phase = B.S.phase; out.magAtStart = B.guns.rifle.st.mag; out.itemAtStart = B.hands[1].item;
   // tool wheel: hold left A/X, move toward a wedge, release
   const tool = async (dx, dy) => { X.left.p = toLocal(body([-0.3, -0.45, -0.35])); await wait(300); X.btn('left', 4, 1); for (let i = 0; i < 40 && !B.wheel.open; i++) await wait(150); const ok = B.wheel.open; X.left.p = toLocal(B.wheel.mesh.localToWorld(new THREE.Vector3(dx, dy, 0))); await wait(400); X.btn('left', 4, 0); await wait(300); return ok; };
-  out.wheelOpened = await tool(0.09, 0); out.toolCutters = B.S.tool; const lightBefore = B.S.light; await tap('left', 4); out.tapTogglesLight = B.S.light !== lightBefore; await tap('left', 4);
+  out.wheelOpened = await tool(0.078, 0.045); out.toolCutters = B.S.tool; const lightBefore = B.S.light; await tap('left', 4); out.tapTogglesLight = B.S.light !== lightBefore; await tap('left', 4);
   X.left.p = toLocal(B.head.pos.clone().add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(B.head.fwd, 0.05)); await wait(300); await tap('left', 1); out.nvgOn = B.S.nvg; await tap('left', 1); out.nvgOff = !B.S.nvg;
+  // vest highlight, then grab a flashbang and throw it
+  X.left.p = toLocal(B.bodyPt(B.HOLSTER.flash, new THREE.Vector3())); await wait(400); out.zone = B.hands[0].zone; X.btn('left', 1, 1); await wait(350); out.holding = B.hands[0].item;
+  for (let i = 0; i < 4; i++) { X.left.p = toLocal(B.head.pos.clone().add(new THREE.Vector3(-0.3, -0.2 + i * 0.05, -0.3 - i * 0.12))); await wait(120); } X.btn('left', 1, 0); await wait(400); out.thrown = B.hands[0].item === null && sim.players.get(1).fl === 1; out.flSeen = B.S.me.fl;
   // 10 door by hand: go to the front door, grip the handle with left
   sim.doorLocked[0] = false; B.rig.position.x += 12 - B.head.pos.x; B.rig.position.z += 17 - B.head.pos.z; await wait(280);
   X.left.p = toLocal(B.world.doors[0].handle.getWorldPosition(new THREE.Vector3())); await wait(260); await tap('left', 1); await wait(250); out.door = sim.doorOpen[0];
@@ -57,7 +60,7 @@
   await tap('right', 1); out.stowed = B.guns.rifle.where; X.right.p = toLocal(body([0.24, -0.72, 0.02])); await wait(280); await tap('right', 1); out.pistol = B.hands[1].item;
   X.right.p = toLocal(body([0.2, -0.3, -0.4])); X.right.q = [0, 0, 0, 1]; await wait(280); await tap('right', 0); out.pistolMag = B.guns.pistol.st.mag;
   // 15 locked door: rattle, hold to pick, then open; 16 kick; 17 downed suspect arrest; 18 radio menu restart
-  await tap('right', 1); const d1 = B.world.level.doors[1]; B.rig.position.x += 12 - B.head.pos.x; B.rig.position.z += 12 - B.head.pos.z; B.S.feetY = 0; B.rig.position.y = 0; await wait(300); await tool(-0.053, -0.073); out.toolHands = B.S.tool; await tool(0.053, -0.073); await wait(500); out.medUsed = B.S.me.med; sim.doorOpen[1] = false; sim.doorLocked[1] = true;
+  await tap('right', 1); const d1 = B.world.level.doors[1]; B.rig.position.x += 12 - B.head.pos.x; B.rig.position.z += 12 - B.head.pos.z; B.S.feetY = 0; B.rig.position.y = 0; await wait(300); await tool(-0.078, -0.045); out.toolHands = B.S.tool; await tool(0, -0.09); await wait(500); out.medUsed = B.S.me.med; sim.doorOpen[1] = false; sim.doorLocked[1] = true;
   B.rig.position.x += d1.cx - B.head.pos.x; B.rig.position.z += d1.cz + 0.7 - B.head.pos.z; B.S.feetY = 0; B.rig.position.y = 0; await wait(400);
   X.left.p = toLocal(new THREE.Vector3(d1.cx, 1.0, d1.cz + 0.25)); await wait(300); out.hot = B.world.doors[1].hot;
   X.btn('left', 0, 1); await wait(500); out.noPickWithoutTool = !B.hands[0].hold && !sim.doorOpen[1]; X.btn('left', 0, 0); await wait(300); await tool(0, 0.09); out.toolPick = B.S.tool;
@@ -65,6 +68,9 @@
   X.btn('left', 0, 1); await wait(500); out.stillClosed = !sim.doorOpen[1]; out.picking = B.hands[0].hold && B.hands[0].hold.kind;
   for (let i = 0; i < 80 && sim.doorLocked[1]; i++) await wait(300); X.btn('left', 0, 0); await wait(300); out.picked = !sim.doorLocked[1];
   await tap('left', 0); await wait(300); out.openedAfterPick = sim.doorOpen[1];
+  // door camera: select it, hold at a closed door, a second view is rendered to the hand screen
+  sim.doorOpen[1] = false; sim.doorTrap[1] = 1; await wait(400); await tool(0.078, -0.045); out.toolCam = B.S.tool; X.left.p = toLocal(new THREE.Vector3(d1.cx, 1.0, d1.cz + 0.25)); await wait(300); X.btn('left', 0, 1); await wait(900); out.camOn = B.dcam.screen.visible && !sim.doorOpen[1]; out.trapShown = B.world.doors[1].trap.visible; X.btn('left', 0, 0); await wait(400); out.camOff = !B.dcam.screen.visible;
+  await tool(0.078, 0.045); X.left.p = toLocal(new THREE.Vector3(d1.cx, 1.0, d1.cz + 0.25)); await wait(300); X.btn('left', 0, 1); for (let i = 0; i < 60 && sim.doorTrap[1]; i++) await wait(300); X.btn('left', 0, 0); await wait(300); out.disarmed = !sim.doorTrap[1]; await tool(0, 0.09);
   sim.doorOpen[1] = false; sim.doorLocked[1] = false; await wait(400); const rq = B.rig.quaternion.clone().invert(); X.head.q = [rq.x, rq.y, rq.z, rq.w]; await wait(300);
   out.facing = +(B.head.fwd.z).toFixed(2); await tap('left', 3); await wait(300); out.kicked = sim.doorOpen[1];
   const sx = sim.npcs.find(n => n.kind === 's'); Object.assign(sx, { st: 'i', x: B.head.pos.x + 0.5, z: B.head.pos.z, y: 0 }); await wait(500);

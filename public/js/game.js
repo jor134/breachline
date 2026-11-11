@@ -1,11 +1,12 @@
 // BREACHLINE client: WebXR rig, manual weapon handling, interactions, networking, HUD.
 import * as THREE from '../vendor/three.module.min.js';
 import { buildWorld, label } from './gfx.js';
-import { Human, Officer, Bomb, Body, RIG, makeRifle, makePistol, makeMag, makeTool } from './actors.js';
+import { Human, Officer, Bomb, Body, RIG, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
+import { loadCar } from './car.js';
 import { initAudio, setListener, setAmbience, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
-import { groundY, resolveCircle, rayStatic, SPAWN, BREAKER } from './core/level.js';
+import { groundY, resolveCircle, rayStatic, SPAWN, BREAKER, CAR } from './core/level.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 
@@ -19,9 +20,12 @@ const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(72, innerW
 camera.rotation.order = 'YXZ'; rig.add(camera); scene.add(rig);
 addEventListener('resize', () => { if (renderer.xr.isPresenting) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 const world = buildWorld(scene), level = world.level;
-loadVegetation(scene).catch(e => console.warn('vegetation not loaded', e));
+if (!new URLSearchParams(location.search).get('lite')) {   // ?lite=1 skips the heavy models (used by the automated tests)
+  loadVegetation(scene).catch(e => console.warn('vegetation not loaded', e));
+  loadCar(scene, CAR.x, 0, CAR.z, Math.PI, CAR.length).catch(e => console.warn('car not loaded', e));
+}
 
-const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false }, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
+const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
   net: 'offline', room: '', report: null, doorLocked: level.doors.map(() => false), bodyYaw: 0, panel: 'lobby', menu: false, deskPick: null, night: false, nvg: false, tool: 'hands', hintT: 0, wx: 'clear', wxPick: 'random', squad: [], secured: 0, civs: 5, defused: 0, light: true, now: 0, eye: 1.66, crouch: false, yaw: 0, pitch: 0, ads: false, reloading: false, tilt: +(localStorage.getItem('bl_tilt') || 0) };
 const head = { pos: V(), quat: new THREE.Quaternion(), fwd: V(), yaw: 0 };
 const status = t => { $('status').textContent = t; };
@@ -46,11 +50,11 @@ const net = {
 
 // ---------- hands & guns ----------
 const mkIn = () => ({ trig: 0, grip: 0, a: 0, b: 0, stick: 0, sx: 0, sy: 0 });
-const hands = [0, 1].map(i => { const h = { i, pos: V(), quat: new THREE.Quaternion(), active: false, item: null, magKind: null, support: false, rackG: null, rackStart: V(), rackDone: false, hold: null, aT: 0, in: mkIn(), prev: mkIn(), pad: null, xr: null, mags: { rifle: makeMag('rifle'), pistol: makeMag('pistol') }, tools: { pick: makeTool('pick'), cutters: makeTool('cutters') } }; for (const m of [...Object.values(h.mags), ...Object.values(h.tools)]) { m.visible = false; scene.add(m); } return h; });
+const hands = [0, 1].map(i => { const h = { i, pos: V(), quat: new THREE.Quaternion(), active: false, item: null, magKind: null, support: false, rackG: null, rackStart: V(), rackDone: false, hold: null, aT: 0, vel: V(), last: V(), zone: null, in: mkIn(), prev: mkIn(), pad: null, xr: null, mags: { rifle: makeMag('rifle'), pistol: makeMag('pistol') }, tools: { pick: makeTool('pick'), cutters: makeTool('cutters'), cam: makeTool('cam') }, nades: { flash: makeNade('flash'), smoke: makeNade('smoke') } }; for (const m of [...Object.values(h.mags), ...Object.values(h.tools), ...Object.values(h.nades)]) { m.visible = false; scene.add(m); } return h; });
 const press = (h, k) => h.in[k] > 0.5 && !(h.prev[k] > 0.5), released = (h, k) => !(h.in[k] > 0.5) && h.prev[k] > 0.5;
 const buzz = (h, s, ms) => { try { h.pad && h.pad.hapticActuators && h.pad.hapticActuators[0] && h.pad.hapticActuators[0].pulse(s, ms); } catch { } };
 const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(kind), mesh, ud: mesh.userData, where: 'holster', mags: GUNS[kind].mags, kick: 0, flashT: 0 }; };
-const guns = { rifle: mkGun('rifle', makeRifle()), pistol: mkGun('pistol', makePistol()) };
+const guns = { rifle: mkGun('rifle', makeRifle(true)), pistol: mkGun('pistol', makePistol()) };
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
 const HOLSTER = RIG;   // grab zones sit exactly where the holders are drawn on the vest and belt
 const bodyPt = (off, out) => out.set(off[0], 0, off[2]).applyAxisAngle(UP, S.bodyYaw).add(head.pos).setY(head.pos.y + off[1]);
@@ -109,14 +113,14 @@ const fig = (() => { const c = document.createElement('canvas'); c.width = 96; c
 function drawFig() { const g = fig.c.getContext('2d'); g.clearRect(0, 0, 96, 176); g.fillStyle = 'rgba(5,8,12,0.7)'; g.fillRect(0, 0, 96, 176); drawBody(g, 8, 8, 2, Math.floor(S.now * 5) % 2 ? S.lastPart : ''); g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.textAlign = 'center'; g.fillText(S.lastPart ? ({ head: 'HEAD', torso: 'TORSO', armL: 'LEFT ARM', armR: 'RIGHT ARM', legL: 'LEFT LEG', legR: 'RIGHT LEG' })[S.lastPart] : 'TREATED', 48, 170); fig.tex.needsUpdate = true; }
 function useMed() { if (S.me.down) return; if (S.me.med) { hint(head.pos.x + head.fwd.x, head.pos.y, head.pos.z + head.fwd.z, 'MED KIT USED'); return; } net.send({ t: 'heal' }); }
 // tool wheel: hold the free hand's lower button, move the hand toward a wedge, let go
-const WEDGE = [['pick', 'LOCKPICK', -90], ['cutters', 'CUTTERS', -18], ['med', 'MED KIT', 54], ['hands', 'HANDS', 126], ['nvg', 'NVG', 198]];
+const WEDGE = [['pick', 'LOCKPICK', -90], ['cutters', 'CUTTERS', -30], ['cam', 'DOOR CAM', 30], ['med', 'MED KIT', 90], ['hands', 'HANDS', 150], ['nvg', 'NVG', 210]];
 const wheel = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, fog: false })); mesh.renderOrder = 995; mesh.visible = false; scene.add(mesh); return { c, tex, mesh, open: false, hand: null, sel: undefined }; })();
 function drawWheel(sel) {
   if (sel === wheel.sel) return; wheel.sel = sel; const g = wheel.c.getContext('2d'); g.clearRect(0, 0, 256, 256);
   for (const [k, text, deg] of WEDGE) { const a = deg * Math.PI / 180, on = k === sel, cur = k === S.tool || (k === 'nvg' && S.nvg), used = k === 'med' && S.me.med;
-    g.beginPath(); g.moveTo(128, 128); g.arc(128, 128, 124, a - 0.6, a + 0.6); g.closePath(); g.fillStyle = on ? (used ? '#5a2a2a' : '#1f7a3d') : 'rgba(12,17,24,0.86)'; g.fill(); g.strokeStyle = cur ? '#7dffa0' : '#3a6ea5'; g.lineWidth = cur ? 5 : 2; g.stroke();
-    g.fillStyle = used ? '#8a8f96' : '#fff'; g.font = 'bold 17px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(used ? 'USED' : text, 128 + Math.cos(a) * 80, 128 + Math.sin(a) * 80); }
+    g.beginPath(); g.moveTo(128, 128); g.arc(128, 128, 124, a - 0.5, a + 0.5); g.closePath(); g.fillStyle = on ? (used ? '#5a2a2a' : '#1f7a3d') : 'rgba(12,17,24,0.86)'; g.fill(); g.strokeStyle = cur ? '#7dffa0' : '#3a6ea5'; g.lineWidth = cur ? 5 : 2; g.stroke();
+    g.fillStyle = used ? '#8a8f96' : '#fff'; g.font = 'bold 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(used ? 'USED' : text, 128 + Math.cos(a) * 82, 128 + Math.sin(a) * 82); }
   g.beginPath(); g.arc(128, 128, 26, 0, 7); g.fillStyle = '#0c1118'; g.fill(); wheel.tex.needsUpdate = true;
 }
 function openWheel(h) { wheel.open = true; wheel.hand = h; wheel.mesh.position.copy(h.pos); wheel.mesh.lookAt(head.pos); wheel.mesh.updateMatrixWorld(true); wheel.mesh.visible = true; wheel.sel = undefined; drawWheel(null); buzz(h, 0.4, 20); }
@@ -187,7 +191,7 @@ const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0625), new THREE.Mes
 let hudT = 0;
 function hudText() {
   const t = Math.max(0, S.timer), mm = Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
-  return { mm, hp: S.me.hp, obj: 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS' })[S.tool] + (S.nvg ? ' NVG' : '') };
+  return { mm, hp: S.me.hp, obj: 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
 }
 function drawHud() {
   const h = hudText();
@@ -198,7 +202,7 @@ function drawHud() {
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
-    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER' })[S.tool]; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); $('bAim').classList.toggle('on', S.ads); }
+    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); $('bAim').classList.toggle('on', S.ads); }
   }
 }
 
@@ -223,8 +227,10 @@ function applySnap(m) {
   S.defused = 0; m.B.forEach((b, i) => { const o = S.bombs[i]; if (o) { o.set(b[0], b[1]); o.n = b[2]; } if (b[1]) S.defused++; });
   const seen = new Set(); S.squad = m.P.map(p => p[1]);
   if (m.pw != null && S.night === !!m.pw) { S.night = !m.pw; applyLook(); }
+  if (m.T) for (let i = 0; i < S.doorTrap.length; i++) { const v = +m.T[i]; S.doorTrap[i] = v; const d = world.doors[i]; d.trap.visible = v > 0 && m.ph === 'active'; if (v) { const o = (v === 1 ? 0.3 : -0.3); d.trap.position.set(level.doors[i].x0 + (d.horiz ? 0 : o), level.doors[i].y, level.doors[i].z0 + (d.horiz ? o : 0)); } }
+  nadeView(m.G || [], m.SM || []);
   for (const [id, name, , hp, down, h, l, r, g, w] of m.P) {
-    if (id === S.me.id) { S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); continue; }
+    if (id === S.me.id) { S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
     seen.add(id); let o = S.officers.get(id); if (!o) { o = new Officer(name, label(name, '#9fd0ff')); scene.add(o.g); S.officers.set(id, o); }
     o.set(h, l, r, g, down); o.down = !!down; o.id = id;
   }
@@ -253,6 +259,12 @@ function onEvent(e) {
     case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (L[2] && a.g.position.distanceTo(head.pos) < 14) sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); } } break;
     case 'shout': if (e.p !== S.me.id) sfx.say('Police! Hands up!', 1); break;
     case 'cuff': if (a) sfx.cuff(a.g.position); break;
+    case 'flash': { v1.set(e.x, e.y, e.z); sfx.bang(v1); puff([e.x, e.y + 0.2, e.z], 0xffffff); const d = v1.distanceTo(head.pos);
+      if (d < 12) { v2.copy(v1).sub(head.pos).multiplyScalar(1 / Math.max(d, 0.01)); if (rayStatic(level, S.doorOpen, head.pos.x, head.pos.y, head.pos.z, v2.x, v2.y, v2.z, d) >= d - 0.15) { const k = (1 - d / 12) * (v2.dot(head.fwd) > 0.15 ? 1 : 0.35) * (S.nvg ? 1.4 : 1); flashWhite = Math.max(flashWhite, k * 2.2); sfx.ring(k); for (const h of hands) buzz(h, 1, 200); } } break; }
+    case 'smoke': sfx.hiss(v1.set(e.x, e.y, e.z)); break;
+    case 'clink': sfx.impact(v1.set(e.x, e.y, e.z)); break;
+    case 'trap': { const d = level.doors[e.d]; sfx.boom(); puff([d.cx, d.y + 0.4, d.cz], 0xffc070); if (Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) < 6) flashWhite = Math.max(flashWhite, 0.7); sayAt(d.cx, d.y + 1.5, d.cz, 'TRIPWIRE!', '#ff5050'); break; }
+    case 'disarm': { const d = level.doors[e.d]; sfx.cut(v1.set(d.cx, d.y + 0.3, d.cz), true); sayAt(d.cx, d.y + 1.2, d.cz, 'WIRE CUT', '#80ff9a'); break; }
     case 'cut': { const b = S.bombs[e.b]; if (b) sfx.cut(b.g.position, e.ok); if (e.defused) sfx.ok(); break; }
     case 'end': if (e.result === 'DETONATION') { sfx.boom(); flashWhite = 1; } else if (e.result === 'MISSION COMPLETE') sfx.ok(); break;
   }
@@ -280,7 +292,8 @@ function deskKey(code) {
   else if (code === 'KeyQ') doKick();
   else if (code === 'KeyN') toggleNVG();
   else if (code === 'KeyH') useMed();
-  else if (code === 'Digit3' || code === 'Digit4' || code === 'Digit5') { S.tool = { Digit3: 'hands', Digit4: 'pick', Digit5: 'cutters' }[code]; sfx.click(); }
+  else if (code === 'Digit3' || code === 'Digit4' || code === 'Digit5' || code === 'Digit8') { S.tool = { Digit3: 'hands', Digit4: 'pick', Digit5: 'cutters', Digit8: 'cam' }[code]; sfx.click(); }
+  else if (code === 'Digit6' || code === 'Digit7') { const k = code === 'Digit6' ? 'flash' : 'smoke'; if (S.me[k === 'flash' ? 'fl' : 'sm'] > 0) { v1.copy(head.pos).addScaledVector(head.fwd, 0.4); net.send({ t: 'throw', k, o: [v1.x, v1.y - 0.1, v1.z], v: [head.fwd.x * 11, head.fwd.y * 11 + 3, head.fwd.z * 11] }); sfx.click(); } else sfx.beep(null, 200); }
   else if ((code === 'Digit1' || code === 'Digit2') && !S.reloading) { const k = code === 'Digit1' ? 'rifle' : 'pistol'; if (G) G.where = 'holster'; guns[k].where = 1; hands[1].item = k; sfx.click(); }
   else if (code === 'KeyR' && G && !S.reloading) {
     S.reloading = true; if (G.st.mag !== null) { ejectMag(G.st); sfx.magOut(); }
@@ -294,7 +307,10 @@ function deskInteract() {
   if (nearBreaker(head.pos, 1.7)) return net.send({ t: 'breaker' });
   const n = nearestCuffable(v1.copy(head.pos).setY(head.pos.y - 0.7), 1.6); if (n != null) return net.send({ t: 'cuff', n });
   const p = nearestDowned(head.pos, 2); if (p != null) return net.send({ t: 'revive', p });
-  const bi = nearestDoor(head.pos, 2.2); if (bi < 0) return; net.send({ t: 'door', d: bi });
+  const bi = nearestDoor(head.pos, 2.2); if (bi < 0) return;
+  if (S.tool === 'cam' && !S.doorOpen[bi]) { S.deskCam = { id: bi, t: 6 }; if (S.doorTrap[bi]) hint(level.doors[bi].cx, level.doors[bi].y + 1.3, level.doors[bi].cz, 'TRIPWIRE BEHIND DOOR'); return; }
+  if (S.tool === 'cutters' && S.doorTrap[bi] && !S.doorOpen[bi]) { S.deskPick = { id: bi, t: 1.5, disarm: true }; return; }
+  net.send({ t: 'door', d: bi });
   if (S.doorLocked[bi] && !S.doorOpen[bi]) { const d = level.doors[bi]; if (S.tool === 'pick') S.deskPick = { id: bi, t: 0 }; else hint(d.cx, d.y + 1.2, d.cz, 'NEED LOCKPICK OR KICK'); }
 }
 // nearest door whose opening is within reach of a point (hand or head), on the same storey
@@ -359,14 +375,7 @@ function placeGuns(dt) {
     G.ud.mag.visible = G.st.mag !== null; if (G.ud.bolt) G.ud.bolt.visible = G.st.locked; if (G.ud.slide) G.ud.slide.position.z = G.ud.slideZ + (G.st.locked ? 0.03 : 0);
     if (G.flashT > 0) G.flashT -= dt; G.ud.flash.visible = G.flashT > 0; m.updateMatrixWorld(true);
   }
-  // red dot: only visible when the aiming eye is behind the optic window
-  const R = guns.rifle; let show = false;
-  if (R.where !== 'holster') {
-    const xc = renderer.xr.isPresenting ? renderer.xr.getCamera().cameras[R.where] : null;
-    if (xc) v1.setFromMatrixPosition(xc.matrixWorld); else v1.copy(head.pos);
-    R.mesh.worldToLocal(v1); show = v1.z > 0.0 && Math.hypot(v1.x, v1.y - R.ud.sightY) < 0.019;
-  }
-  R.ud.dot.visible = show;
+  guns.rifle.ud.ret.visible = guns.rifle.where !== 'holster';   // the reticle's own shader decides, per eye, how much of it shows through the sight window
   // flashlight follows the gun in hand
   const A = gunIn(hands[1]) || gunIn(hands[0]); torch.visible = !!A && S.light;
   if (A) { A.mesh.localToWorld(torch.position.copy(A.ud.light)); torch.target.position.set(0, 0, -6).add(A.ud.light); A.mesh.localToWorld(torch.target.position); torch.target.updateMatrixWorld(); }
@@ -394,16 +403,17 @@ function fire(h, G, o) {
 function grab(h, o) {   // grip pressed on hand h; o is the other hand
   const G = gunIn(h); if (G) { G.where = 'holster'; h.item = null; o.support = false; o.rackG = null; sfx.click(); return; }
   if (h.item) return;
-  if (v1.copy(head.pos).addScaledVector(head.fwd, 0.05).setY(head.pos.y + 0.07).distanceTo(h.pos) < 0.17) { toggleNVG(); buzz(h, 0.6, 40); return; }   // flip the goggles on your helmet
-  if (bodyPt(HOLSTER.radio, v1).distanceTo(h.pos) < 0.12) { toggleMenu(); buzz(h, 0.6, 40); return; }
-  const OG = gunIn(o);
-  if (OG) {
-    if (OG.mesh.localToWorld(v1.copy(OG.ud.rack)).distanceTo(h.pos) < 0.11) { h.rackG = OG; h.rackStart.copy(h.pos); h.rackDone = false; return; }
-    if (OG.kind === 'rifle' && OG.mesh.localToWorld(v1.copy(OG.ud.fore)).distanceTo(h.pos) < 0.2) { h.support = true; buzz(h, 0.3, 20); return; }
+  const OG = gunIn(o), z = zoneFor(h, o);   // the same lookup that draws the highlight, so you grab exactly what is lit
+  if (z) {
+    buzz(h, 0.5, 30);
+    if (z === 'nvg') toggleNVG(); else if (z === 'radio') toggleMenu();
+    else if (z === 'rack') { h.rackG = OG; h.rackStart.copy(h.pos); h.rackDone = false; }
+    else if (z === 'fore') h.support = true;
+    else if (z === 'rifle' || z === 'pistol') { guns[z].where = h.i; h.item = z; sfx.click(); }
+    else if (z === 'pouch') { const kind = OG ? OG.kind : 'rifle'; if (guns[kind].mags > 0) { guns[kind].mags--; h.item = 'mag'; h.magKind = kind; sfx.click(); } else sfx.beep(null, 200); }
+    else if (z === 'flash' || z === 'smoke') { h.item = z; sfx.click(); }
+    return;
   }
-  let best = null, bd = 0.24; for (const k in guns) { const g = guns[k]; if (g.where === 'holster') { const d = g.mesh.position.distanceTo(h.pos); if (d < bd) { bd = d; best = g; } } }
-  if (best) { best.where = h.i; h.item = best.kind; sfx.click(); buzz(h, 0.5, 30); return; }
-  if (bodyPt(HOLSTER.pouch, v1).distanceTo(h.pos) < 0.24) { const kind = OG ? OG.kind : 'rifle'; if (guns[kind].mags > 0) { guns[kind].mags--; h.item = 'mag'; h.magKind = kind; buzz(h, 0.4, 25); sfx.click(); } else sfx.beep(null, 200); return; }
   if (S.me.down) return;
   useWorld(h);
 }
@@ -414,6 +424,8 @@ function useWorld(h) {
   const n = nearestCuffable(h.pos, 1.0); if (n != null) { h.hold = { kind: 'cuff', id: n, t: 0, need: 1.2 }; return true; }
   const p = nearestDowned(h.pos, 0.9); if (p != null) { h.hold = { kind: 'revive', id: p, t: 0, need: 3 }; return true; }
   const d = nearestDoor(h.pos, 0.95); if (d < 0) return false;
+  if (S.tool === 'cam' && !S.doorOpen[d]) { h.hold = { kind: 'cam', id: d, t: 0, need: 1e9 }; if (S.doorTrap[d]) hint(level.doors[d].cx, level.doors[d].y + 1.3, level.doors[d].cz, 'TRIPWIRE BEHIND DOOR'); return true; }   // slide the camera under: keep holding to watch
+  if (S.tool === 'cutters' && S.doorTrap[d] && !S.doorOpen[d]) { h.hold = { kind: 'disarm', id: d, t: 0, need: 2.5 }; return true; }
   net.send({ t: 'door', d }); buzz(h, 0.5, 30);
   if (S.doorLocked[d] && !S.doorOpen[d]) { const D = level.doors[d]; if (S.tool === 'pick') h.hold = { kind: 'pick', id: d, t: 0, need: 4 }; else hint(D.cx, D.y + 1.2, D.cz, 'NEED LOCKPICK OR KICK'); }   // with the lockpick out, keep holding to pick
   return true;
@@ -421,7 +433,8 @@ function useWorld(h) {
 function handVR(h, o, dt) {
   if (!h.active) return;
   if (press(h, 'grip')) grab(h, o);
-  if (released(h, 'grip')) { h.support = false; h.rackG = null; if (h.item === 'mag') { guns[h.magKind].mags++; h.item = null; } }
+  if (released(h, 'grip')) { h.support = false; h.rackG = null; if (h.item === 'mag') { guns[h.magKind].mags++; h.item = null; }
+    else if (h.item === 'flash' || h.item === 'smoke') { net.send({ t: 'throw', k: h.item, o: [h.pos.x, h.pos.y, h.pos.z], v: [h.vel.x * 1.3, h.vel.y * 1.3 + 0.6, h.vel.z * 1.3] }); h.item = null; buzz(h, 0.7, 40); } }   // let go to throw: it leaves with your hand's speed
   if (h.hold && !(h.in.grip > 0.5) && !(h.in.trig > 0.5)) h.hold = null;
   const G = gunIn(h), OG = gunIn(o);
   if (G) fire(h, G, o);
@@ -444,20 +457,86 @@ function handVR(h, o, dt) {
     if (OG && OG.kind === h.magKind && OG.st.mag === null && OG.mesh.localToWorld(v1.copy(OG.ud.magwell)).distanceTo(h.pos) < 0.1) { insertMag(OG.st, GUNS[OG.kind].cap); h.item = null; sfx.magIn(); buzz(h, 0.8, 40); buzz(o, 0.5, 40); }
   }
   for (const k in h.mags) h.mags[k].visible = h.item === 'mag' && h.magKind === k;
+  for (const k in h.nades) { const m = h.nades[k]; m.visible = h.item === k; if (m.visible) { m.position.copy(h.pos); m.quaternion.copy(h.quat); } }
   for (const k in h.tools) { const m = h.tools[k]; m.visible = !h.item && S.tool === k && (!!OG || h.i === 0); if (m.visible) { m.position.copy(h.pos); m.quaternion.copy(h.quat); } }
   if (h.rackG && !h.rackDone) { const back = v1.set(0, 0, 1).applyQuaternion(h.rackG.mesh.quaternion); if (v2.copy(h.pos).sub(h.rackStart).dot(back) > 0.045) { rack(h.rackG.st); h.rackDone = true; sfx.rack(); buzz(h, 0.8, 50); buzz(o, 0.4, 50); } }
   const bar = bars[h.i]; bar.visible = !!h.hold;
   if (h.hold) {
     const H = h.hold; let tx, tz, ok = true;
-    if (H.kind === 'pick') { const d = level.doors[H.id]; tx = d.cx; tz = d.cz; ok = S.doorLocked[H.id] && !S.doorOpen[H.id]; }
+    if (H.kind === 'pick' || H.kind === 'cam' || H.kind === 'disarm') { const d = level.doors[H.id]; tx = d.cx; tz = d.cz; ok = !S.doorOpen[H.id] && (H.kind === 'pick' ? S.doorLocked[H.id] : H.kind === 'disarm' ? S.doorTrap[H.id] > 0 : true); if (H.kind === 'cam') { dcam.door = H.id; dcam.hand = h; } }
     else { const tgt = H.kind === 'cuff' ? S.actors.get(H.id) : S.officers.get(H.id), tp = tgt && (H.kind === 'cuff' ? tgt.g.position : tgt.head.position); ok = !!tp; if (tp) { tx = tp.x; tz = tp.z; } }
     if (!ok || Math.hypot(tx - h.pos.x, tz - h.pos.z) > 1.3) h.hold = null;
     else {
-      H.t += dt; buzz(h, H.kind === 'pick' ? 0.12 + 0.2 * Math.random() : 0.2, 20); if (H.kind === 'pick' && Math.floor(H.t * 3) !== Math.floor((H.t - dt) * 3)) sfx.click();
+      H.t += dt; if (H.kind !== 'cam') buzz(h, H.kind === 'pick' ? 0.12 + 0.2 * Math.random() : 0.2, 20); if (H.kind === 'pick' && Math.floor(H.t * 3) !== Math.floor((H.t - dt) * 3)) sfx.click();
       bar.position.copy(h.pos).y += 0.09; bar.quaternion.copy(head.quat); bar.scale.x = Math.max(0.02, Math.min(1, H.t / H.need)); bar.material.color.set(H.kind === 'pick' ? 0xffc040 : 0x40ff80);
-      if (H.t >= H.need) { net.send(H.kind === 'cuff' ? { t: 'cuff', n: H.id } : H.kind === 'revive' ? { t: 'revive', p: H.id } : { t: 'pick', d: H.id }); h.hold = null; }
+      if (H.kind === 'cam') bar.visible = false;
+      if (H.t >= H.need) { net.send(H.kind === 'cuff' ? { t: 'cuff', n: H.id } : H.kind === 'revive' ? { t: 'revive', p: H.id } : { t: H.kind, d: H.id }); h.hold = null; }
     }
   }
+}
+
+// ---------- vest zones: what an empty hand would grab, lit up and labelled before you grab it ----------
+const ZONES = [['rifle', 0.22], ['pistol', 0.2], ['pouch', 0.17], ['radio', 0.12], ['flash', 0.12], ['smoke', 0.12], ['nvg', 0.17]];
+function zonePos(k, out) { return k === 'nvg' ? out.copy(head.pos).addScaledVector(head.fwd, 0.05).setY(head.pos.y + 0.07) : k === 'rifle' || k === 'pistol' ? out.copy(guns[k].mesh.position) : bodyPt(HOLSTER[k], out); }
+function zoneFor(h, o) {
+  const OG = gunIn(o);
+  if (OG) { if (OG.mesh.localToWorld(v3.copy(OG.ud.rack)).distanceTo(h.pos) < 0.11) return 'rack'; if (OG.kind === 'rifle' && OG.mesh.localToWorld(v3.copy(OG.ud.fore)).distanceTo(h.pos) < 0.2) return 'fore'; }
+  let best = null, bd = 1e9;
+  for (const [k, r] of ZONES) { if ((k === 'rifle' || k === 'pistol') && guns[k].where !== 'holster') continue; if ((k === 'flash' && S.me.fl <= 0) || (k === 'smoke' && S.me.sm <= 0)) continue; const d = zonePos(k, v3).distanceTo(h.pos); if (d < r && d < bd) { bd = d; best = k; } }
+  return best;
+}
+const hintFx = hands.map(() => { const ring = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({ color: 0x40ff80, transparent: true, opacity: 0.32, depthTest: false, fog: false })); ring.renderOrder = 993; ring.visible = false;
+  const c = document.createElement('canvas'); c.width = 256; c.height = 48; const tex = new THREE.CanvasTexture(c), tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true, fog: false })); tag.scale.set(0.2, 0.0375, 1); tag.renderOrder = 993; tag.visible = false; scene.add(ring, tag); return { ring, tag, c, tex, text: '' }; });
+function vestHints() {
+  hands.forEach((h, i) => {
+    const F = hintFx[i], o = hands[1 - i], z = S.mode === 'vr' && h.active && !h.item && !h.support && !h.rackG && !h.hold && !(h.in.grip > 0.5) ? zoneFor(h, o) : null;
+    if (z && z !== h.zone) buzz(h, 0.25, 15); h.zone = z; F.ring.visible = F.tag.visible = !!z; if (!z) return;
+    const OG = gunIn(o); if (z === 'rack') OG.mesh.localToWorld(F.ring.position.copy(OG.ud.rack)); else if (z === 'fore') OG.mesh.localToWorld(F.ring.position.copy(OG.ud.fore)); else zonePos(z, F.ring.position);
+    const text = { rifle: 'RIFLE', pistol: 'PISTOL', pouch: 'MAGAZINE x' + guns[OG ? OG.kind : 'rifle'].mags, radio: 'RADIO: MENU', flash: 'FLASHBANG x' + S.me.fl, smoke: 'SMOKE x' + S.me.sm, nvg: 'NIGHT VISION', rack: 'CHARGING HANDLE', fore: 'FOREGRIP' }[z];
+    if (text !== F.text) { F.text = text; const g = F.c.getContext('2d'); g.clearRect(0, 0, 256, 48); g.fillStyle = 'rgba(5,10,8,0.75)'; g.fillRect(0, 0, 256, 48); g.fillStyle = '#7dffa0'; g.font = 'bold 26px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 128, 25); F.tex.needsUpdate = true; }
+    F.tag.position.copy(F.ring.position); F.tag.position.y += 0.11;
+  });
+}
+// ---------- grenades in flight and smoke clouds (positions come from the server) ----------
+const softTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+const nadePool = Array.from({ length: 6 }, (_, i) => { const m = makeNade(i % 2 ? 'smoke' : 'flash'); m.visible = false; scene.add(m); return m; });
+// Smoke is drawn as a handful of soft quads turned to face you (not point sprites, which headsets cap in size).
+const SMOKE_N = 14, smokePool = Array.from({ length: 4 }, () => {
+  const off = new Float32Array(SMOKE_N * 4), pos = new Float32Array(SMOKE_N * 12), uv = new Float32Array(SMOKE_N * 8), idx = [];
+  for (let i = 0; i < SMOKE_N; i++) { const u = Math.random() * 6.28, r = Math.cbrt(Math.random()) * 0.8; off.set([Math.cos(u) * r, Math.random() * 0.7 + 0.1, Math.sin(u) * r, 0.75 + Math.random() * 0.5], i * 4); uv.set([0, 0, 1, 0, 1, 1, 0, 1], i * 8); idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2)); g.setIndex(idx);
+  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: softTex, color: 0xb8bcc0, transparent: true, opacity: 0.5, depthWrite: false })); mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 6; scene.add(mesh); return { mesh, off, pos, g, s: null };
+});
+function nadeView(G, SM) {
+  const used = [0, 0]; for (const m of nadePool) m.visible = false;
+  for (const [k, x, y, z] of G) { const m = nadePool[k + 2 * used[k]++]; if (m) { m.visible = true; m.position.set(x, y + 0.03, z); m.rotation.x += 0.6; } }
+  smokePool.forEach((c, i) => { c.s = SM[i] || null; });
+}
+let smokeFog = 0, smokeFogCur = 0; const smokeCol = new THREE.Color();
+function smokeDraw() {
+  smokeFog = 0; const R = v1.set(1, 0, 0).applyQuaternion(head.quat), U = v2.set(0, 1, 0).applyQuaternion(head.quat);
+  for (const c of smokePool) {
+    const s = c.s; c.mesh.visible = !!s; if (!s) continue; const [x, y, z, t] = s, r = Math.min(3.4, 0.8 + t * 1.6), op = Math.min(1, t / 1.5) * (t > 16 ? (20 - t) / 4 : 1);
+    // standing inside a cloud would mean many screen-filling layers; thick fog does the same job for almost nothing
+    const dx = head.pos.x - x, dy = head.pos.y - y - 1, dz = head.pos.z - z; if (dx * dx + dy * dy * 0.5 + dz * dz < r * r * 0.8) { c.mesh.visible = false; smokeFog = Math.max(smokeFog, op); continue; }
+    for (let i = 0; i < SMOKE_N; i++) { const cx = x + c.off[i * 4] * r, cy = y + c.off[i * 4 + 1] * r, cz = z + c.off[i * 4 + 2] * r, h = 0.62 * r * c.off[i * 4 + 3], p = c.pos, k = i * 12;
+      p[k] = cx - (R.x + U.x) * h; p[k + 1] = cy - (R.y + U.y) * h; p[k + 2] = cz - (R.z + U.z) * h; p[k + 3] = cx + (R.x - U.x) * h; p[k + 4] = cy + (R.y - U.y) * h; p[k + 5] = cz + (R.z - U.z) * h;
+      p[k + 6] = cx + (R.x + U.x) * h; p[k + 7] = cy + (R.y + U.y) * h; p[k + 8] = cz + (R.z + U.z) * h; p[k + 9] = cx - (R.x - U.x) * h; p[k + 10] = cy - (R.y - U.y) * h; p[k + 11] = cz - (R.z - U.z) * h; }
+    c.g.attributes.position.needsUpdate = true; c.mesh.material.opacity = 0.5 * op; c.mesh.material.color.setHex(S.nvg ? 0x5aa868 : S.night ? 0x5a6068 : 0xb8bcc0);
+  }
+}
+// ---------- under-door camera: a second small view rendered to a hand-held screen ----------
+const dcam = { cam: new THREE.PerspectiveCamera(105, 4 / 3, 0.03, 40), rt: new THREE.WebGLRenderTarget(256, 192), door: -1, hand: null, n: 0 };
+dcam.screen = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.15), new THREE.MeshBasicMaterial({ map: dcam.rt.texture, fog: false, depthTest: false })); dcam.screen.renderOrder = 992; dcam.screen.visible = false; scene.add(dcam.screen);
+function doorCam(dt) {
+  if (S.deskCam) { if ((S.deskCam.t -= dt) <= 0 || S.doorOpen[S.deskCam.id] || S.tool !== 'cam') S.deskCam = null; else { dcam.door = S.deskCam.id; dcam.hand = null; } }
+  const i = dcam.door; dcam.door = -1; dcam.screen.visible = i >= 0; if (i < 0) return;
+  const d = level.doors[i], side = d.horiz ? (Math.sign(d.cz - head.pos.z) || 1) : (Math.sign(d.cx - head.pos.x) || 1);   // look away from whoever is holding it
+  dcam.cam.position.set(d.cx + (d.horiz ? 0 : side * 0.22), d.y + 0.1, d.cz + (d.horiz ? side * 0.22 : 0)); dcam.cam.lookAt(d.cx + (d.horiz ? 0 : side * 3), d.y + 0.9, d.cz + (d.horiz ? side * 3 : 0));
+  if (dcam.hand) { dcam.screen.position.copy(dcam.hand.pos).y += 0.14; dcam.screen.lookAt(head.pos); } else { dcam.screen.position.copy(head.pos).addScaledVector(head.fwd, 0.55).addScaledVector(v1.set(1, 0, 0).applyQuaternion(head.quat), 0.24).addScaledVector(v1.set(0, 1, 0).applyQuaternion(head.quat), -0.12); dcam.screen.quaternion.copy(head.quat); }
+  if (dcam.n++ % 2) return;                                             // refresh every other frame
+  const xe = renderer.xr.enabled, rt = renderer.getRenderTarget(); renderer.xr.enabled = false; dcam.screen.visible = false; myBody.g.visible = false;
+  renderer.setRenderTarget(dcam.rt); renderer.render(scene, dcam.cam); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; dcam.screen.visible = true; myBody.g.visible = !!S.mode;
 }
 
 // ---------- frame loop ----------
@@ -472,11 +551,14 @@ function frame(t) {
     moveDesktop(dt); collide(); camera.updateMatrixWorld(true);
     const h = hands[1]; h.pos.copy(S.ads ? v1.set(0, -guns[h.item || 'rifle'].ud.sightY, -0.3) : v1.set(0.16, -0.17, -0.34)).applyMatrix4(camera.matrixWorld); h.quat.copy(head.quat);
   } else { const a = t * 0.00005; camera.position.set(12 + Math.sin(a) * 26, 9, 22 + Math.cos(a) * 14); camera.lookAt(12, 2, 8); headWorld(); }
+  for (const h of hands) { if (h.active) { v1.copy(h.pos).sub(h.last).multiplyScalar(1 / dt); if (v1.lengthSq() < 900) h.vel.lerp(v1, 0.45); h.last.copy(h.pos); } }
   placeGuns(dt);
   myBody.g.visible = !!S.mode; if (S.mode) myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY);
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
-  if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (!S.doorLocked[P.id] || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
+  if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (!(P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.disarm ? 'disarm' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
+  vestHints(); doorCam(dt); smokeDraw();
+  if (smokeFog > 0.01 || smokeFogCur > 0.01) { smokeFogCur += (smokeFog - smokeFogCur) * Math.min(1, dt * 4); applyLook(); if (smokeFogCur > 0.01) { scene.fog.density += smokeFogCur * 0.6; scene.fog.color.lerp(smokeCol.setRGB(S.nvg ? 0.2 : 0.5, S.nvg ? 0.5 : 0.51, S.nvg ? 0.25 : 0.53), smokeFogCur * 0.8); scene.background.copy(scene.fog.color); } }
   // a door lever lights up when an empty hand can work it
   for (const d of world.doors) d.hot = false;
   if (S.mode === 'vr') for (const h of hands) if (h.active && !h.item) { const i = nearestDoor(h.pos, 0.95); if (i >= 0) world.doors[i].hot = true; }
@@ -534,10 +616,13 @@ if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSuppo
 else { $('vr').disabled = true; $('vrnote').textContent = 'This browser has no WebXR. Open this page in the Quest browser.'; }
 // ---------- phone / tablet controls: left thumb moves, right thumb looks, buttons do the rest ----------
 function initTouch() {
+  // iOS zooms the page on a double tap unless the touch itself is cancelled; pointer handlers alone do not stop it.
+  for (const ev of ['touchstart', 'touchend', 'touchmove']) document.addEventListener(ev, e => { if (S.touch) e.preventDefault(); }, { passive: false });
+  for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
   S.touch = true; $('touch').style.display = 'block'; document.body.classList.add('touching');
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
-  bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit3' }[S.tool])); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
+  bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
   bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
@@ -555,5 +640,5 @@ $('tplay').onclick = () => { initAudio(); connect($('solo').checked); begin('des
 let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('install').style.display = 'inline-block'; });
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.__bl = { breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, world, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, world, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

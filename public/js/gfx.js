@@ -16,7 +16,7 @@ function initMats() {
     fabric: S(tex('#3c3e44', 6000), 'cloth'), linen: S(tex('#d8d3c8', 5000), 'cloth'), walnut: S(tex('#4b3627', 1200, grid(1, 6, 'rgba(20,10,5,0.3)', false, 0.06)), 'polished'),
     lacquer: S(tex('#ecebe8', 200), 'paint'), top: S(tex('#2a2b2e', 900), 'polished'), car: S(tex('#262b33', 200), 'paint'), hedge: S(tex('#2d4b2b', 9000), 'matte'),
     pooltile: S(tex('#22262a', 400, grid(8, 8, 'rgba(0,0,0,0.5)')), 'polished'), book: S(tex('#7a4a3a', 300, grid(10, 1, 'rgba(0,0,0,0.5)', false, 0.5)), 'satin'),
-    water: sheen({ color: 0x16303a, transparent: true, opacity: 0.86 }, 'water'), ocean: sheen({ color: 0x0e2230 }, 'water'), glass: sheen({ color: 0x1c2a33, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }, 'glass'),
+    water: sheen({ color: 0x16303a, transparent: true, opacity: 0.86 }, 'water'), ocean: sheen({ color: 0x0e2230 }, 'water'), glass: sheen({ color: 0x0b1216, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }, 'glass'),
     glow: new THREE.MeshBasicMaterial({ color: 0xffe6bd, fog: false }), dark: new THREE.MeshBasicMaterial({ color: 0x0b0c0e }),
   });
   MATS.door = sheen({ map: MATS.walnut.map }, 'polished'); MATS.steel = sheen({ color: 0xb8bcc2 }, 'metal');
@@ -68,7 +68,8 @@ function furnish(b, w) {
       P('walnut', 0, len, 0, dep, h - 0.03, h); break; }
     case 'cabinet': P('lacquer', 0, len, 0, dep, 0.1, h - 0.03); P('walnut', -0.0, len, 0, dep, h - 0.03, h); for (const u of [0.05, len - 0.11]) { P('fascia', u, u + 0.06, 0.05, 0.11, 0, 0.1); P('fascia', u, u + 0.06, dep - 0.11, dep - 0.05, 0, 0.1); } break;
     case 'counter': P('fascia', 0.03, len - 0.03, 0.03, dep - 0.03, 0, 0.1); P('lacquer', 0, len, 0, dep, 0.1, h - 0.04); P('top', 0, len, 0, dep, h - 0.04, h); break;
-    case 'car': P('car', 0, len, 0, dep, 0.28, 0.9); P('dark', len * 0.2, len * 0.82, 0.12, dep - 0.12, 0.9, h - 0.04); P('car', len * 0.2, len * 0.82, 0.1, dep - 0.1, h - 0.04, h);
+    case 'car': break;   // drawn by the loaded car model (car.js)
+    case 'car-box': P('car', 0, len, 0, dep, 0.28, 0.9); P('dark', len * 0.2, len * 0.82, 0.12, dep - 0.12, 0.9, h - 0.04); P('car', len * 0.2, len * 0.82, 0.1, dep - 0.1, h - 0.04, h);
       for (const u of [len * 0.12, len * 0.74]) { P('dark', u, u + 0.68, 0, 0.24, 0, 0.66); P('dark', u, u + 0.68, dep - 0.24, dep, 0, 0.66); } P('glow', len - 0.02, len, 0.2, 0.5, 0.6, 0.72); P('glow', len - 0.02, len, dep - 0.5, dep - 0.2, 0.6, 0.72); break;
     case 'pool': P('pooltile', 0, len, 0, dep, 0, h, 'xXzZ'); P('pooltile', 0, len, 0, 0.18, h - 0.001, h, 'Y'); P('pooltile', 0, len, dep - 0.18, dep, h - 0.001, h, 'Y'); P('pooltile', 0, 0.18, 0.18, dep - 0.18, h - 0.001, h, 'Y'); P('pooltile', len - 0.18, len, 0.18, dep - 0.18, h - 0.001, h, 'Y');
       P('water', 0.18, len - 0.18, 0.18, dep - 0.18, h - 0.05, h - 0.03, 'Y', 0.2); break;
@@ -163,7 +164,10 @@ export function buildWorld(scene) {
     const leaf = new THREE.Mesh(new THREE.BoxGeometry(len - 0.03, DOOR_H - 0.02, d.hidden ? 0.2 : 0.05), d.hidden ? MATS.stone : MATS.door); leaf.position.set(len / 2, DOOR_H / 2, 0); g.add(leaf);
     const hm = MATS.steel.clone(), handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.025, 0.17), hm); handle.position.set(len - 0.12, 1.0, 0); handle.visible = !d.hidden; g.add(handle);
     const base = d.horiz ? 0 : -Math.PI / 2; g.rotation.y = base; scene.add(g);
-    return { g, base, handle, hm, cur: 0, hot: false };
+    // tripwire: a thin red line at shin height and a charge on the frame; shown on whichever side the server says it is rigged
+    const trap = new THREE.Group(), wire = new THREE.Mesh(new THREE.BoxGeometry(len, 0.004, 0.004), new THREE.MeshBasicMaterial({ color: 0xff3030 })), charge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.06), new THREE.MeshLambertMaterial({ color: 0x4a4f3a })), led = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.01), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+    wire.position.set(len / 2, 0.28, 0); charge.position.set(0.05, 0.3, 0); led.position.set(0.05, 0.35, 0.034); trap.add(wire, charge, led); trap.position.set(d.x0, d.y, d.z0); trap.rotation.y = base; trap.visible = false; scene.add(trap);
+    return { g, base, handle, hm, cur: 0, hot: false, trap, horiz: d.horiz };
   });
   // light: dusk sky, low warm sun for highlights, two warm interior lamps; night = power cut; NVG = green amplification
   scene.background = new THREE.Color(0x2a3040); scene.fog = new THREE.FogExp2(0x3a4152, 0.006);

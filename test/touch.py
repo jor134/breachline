@@ -26,6 +26,6 @@ with sync_playwright() as p:
     ctx = b.new_context(viewport={'width':844,'height':390}, has_touch=True, is_mobile=True, device_scale_factor=1)
     pg = ctx.new_page(); logs=[]
     pg.on('console', lambda m: logs.append(m.type+': '+m.text) if m.type=='error' else None); pg.on('pageerror', lambda e: logs.append('PAGEERROR: '+str(e)))
-    pg.goto('http://localhost:8765/'); pg.wait_for_timeout(1500); print('tplay visible:', pg.is_visible('#tplay'))
+    pg.goto('http://localhost:8765/?lite=1'); pg.wait_for_timeout(1500); print('tplay visible:', pg.is_visible('#tplay'))
     pg.check('#solo'); pg.click('#tplay'); pg.wait_for_timeout(1500)
     print('RESULT', json.dumps(pg.evaluate(JS))); pg.wait_for_timeout(300); pg.screenshot(path='/tmp/touch.png'); print('\n'.join(logs[:10]) or 'no console errors'); b.close()

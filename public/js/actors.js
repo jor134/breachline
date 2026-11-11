@@ -26,7 +26,7 @@ const basic = c => new THREE.MeshBasicMaterial({ color: c });
 
 // ---------- weapons ----------
 let rifleGeo = null, rifleMagGeo = null;
-export function makeRifle() {   // original M4-pattern carbine: flat-top, railed handguard, red-dot optic, light, suppressor
+export function makeRifle(holo = false) {   // original M4-pattern carbine: flat-top, railed handguard, holographic sight, light, suppressor
   const K = 0x17181a, TAN = 0x6f6352, GR = 0x2a2c2f, g = new THREE.Group();
   if (!rifleGeo) {
     rifleGeo = merge([
@@ -35,7 +35,7 @@ export function makeRifle() {   // original M4-pattern carbine: flat-top, railed
       [BOX(0.032, 0.09, 0.04), K, 0, -0.052, 0.036, 0.32], [BOX(0.01, 0.006, 0.06), K, 0, -0.018, -0.03],
       [BOX(0.05, 0.052, 0.27), TAN, 0, 0.05, -0.275], [BOX(0.022, 0.008, 0.44), K, 0, 0.08, -0.17], [BOX(0.058, 0.02, 0.24), GR, 0, 0.05, -0.275], [BOX(0.02, 0.058, 0.24), GR, 0, 0.05, -0.275],
       [CYL(0.009, 0.1), K, 0, 0.05, -0.45, HP], [CYL(0.019, 0.17), 0x4f4b44, 0, 0.05, -0.565, HP], [CYL(0.016, 0.085, 0.013), K, 0, -0.018, -0.3],
-      [BOX(0.03, 0.022, 0.05), K, 0, 0.094, -0.05], [CYL(0.021, 0.062, 0.021, 14, true), K, 0, 0.126, -0.05, HP], [CYL(0.008, 0.016), K, 0.024, 0.126, -0.05, 0, 0, HP], [BOX(0.03, 0.012, 0.03), K, 0, 0.106, -0.05],
+      [BOX(0.04, 0.02, 0.075), K, 0, 0.094, -0.04], [BOX(0.004, 0.036, 0.05), K, -0.02, 0.122, -0.05], [BOX(0.004, 0.036, 0.05), K, 0.02, 0.122, -0.05], [BOX(0.044, 0.004, 0.05), K, 0, 0.142, -0.05], [BOX(0.04, 0.008, 0.05), K, 0, 0.108, -0.05], [BOX(0.03, 0.014, 0.022), GR, 0, 0.097, 0.008], [CYL(0.006, 0.012), GR, 0.024, 0.098, -0.02, 0, 0, HP],
       [BOX(0.04, 0.026, 0.075), TAN, 0, 0.097, -0.3], [CYL(0.013, 0.11), K, 0.04, 0.05, -0.36, HP], [CYL(0.016, 0.03), K, 0.04, 0.05, -0.425, HP], [CYL(0.011, 0.004), 0xfff4d0, 0.04, 0.05, -0.442, HP],
       [BOX(0.034, 0.014, 0.045), K, 0, 0.078, 0.075], [BOX(0.006, 0.026, 0.006), K, 0, 0.096, -0.39],
     ], 'metal').geometry;
@@ -45,8 +45,20 @@ export function makeRifle() {   // original M4-pattern carbine: flat-top, railed
   const mag = new THREE.Mesh(rifleMagGeo, vertexSheen('metal')); g.add(mag);
   const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.02, 0.06), basic(0xd0a040)); bolt.position.set(0.025, 0.055, -0.05); bolt.visible = false; g.add(bolt);
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), basic(0xffd070)); flash.position.set(0, 0.05, -0.69); flash.visible = false; g.add(flash);
-  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff2020, depthTest: false, transparent: true, fog: false })); dot.position.set(0, 0.126, -40); dot.visible = false; dot.renderOrder = 20; g.add(dot);
-  g.userData = { kind: 'rifle', mag, bolt, flash, dot, muzzle: new THREE.Vector3(0, 0.05, -0.65), light: new THREE.Vector3(0.04, 0.05, -0.45), magwell: new THREE.Vector3(0, -0.05, -0.1), rack: new THREE.Vector3(0, 0.078, 0.075), fore: new THREE.Vector3(0, -0.01, -0.3), sightY: 0.126 };
+  // Holographic reticle: a ring and dot focused far downrange. The shader only draws the part of it that this eye sees through the sight window,
+  // so it stays on the point of aim wherever your eye sits behind the glass, and vanishes when you look past the housing - like the real thing.
+  let ret = null;
+  if (holo) {
+    const c = document.createElement('canvas'); c.width = c.height = 256; const k = c.getContext('2d'); k.strokeStyle = k.fillStyle = '#ff3020'; k.lineWidth = 11; k.beginPath(); k.arc(128, 128, 92, 0, 6.3); k.stroke(); k.beginPath(); k.arc(128, 128, 8, 0, 6.3); k.fill(); for (const [x, y, w, h] of [[123, 14, 10, 30], [123, 212, 10, 30], [14, 123, 30, 10], [212, 123, 30, 10]]) k.fillRect(x, y, w, h);   // lines are drawn heavier than a real 1 MOA dot so a headset's pixels can show them
+    const inv = new THREE.Matrix4();
+    ret = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.ShaderMaterial({ transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { map: { value: new THREE.CanvasTexture(c) }, uInv: { value: inv }, uWin: { value: new THREE.Vector4(0, 0.126, 0.0165, 0.0125) }, uZ: { value: -0.05 } },
+      vertexShader: 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+      fragmentShader: 'uniform sampler2D map; uniform mat4 uInv; uniform vec4 uWin; uniform float uZ; varying vec2 vUv; varying vec3 vW; void main(){ vec3 e = (uInv * vec4(cameraPosition, 1.0)).xyz; vec3 f = (uInv * vec4(vW, 1.0)).xyz; if (e.z <= uZ + 0.01) discard; vec3 p = e + (f - e) * ((uZ - e.z) / (f.z - e.z)); if (abs(p.x - uWin.x) > uWin.z || abs(p.y - uWin.y) > uWin.w) discard; vec4 c = texture2D(map, vUv); if (c.a < 0.05) discard; gl_FragColor = vec4(c.rgb * 2.2, c.a); }' }));
+    ret.position.set(0, 0.126, -60); ret.renderOrder = 20; ret.frustumCulled = false; ret.visible = false; ret.onBeforeRender = () => { inv.copy(g.matrixWorld).invert(); }; g.add(ret);
+    const lens = new THREE.Mesh(new THREE.PlaneGeometry(0.036, 0.028), new THREE.MeshBasicMaterial({ color: 0x40708a, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide })); lens.position.set(0, 0.126, -0.07); g.add(lens);
+  }
+  g.userData = { kind: 'rifle', mag, bolt, flash, ret, muzzle: new THREE.Vector3(0, 0.05, -0.65), light: new THREE.Vector3(0.04, 0.05, -0.45), magwell: new THREE.Vector3(0, -0.05, -0.1), rack: new THREE.Vector3(0, 0.078, 0.075), fore: new THREE.Vector3(0, -0.01, -0.3), sightY: 0.126 };
   return g;
 }
 let pistolGeo = null;
@@ -62,8 +74,10 @@ export function makePistol() {
 }
 export const makeMag = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
 
+export const makeNade = kind => kind === 'flash' ? merge([[CYL(0.022, 0.09), 0x5a6048, 0, 0, 0], [CYL(0.018, 0.02), 0x9aa0a8, 0, 0.055, 0], [BOX(0.008, 0.07, 0.02), 0x9aa0a8, 0.024, 0.02, 0]], 'metal') : merge([[CYL(0.027, 0.1), 0x6a6e72, 0, 0, 0], [CYL(0.027, 0.016), 0xd8d8d8, 0, 0.03, 0], [CYL(0.016, 0.02), 0x30343a, 0, 0.06, 0]], 'metal');
 export function makeTool(kind) {
   const ST = 0xb8bcc2, K = 0x17181a, R = 0xb02a2a;
+  if (kind === 'cam') return merge([[BOX(0.03, 0.03, 0.1), K, 0, 0, 0.03], [BOX(0.05, 0.035, 0.006), 0x2a4a5a, 0, 0.03, 0.03, -0.5], [CYL(0.004, 0.22), K, 0, -0.01, -0.12, HP], [BOX(0.014, 0.014, 0.02), ST, 0, -0.012, -0.235]], 'plastic');
   return kind === 'pick' ? merge([[BOX(0.02, 0.022, 0.09), K, 0, 0, 0.03], [CYL(0.0025, 0.1), ST, 0, 0.004, -0.06, HP], [BOX(0.004, 0.012, 0.004), ST, 0, 0.01, -0.108], [BOX(0.006, 0.003, 0.1), ST, 0.012, -0.008, -0.04], [BOX(0.006, 0.02, 0.003), ST, 0.012, 0.0, -0.09]], 'metal')
     : merge([[BOX(0.016, 0.016, 0.11), R, -0.016, 0, 0.045, 0, 0.14], [BOX(0.016, 0.016, 0.11), R, 0.016, 0, 0.045, 0, -0.14], [CYL(0.01, 0.014), ST, 0, 0, -0.012], [BOX(0.01, 0.012, 0.05), ST, -0.006, 0, -0.04, 0, -0.08], [BOX(0.01, 0.012, 0.05), ST, 0.006, 0, -0.04, 0, 0.08]], 'plastic');
 }
@@ -118,9 +132,9 @@ export class Human {
     const c = this.cur, t = this.tgt, k = 1 - Math.exp(-9 * dt), kl = 1 - Math.exp(-5.5 * dt);
     for (const j in c) c[j] += (t[j] - c[j]) * (j === 'lie' || j === 'yOff' || j === 'drop' ? kl : k);
     // layered motion: walk cycle scaled by real ground speed (so feet do not slide), breathing, weight shift, flinch, recoil
-    const st = this.st, up = st === 'g' || st === 'a' || st === 'c', w = up ? Math.min(1, this.speed / 1.3) : 0, run = up ? Math.max(0, Math.min(1, (this.speed - 1.6) / 1.4)) : 0;
+    const st = this.st, up = st === 'g' || st === 'a' || st === 'c' || st === 'z', w = up ? Math.min(1, this.speed / 1.3) : 0, run = up ? Math.max(0, Math.min(1, (this.speed - 1.6) / 1.4)) : 0;
     if (up) this.phase += moved * (2 * Math.PI / (1.25 + 0.5 * run)); this.idle += dt;
-    const ph = this.phase, A = (0.42 + 0.25 * run) * w, br = Math.sin(this.idle * 1.6) * 0.012, sway = up ? Math.sin(this.idle * 0.55) * 0.02 * (1 - w) : 0, hurt = st === 'i' ? Math.sin(this.idle * 2.2) * 0.1 : 0;
+    const ph = this.phase, A = (0.42 + 0.25 * run) * w, br = Math.sin(this.idle * 1.6) * 0.012, sway = up ? Math.sin(this.idle * (st === 'z' ? 3.1 : 0.55)) * (st === 'z' ? 0.09 : 0.02) * (1 - w) : 0, hurt = st === 'i' ? Math.sin(this.idle * 2.2) * 0.1 : 0;
     this.flinch = Math.max(0, this.flinch - dt * 4); const fl = this.flinch * this.flinch, kick = this.flashT > 0 ? 0.07 : 0;
     const [L, R] = this.legs;
     L.hip.rotation.x = c.hl - A * Math.sin(ph); L.knee.rotation.x = c.kl + (0.25 + 0.75 * Math.max(0, Math.cos(ph))) * A * 1.5;
@@ -139,13 +153,15 @@ const REST = { hl: 0, hr: 0, kl: 0, kr: 0, slx: 0, slz: 0, srx: 0, srz: 0, el: 0
 const KN = { kl: 1.65, kr: 1.65, drop: -0.42 }, UPH = { slx: -2.6, srx: -2.6, el: -0.5, er: -0.5, slz: -0.3, srz: 0.3 }, BACK = { slx: 0.55, srx: 0.55, el: 0.4, er: 0.4, slz: 0.25, srz: -0.25 };
 const POSE = {
   g: { srx: -0.2, er: -1.0, slx: -0.85, slz: 0.5, el: -0.8 }, a: { srx: -0.5, er: -1.0, slx: -1.05, slz: 0.5, el: -0.75, spine: 0.06 }, c: { srx: -1.05, er: -0.55, slx: -1.3, slz: 0.5, el: -0.35, spine: 0.1, kl: 0.12, kr: 0.12, hl: -0.1, hr: 0.14, drop: -0.02 },
+  h: { srx: -0.9, er: -0.75, slx: -1.2, slz: 0.5, el: -0.45, spine: 0.3, hl: -1.25, hr: -1.25, kl: 2.0, kr: 2.0, drop: -0.4 },   // crouched behind cover
+  z: { slx: -2.15, srx: -2.0, el: -2.0, er: -1.9, slz: 0.2, srz: -0.2, spine: 0.4, kl: 0.25, kr: 0.2, drop: -0.04 },      // stunned: hands to the face
   s: UPH, k: Object.assign({}, UPH, KN), y: Object.assign({}, UPH, KN), u: Object.assign({}, BACK, KN), w: Object.assign({ slx: -2.3, srx: -2.3, el: -1.7, er: -1.7, spine: 0.55 }, KN),
   d: { lie: -HP, yOff: 0.15, slx: -0.2, slz: -0.7, srx: -0.3, srz: 0.5, kl: 0.2, kr: 0.5, hr: -0.25 }, i: { lie: -HP, yOff: 0.15, slx: -0.5, slz: -0.6, srx: -0.2, srz: 0.4, kl: 0.6, hl: -0.4, kr: 0.15 }, j: Object.assign({ lie: HP, yOff: 0.15 }, BACK),
 };
 
 // ---------- officer body: vest, belt, holders, legs, and arms that reach to the hands ----------
 // Offsets are from the head, with -z forward. These are also the grab zones used by the game.
-export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.03, -0.42, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1] };
+export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.03, -0.42, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
 const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
 let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null;
 export class Body {
@@ -158,8 +174,9 @@ export class Body {
         [BOX(0.43, 0.06, 0.27), WEB, 0, -0.76, 0.08],
         [BOX(0.06, 0.13, 0.045), WEB, -0.27, -0.64, -0.07], [BOX(0.06, 0.13, 0.045), WEB, -0.2, -0.64, -0.075], [BOX(0.06, 0.13, 0.045), WEB, -0.13, -0.64, -0.075], [BOX(0.028, 0.03, 0.05), 0x2a2c2f, -0.27, -0.565, -0.07], [BOX(0.028, 0.03, 0.05), 0x2a2c2f, -0.2, -0.565, -0.075], [BOX(0.028, 0.03, 0.05), 0x2a2c2f, -0.13, -0.565, -0.075],
         [BOX(0.06, 0.11, 0.04), 0x0e0f11, -0.13, -0.3, -0.065], [CYL(0.006, 0.12), 0x0e0f11, -0.15, -0.2, -0.065], [BOX(0.02, 0.02, 0.008), 0x30d060, -0.115, -0.265, -0.087],
-        [BOX(0.07, 0.17, 0.11), 0x0e0f11, 0.245, -0.78, 0.04], [BOX(0.09, 0.07, 0.04), WEB, 0.1, -0.67, -0.06], [BOX(0.07, 0.012, 0.045), 0xe8e8e8, 0.1, -0.63, -0.06],
-        [BOX(0.09, 0.09, 0.05), WEB, 0.02, -0.66, -0.06],
+        [BOX(0.07, 0.17, 0.11), 0x0e0f11, 0.245, -0.78, 0.04],
+        [CYL(0.022, 0.09), 0x5a6048, 0.125, -0.64, -0.075], [CYL(0.022, 0.09), 0x5a6048, 0.185, -0.64, -0.07], [CYL(0.018, 0.02), 0x9aa0a8, 0.125, -0.585, -0.075], [CYL(0.018, 0.02), 0x9aa0a8, 0.185, -0.585, -0.07], [BOX(0.13, 0.05, 0.02), WEB, 0.155, -0.655, -0.095],
+        [CYL(0.027, 0.1), 0x6a6e72, 0.04, -0.64, -0.08], [CYL(0.027, 0.016), 0xd8d8d8, 0.04, -0.61, -0.08], [BOX(0.07, 0.05, 0.02), WEB, 0.04, -0.66, -0.105],
       ], 'cloth').geometry;
       legGeo = merge([[CAP(0.085, 0.72), NAVY, -0.1, -1.2, 0.08], [CAP(0.085, 0.72), NAVY, 0.1, -1.2, 0.08], [BOX(0.11, 0.1, 0.28), 0x0e0f11, -0.1, -1.62, 0.04], [BOX(0.11, 0.1, 0.28), 0x0e0f11, 0.1, -1.62, 0.04]], 'cloth').geometry;
       gloveGeo = merge([[BOX(0.085, 0.034, 0.105), 0x121315, 0, -0.012, 0.035], [BOX(0.08, 0.028, 0.05), 0x1c1e22, 0, -0.012, -0.035], [BOX(0.028, 0.028, 0.06), 0x121315, 0, 0.005, 0.0, 0, 0.7], [BOX(0.075, 0.04, 0.05), 0x1b2230, 0, -0.012, 0.11]], 'plastic').geometry;
