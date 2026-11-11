@@ -28,25 +28,48 @@ button{padding:13px 16px;font-size:16px;font-weight:700;border:0;border-radius:6
 .row input[type=range]{flex:1}
 #status,#vrnote{font-size:13px;color:#ffcf8a;margin-top:10px;min-height:1em}
 details{margin-top:12px;font-size:13px;color:#b9c6d4}summary{cursor:pointer;color:#8fb4dc}
+#touch{display:none;position:fixed;inset:0;z-index:6;pointer-events:none;user-select:none;-webkit-user-select:none;touch-action:none}
+#touch>*{pointer-events:auto;touch-action:none}
+body.touching{touch-action:none;overscroll-behavior:none}body.touching canvas{touch-action:none}
+body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:center}
+#tstick{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:22px;width:128px;height:128px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.3)}
+#tknob{position:absolute;left:37px;top:37px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.4)}
+.tb{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(20,30,44,.55);border:2px solid rgba(160,190,225,.55);color:#e8eef5;font:700 11px system-ui,sans-serif;width:56px;height:56px}
+.tb.on{background:rgba(31,122,61,.85)}
+.tr{position:absolute;display:flex;gap:7px}.tr .tb{position:static;width:50px;height:38px;border-radius:9px;font-size:10px}
+#bFire{right:max(22px,env(safe-area-inset-right));bottom:34px;width:88px;height:88px;font-size:15px;background:rgba(150,30,30,.55);border-color:rgba(255,150,150,.7)}
+#bAim{right:122px;bottom:26px}#bReload{right:118px;bottom:96px}#bUse{right:40px;bottom:134px;width:64px;height:64px;font-size:13px}#bShout{right:186px;bottom:54px}
+#trTop{top:22px;right:max(10px,env(safe-area-inset-right))}#trLeft{top:22px;left:max(10px,env(safe-area-inset-left))}
+#tstart{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:none;gap:14px}#tstart .tb{position:static;width:150px;height:54px;border-radius:10px;font-size:14px;background:rgba(31,122,61,.85)}
+#tplay{display:none;width:100%;background:#3a6ea5;color:#fff}
 #hud{display:none;position:fixed;left:0;right:0;bottom:0;padding:8px 12px;font:14px monospace;background:rgba(0,0,0,.55);z-index:4;white-space:pre}
 </style>
 </head>
 <body>
 <div id="ui"><div class="card">
-  <h1>BREACHLINE</h1><div class="sub">Co-op tactical entry for Quest &middot; up to 4 officers</div>
+  <h1>BREACHLINE</h1><div class="sub">Co-op tactical entry &middot; Quest, phone, tablet or desktop &middot; up to 4 officers</div>
   <label for="name">Callsign</label><input id="name" type="text" maxlength="14" placeholder="Officer" autocomplete="off">
   <label for="room">Room code (share with your squad)</label><input id="room" type="text" maxlength="8" autocomplete="off">
   <div class="row"><input id="solo" type="checkbox"><span>Solo practice (no server)</span></div>
   <div class="row"><span>Gun tilt</span><input id="tilt" type="range" min="-40" max="40" step="1"><span id="tiltv"></span></div>
   <button id="vr">ENTER VR</button><div id="vrnote"></div>
+  <button id="tplay">PLAY ON THIS PHONE / TABLET</button>
   <button id="desk">Desktop preview (mouse + keyboard)</button>
   <button id="install">Install as app</button>
   <div id="status"></div>
   <details><summary>Controls</summary>
-  <p><b>VR:</b> left stick walk (click = jog), right stick snap turn. Grip near chest = rifle, right hip = pistol, left belt = magazine. Grip again to stow. Trigger fires. Gun hand A/X drops the mag, B/Y releases the bolt, stick click = semi/auto. Pull the charging handle / slide back with your other hand to rack. Grab the handguard with your other hand to steady the rifle. Other hand B/Y = shout for compliance; tap A/X = flashlight, hold A/X = tool wheel (lockpick, wire cutters, hands, night vision); stick click = kick a door. Grip at your helmet = night vision. Grip the radio on your left chest = menu. Hold grip on a kneeling person to cuff. Cut bomb wires with the trigger of an empty hand.</p>
-  <p><b>Desktop:</b> WASD, mouse, left click fire, right click aim, R reload, F shout, E use / cuff / cut, V semi/auto, 1/2 weapon, 3/4/5 hands/lockpick/cutters, N night vision, Q kick, M menu, C crouch, T flashlight, Enter start (dusk), \ start (night).</p></details>
+  <p><b>VR:</b> left stick walk (click = jog), right stick snap turn. Grip near chest = rifle, right hip = pistol, left belt = magazine. Grip again to stow. Trigger fires. Gun hand A/X drops the mag, B/Y releases the bolt, stick click = semi/auto. Pull the charging handle / slide back with your other hand to rack. Grab the handguard with your other hand to steady the rifle. Other hand B/Y = shout for compliance; tap A/X = flashlight, hold A/X = tool wheel (lockpick, wire cutters, med kit, hands, night vision); stick click = kick a door. Grip at your helmet = night vision. Grip the radio on your left chest = menu. Hold grip on a kneeling person to cuff. Cut bomb wires with the trigger of an empty hand.</p>
+  <p><b>Phone / tablet:</b> hold the device sideways. Left thumb moves, drag anywhere else to look. USE opens doors, cuffs, picks locks (TOOL set to PICK) and cuts wires (TOOL set to CUTTER).</p>
+  <p><b>Desktop:</b> WASD, mouse, left click fire, right click aim, R reload, F shout, E use / cuff / cut, V semi/auto, 1/2 weapon, 3/4/5 hands/lockpick/cutters, H med kit, N night vision, Q kick, M menu, C crouch, T flashlight, Enter start (dusk), \ start (night).</p></details>
 </div></div>
 <div id="hud"></div>
+<div id="touch">
+  <div id="tstick"><div id="tknob"></div></div>
+  <div class="tb" id="bFire">FIRE</div><div class="tb" id="bAim">AIM</div><div class="tb" id="bReload">RELOAD</div><div class="tb" id="bUse">USE</div><div class="tb" id="bShout">SHOUT</div>
+  <div class="tr" id="trTop"><div class="tb" id="bSwap">GUN</div><div class="tb" id="bTool">HANDS</div><div class="tb" id="bMed">MED</div><div class="tb" id="bNvg">NVG</div><div class="tb" id="bLight">LIGHT</div></div>
+  <div class="tr" id="trLeft"><div class="tb" id="bMenu">MENU</div><div class="tb" id="bCrouch">CROUCH</div><div class="tb" id="bKick">KICK</div></div>
+  <div id="tstart"><div class="tb" id="bDusk">START DUSK</div><div class="tb" id="bNight">START NIGHT</div></div>
+</div>
 <script type="module" src="js/game.js"></script>
 </body>
 </html>

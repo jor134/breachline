@@ -85,6 +85,10 @@ export function buildWorld(scene) {
   gr.addColorStop(0, '#1c2638'); gr.addColorStop(0.3, '#3b4a63'); gr.addColorStop(0.47, '#8b8d9c'); gr.addColorStop(0.52, '#d6b08e'); gr.addColorStop(0.56, '#4a4038'); gr.addColorStop(1, '#2a2622'); sg.fillStyle = gr; sg.fillRect(0, 0, 4, 256);
   const skyT = new THREE.CanvasTexture(sc); skyT.colorSpace = THREE.SRGBColorSpace;
   const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 20, 12), new THREE.MeshBasicMaterial({ map: skyT, side: THREE.BackSide, fog: false, depthWrite: false })); sky.position.set(12, 0, 8); sky.renderOrder = -1; scene.add(sky);
+  const sp = []; for (let i = 0; i < 900; i++) { const u = rnd() * 6.283, v = 0.04 + rnd() * 0.96, r = Math.sqrt(1 - v * v) * 182; sp.push(12 + Math.cos(u) * r, v * 182, 8 + Math.sin(u) * r); }
+  const sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+  const stars = new THREE.Points(sgeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.7, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.45, depthWrite: false })); stars.frustumCulled = false; scene.add(stars);
+  const moon = new THREE.Mesh(new THREE.CircleGeometry(6, 24), new THREE.MeshBasicMaterial({ color: 0xe9edff, fog: false, transparent: true, depthWrite: false })); moon.position.set(12 - 95, 80, 8 - 130); moon.lookAt(12, 0, 8); scene.add(moon);
   const hillM = new THREE.MeshBasicMaterial({ color: 0x1b1d22, fog: false });
   for (const [x, z, r, h] of [[-150, 10, 90, 44], [-120, 120, 110, 38], [20, 170, 120, 40], [150, 110, 100, 46], [170, 0, 80, 30]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); m.rotation.y = x; scene.add(m); }
   // land: street level in front, stepping down beside the house to the back yard, then a cliff and the ocean
@@ -92,7 +96,7 @@ export function buildWorld(scene) {
   land('gravel', X0, X1, 16, 0, YARD.z1 + 70, 0); land('gravel', X0, X1, YARD.z0, -H, 0, -H);
   for (const [a, c] of [[X0, -0.1], [24.1, X1]]) { land('gravel', a, c, 12, 0, 16, 0); land('gravel', a, c, 4, -H, 12, 0); land('gravel', a, c, 0, -H, 4, -H); }
   for (const [a, c] of [[-3.6, -0.1], [24.1, 27.6]]) for (let k = 0; k < 8; k++) { const top = -0.4 * (k + 0.5) + 0.03; b('paver').box(a, c, top - 0.5, top, 11 - k, 12 - k, 'xXYZz', 0.5); }
-  land('paver', -3, 27, 16, 0.008, 25, 0.008, 0.5); land('paver', 9, 15, 25, 0.007, YARD.z1, 0.007, 0.5); land('paver', -3.6, 27.6, YARD.z0 + 0.3, -H + 0.008, 0, -H + 0.008, 0.5);
+  land('paver', -3, 27, 16.1, 0.02, 25, 0.02, 0.5); land('paver', 9, 15, 25, 0.02, YARD.z1, 0.02, 0.5); land('paver', -3.6, 27.6, YARD.z0 + 0.3, -H + 0.02, -0.1, -H + 0.02, 0.5);
   b('stone').box(X0, X1, -H - 14, -H, YARD.z0 - 0.6, YARD.z0, 'zY', 1); land('ocean', -500, 500, YARD.z0 - 520, -H - 11, YARD.z0 - 0.5, -H - 11, 0.05);
   const wallSeg = (x0, x1, z0, z1, y) => b('stone').box(x0, x1, y, y + 1.6, z0, z1, 'xXYzZ', 1);
   for (const [x0, x1] of [[YARD.x0 - 0.3, YARD.x0], [YARD.x1, YARD.x1 + 0.3]]) { wallSeg(x0, x1, 12, YARD.z1, 0); wallSeg(x0, x1, YARD.z0, 4, -H); for (let z = 4; z < 12; z += 2) b('stone').box(x0, x1, terrainY(z), terrainY(z + 2) + 1.6, z, z + 2, 'xXYzZ', 1); }
@@ -110,10 +114,12 @@ export function buildWorld(scene) {
   // walls: plaster inside, stacked stone outside, glass with dark mullions
   for (const w of level.boxes) {
     if (w.kind === 'wall' || w.kind === 'lintel') {
-      let out = '';
+      const wall = w.kind === 'wall', hz = wall ? w.horiz : (w.z1 - w.z0 < 0.3 && w.x1 - w.x0 > 0.3); let out = '';
       if (w.ext) out = w.horiz ? (w.z0 < 1 ? 'z' : 'Z') : (w.x0 < 1 ? 'x' : 'X');
-      else if (w.kind === 'lintel') { if (Math.abs(w.z0 + 0.1) < 0.01) out = 'z'; if (Math.abs(w.z1 - 16.1) < 0.01) out = 'Z'; }
-      b('plaster').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXzZ'.replace(out, '') + (w.kind === 'lintel' ? 'y' : ''));
+      else if (!wall) { if (Math.abs(w.z0 + 0.1) < 0.01) out = 'z'; if (Math.abs(w.z1 - 16.1) < 0.01) out = 'Z'; }
+      // Only faces that can be seen are drawn: an end buried in a crossing wall has no end face, so no two surfaces share a plane (that was the flicker).
+      const faces = hz ? 'zZ' + (wall && w.capA ? 'x' : '') + (wall && w.capB ? 'X' : '') : 'xX' + (wall && w.capA ? 'z' : '') + (wall && w.capB ? 'Z' : '');
+      b('plaster').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, faces.replace(out, '') + (wall ? '' : 'y'));
       if (out) b('stone').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, out, 1);
     } else if (w.kind === 'glass') {
       const hz = w.horiz, a = hz ? w.x0 : w.z0, e = hz ? w.x1 : w.z1, c = hz ? (w.z0 + w.z1) / 2 : (w.x0 + w.x1) / 2, n = Math.max(1, Math.round((e - a) / 1.5));
@@ -141,7 +147,7 @@ export function buildWorld(scene) {
   for (let z = 1; z < 16; z += 2.5) { spot(-1, 2 * H - 0.006, z); spot(25, 2 * H - 0.006, z); }
   for (let x = 1; x <= 24; x += 2.2) spot(x, -0.226, -1.5);
   // interior dressing (no collision): rugs, pendants, chandelier, screen, art
-  const rug = (m, x0, x1, z0, z1, y) => b(m).quad([x0, y + 0.008, z0], [x1, y + 0.008, z0], [x1, y + 0.008, z1], [x0, y + 0.008, z1], [0, 1, 0], 1);
+  const rug = (m, x0, x1, z0, z1, y) => b(m).quad([x0, y + 0.02, z0], [x1, y + 0.02, z0], [x1, y + 0.02, z1], [x0, y + 0.02, z1], [0, 1, 0], 1);
   rug('linen', 1.4, 6.2, 10.6, 15.8, 0); rug('carpet', 17, 22.5, 10.2, 13.3, 0); rug('linen', 2, 6.4, 10.4, 14, H); rug('fabric', 9.8, 14.2, 10.4, 14.6, H); rug('fabric', 1.4, 6.6, 10.4, 14.8, -H); b('dark').box(0.11, 0.15, -H + 0.7, -H + 2.5, 9.6, 14.4, 'X'); b('fascia').box(0.1, 0.13, -H + 0.64, -H + 2.56, 9.54, 14.46, 'xXYyzZ'.replace('x', ''), 1);
   for (const [x, z, y0] of [[18.8, 11.75, 0], [19.75, 11.75, 0], [20.7, 11.75, 0], [18.8, 3.6, 0], [20.2, 3.6, 0]]) { b('fascia').box(x - 0.006, x + 0.006, y0 + 2.0, y0 + H, z - 0.006, z + 0.006, 'xXzZ'); b('glow').box(x - 0.09, x + 0.09, y0 + 1.82, y0 + 2.0, z - 0.09, z + 0.09, ALL); }
   for (let i = 0; i < 9; i++) { const a = i * 2.4, r = 0.25 + (i % 3) * 0.22, x = 12 + Math.cos(a) * r, z = 12.4 + Math.sin(a) * r, y = 2.0 + (i % 4) * 0.2; b('fascia').box(x - 0.005, x + 0.005, y + 0.1, H, z - 0.005, z + 0.005, 'xXzZ'); b('glow').box(x - 0.05, x + 0.05, y, y + 0.1, z - 0.05, z + 0.05, ALL); }
@@ -167,6 +173,7 @@ export function buildWorld(scene) {
     sun.intensity = (night ? 0.18 : 0.75) * k; sun.color.set(night ? 0xa9bcff : 0xffc9a0); for (const l of lamps) l.intensity = night ? 0 : 10 * k;
     amp.intensity = nvg ? (night ? 0.8 : 0.5) : 0; setGlossLevel(nvg ? 0.2 : night ? 0.12 : 1);
     MATS.glow.color.set(nvg ? (night ? 0x0b3410 : 0x9cff9c) : night ? 0x14120e : 0xffe6bd); sky.material.color.set(nvg ? (night ? 0x0d3011 : 0x2f8a3a) : night ? 0x283040 : 0xffffff);
+    stars.material.opacity = night ? 1 : 0.45; stars.material.color.set(nvg ? 0x8cff9c : 0xffffff); moon.material.color.set(nvg ? 0xa8ffb4 : 0xe9edff); moon.material.opacity = night || nvg ? 1 : 0.7;
     hillM.color.set(nvg ? 0x05160a : night ? 0x040608 : 0x1b1d22); scene.fog.color.set(nvg ? (night ? 0x082409 : 0x1c5a26) : night ? 0x05070b : 0x3a4152); scene.fog.density = night ? 0.011 : 0.006; scene.background.copy(scene.fog.color);
   };
   return { level, doors, look };

@@ -18,6 +18,7 @@ export class RoomHost {
       case 'shot': s.shot(id, m); break;
       case 'shout': s.shout(id); break;
       case 'cuff': s.cuff(id, m.n); break;
+      case 'heal': s.heal(id); break;
       case 'revive': s.revive(id, m.p); break;
       case 'door': s.door(id, m.d); break;
       case 'pick': s.pick(id, m.d); break;

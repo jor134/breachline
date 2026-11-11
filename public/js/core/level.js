@@ -102,8 +102,9 @@ export function buildLevel() {
     for (let i = i0; i < i1; i++) { edges.add(k(f, i, j0, 'h')); edges.add(k(f, i, j1, 'h')); }
     for (let j = j0; j < j1; j++) { edges.add(k(f, i0, j, 'v')); edges.add(k(f, i1, j, 'v')); }
   }
-  const boxes = [], doors = [], openEnds = new Set(), gedges = new Set();
+  const boxes = [], doors = [], openEnds = new Set(), gedges = new Set(), glassPts = new Set();
   for (const [f, x0, z0, x1, z1] of GLASS) {
+    if (z0 === z1) for (let x = x0; x <= x1; x += U) glassPts.add(f + '|' + x + '|' + z0); else for (let z = z0; z <= z1; z += U) glassPts.add(f + '|' + x0 + '|' + z);
     openEnds.add(f + '|' + x0 + '|' + z0); openEnds.add(f + '|' + x1 + '|' + z1);
     if (z0 === z1) for (let i = x0 / U; i < x1 / U; i++) { if (edges.delete(k(f, i, z0 / U, 'h'))) gedges.add(k(f, i, z0 / U, 'h')); }
     else for (let j = z0 / U; j < z1 / U; j++) { if (edges.delete(k(f, x0 / U, j, 'v'))) gedges.add(k(f, x0 / U, j, 'v')); }
@@ -128,12 +129,17 @@ export function buildLevel() {
       const [f, o, c] = key.split('|'); const fl = +f, line = +c * U; arr.sort((a, b) => a - b);
       let a = arr[0], p = arr[0];
       const flush = () => {
-        let s = a * U, e = (p + 1) * U;
+        let s = a * U, e = (p + 1) * U, capA = true, capB = true;
         const pt = v => o === 'h' ? fl + '|' + v + '|' + line : fl + '|' + line + '|' + v;
-        if (kind === 'wall') { if (!openEnds.has(pt(s))) s -= T / 2; if (!openEnds.has(pt(e))) e += T / 2; }
+        // An end that runs into a crossing wall is buried in it (no end face, so nothing is coplanar). At a doorway, a free end or a glass line it gets a visible end face.
+        const crossing = (set, n) => o === 'h' ? set.has(k(fl, n, +c, 'v')) || set.has(k(fl, n, +c - 1, 'v')) : set.has(k(fl, +c, n, 'h')) || set.has(k(fl, +c - 1, n, 'h'));
+        if (kind === 'wall') {
+          if (crossing(edges, a)) { s -= T / 2; capA = false; } else if (crossing(gedges, a)) s -= 0.04;
+          if (crossing(edges, p + 1)) { e += T / 2; capB = false; } else if (crossing(gedges, p + 1)) e += 0.04;
+        }
         const ext = o === 'h' ? (line === FOOT.z0 || line === FOOT.z1) : (line === FOOT.x0 || line === FOOT.x1);
-        boxes.push(o === 'h' ? { f: fl, kind, ext, horiz: true, x0: s, x1: e, z0: line - th / 2, z1: line + th / 2, y0: fl * H, y1: fl * H + H }
-          : { f: fl, kind, ext, horiz: false, x0: line - th / 2, x1: line + th / 2, z0: s, z1: e, y0: fl * H, y1: fl * H + H });
+        boxes.push(o === 'h' ? { f: fl, kind, ext, capA, capB, horiz: true, x0: s, x1: e, z0: line - th / 2, z1: line + th / 2, y0: fl * H, y1: fl * H + H }
+          : { f: fl, kind, ext, capA, capB, horiz: false, x0: line - th / 2, x1: line + th / 2, z0: s, z1: e, y0: fl * H, y1: fl * H + H });
       };
       for (let n = 1; n < arr.length; n++) { if (arr[n] !== p + 1) { flush(); a = arr[n]; } p = arr[n]; }
       flush();

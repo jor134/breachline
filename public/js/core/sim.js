@@ -5,6 +5,7 @@ export function rng32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B
 const DMG = { rifle: { head: 200, torso: 60, legs: 30 }, pistol: { head: 200, torso: 40, legs: 20 } };
 export const MISSION_TIME = 720, N_SUSPECTS = 9, N_CIVS = 5, N_BOMBS = 2;
 const r2 = v => Math.round(v * 100) / 100;
+export const PARTS = ['head', 'torso', 'armL', 'armR', 'legL', 'legR'];   // wound bits 1,2,4,8,16,32
 const KNEEL = { k: 1, y: 1, u: 1, w: 1 }, DONE = { d: 1, u: 1, i: 1, j: 1 }, SECURED = { d: 1, u: 1, j: 1 };
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
@@ -28,14 +29,14 @@ export class Sim {
       const wires = pick([0, 1, 2, 3], 4), order = pick([0, 1, 2, 3], 2);
       return { x, z, y: f * H + h, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
-    for (const p of this.players.values()) { p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; }
+    for (const p of this.players.values()) { p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; }
   }
   start(seed, night = this.night) { this.night = !!night; this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
   ev(o) { this.events.push(o); }
   addPlayer(id, name) {
     const used = new Set([...this.players.values()].map(p => p.slot)); let slot = 0; while (used.has(slot)) slot++;
     const [x, z] = SPAWN[slot % 4];
-    const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, has: false };
+    const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, has: false, w: 0, med: false };
     this.players.set(id, p); return p;
   }
   removePlayer(id) { this.players.delete(id); }
@@ -76,7 +77,7 @@ export class Sim {
     else if (n.st === 'c' && n.hp < 60 && this.rnd() < 0.35) this.surrender(n);
     this.ev({ e: 'hit', n: n.id, dead });
   }
-  hurt(p, dmg) { if (p.down) return; p.hp -= dmg; this.ev({ e: 'hurt', p: p.id }); if (p.hp <= 0) { p.hp = 0; p.down = true; this.log.downs++; this.ev({ e: 'down', p: p.id }); } }
+  hurt(p, dmg, part = 'torso') { if (p.down) return; p.hp -= dmg; p.w |= 1 << PARTS.indexOf(part); this.ev({ e: 'hurt', p: p.id, part }); if (p.hp <= 0) { p.hp = 0; p.down = true; this.log.downs++; this.ev({ e: 'down', p: p.id }); } }
   noise(x, z, radius, src) {
     for (const n of this.npcs) if (n.kind === 's' && n.st === 'g' && Math.hypot(n.x - x, n.z - z) < radius) {
       n.st = 'a'; n.tA = 0; n.lk = [src.hx, src.hz, src.y]; n.hold = this.rnd() < 0.45; n.path = null;
@@ -101,6 +102,7 @@ export class Sim {
     const p = this.players.get(id), n = this.npcs.find(q => q.id === nid); if (!p || p.down || !n || this.phase !== 'active') return;
     if ((n.st === 's' || n.st === 'k' || n.st === 'y' || n.st === 'i') && this.near(p, n.x, n.y, n.z, 1.9)) { n.st = n.st === 'i' ? 'j' : 'u'; n.fake = false; this.ev({ e: 'cuff', n: n.id, p: id }); }
   }
+  heal(id) { const p = this.players.get(id); if (!p || p.down || p.med || this.phase !== 'active') return; p.med = true; p.hp = Math.min(100, p.hp + 60); p.w = 0; this.ev({ e: 'heal', p: id }); }   // one med kit per officer per mission
   revive(id, tid) { const p = this.players.get(id), q = this.players.get(tid); if (p && q && !p.down && q.down && this.near(p, q.hx, q.y, q.hz, 1.8)) { q.down = false; q.hp = 40; this.ev({ e: 'revive', p: tid }); } }
   door(id, did) {
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
@@ -177,7 +179,8 @@ export class Sim {
     const hit = this.rnd() < Math.max(0.08, Math.min(0.5, 0.55 - 0.02 * d)), sp = hit ? 0 : 0.7;
     const to = [r2(p.hx + (this.rnd() - 0.5) * sp), r2(p.hy - 0.25 + (this.rnd() - 0.5) * sp), r2(p.hz + (this.rnd() - 0.5) * sp)];
     this.ev({ e: 'ns', n: n.id, to });
-    if (hit) this.hurt(p, 18 + this.rnd() * 10);
+    if (hit) { const r = this.rnd(), part = r < 0.1 ? 'head' : r < 0.55 ? 'torso' : r < 0.65 ? 'armL' : r < 0.75 ? 'armR' : r < 0.875 ? 'legL' : 'legR';   // helmet and vest take the worst of it; limb hits hurt less but slow you or shake your aim
+      this.hurt(p, part === 'head' ? 26 + this.rnd() * 8 : part === 'torso' ? 18 + this.rnd() * 10 : 12 + this.rnd() * 6, part); }
   }
   tick(dt) {
     this.t += dt;
@@ -212,7 +215,7 @@ export class Sim {
     return { result, lines, total, grade, time: Math.round(MISSION_TIME - this.timer) };
   }
   snapshot() {
-    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g]);
+    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0)]);
     const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.st, n.kind === 's' && n.armed ? 1 : 0]);
     const E = this.events; this.events = [];
     const s = { t: 's', ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };

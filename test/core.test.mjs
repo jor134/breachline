@@ -113,7 +113,7 @@ t('host protocol: join, start, snapshot, 5th player refused, restart after end',
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); h.message(2, { t: 'start' }); 
   h.message(1, { t: 'pose', h: [12, 1.65, 27, 0, 0, 0, 1], g: [1, 0] }); h.message(1, 'garbage'); h.message(1, { t: 'pose', h: [NaN] }); h.tick();
   const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 14); assert.equal(snap.D.length, 23); assert.equal(snap.L.length, 23);
-  assert.ok(JSON.stringify(snap).length < 3200, 'snapshot size ' + JSON.stringify(snap).length);
+  assert.ok(JSON.stringify(snap).length < 3300, 'snapshot size ' + JSON.stringify(snap).length);
   h.leave(2); h.leave(3); h.leave(4); h.sim.players.get(1).down = true; h.tick(); assert.equal(h.sim.phase, 'ended');
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); assert.ok(!h.sim.players.get(1).down);
 });
@@ -170,5 +170,19 @@ t('downed suspects can be arrested for full marks; shooting them again is penali
 t('restart works mid-mission', () => {
   const h = new RoomHost(() => { }); h.join(1, 'A'); h.message(1, { t: 'start' }); const seed = h.sim.seed; h.sim.timer = 100; h.message(1, { t: 'start' }); assert.equal(h.sim.timer, 100, 'start is ignored while active');
   h.message(1, { t: 'restart' }); assert.equal(h.sim.timer, MISSION_TIME); assert.equal(h.sim.phase, 'active');
+});
+t('wounds: hits land on a body part, limbs get flagged, one med kit clears them', () => {
+  const [s, p] = mkSim(7); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; const seen = new Set();
+  for (let k = 0; k < 400; k++) { p.hp = 100; p.down = false; s.events.length = 0; s.npcFire(n, p, 1); for (const e of s.events) if (e.e === 'hurt') seen.add(e.part); }
+  assert.deepEqual([...seen].sort(), ['armL', 'armR', 'head', 'legL', 'legR', 'torso']); assert.equal(p.w, 63);
+  p.hp = 30; p.down = false; assert.equal(s.snapshot().P[0][9], 63); s.heal(1); assert.equal(p.hp, 90); assert.equal(p.w, 0); assert.equal(s.snapshot().P[0][9], 64);
+  p.hp = 20; p.w = 16; s.heal(1); assert.equal(p.hp, 20, 'second med kit refused'); s.start(8); assert.ok(!p.med && p.w === 0, 'new mission, new kit');
+});
+t('walls that run into other walls have no end faces; ends at doorways and glass do', () => {
+  const w = L.boxes.filter(b => b.kind === 'wall'); assert.ok(w.some(b => !b.capA || !b.capB) && w.some(b => b.capA || b.capB));
+  for (const a of w) for (const [end, cap] of [[0, a.capA], [1, a.capB]]) {   // an uncapped end must be buried inside another wall
+    if (cap) continue; const x = a.horiz ? (end ? a.x1 - 0.05 : a.x0 + 0.05) : (a.x0 + a.x1) / 2, z = a.horiz ? (a.z0 + a.z1) / 2 : (end ? a.z1 - 0.05 : a.z0 + 0.05);
+    assert.ok(w.some(b => b !== a && b.f === a.f && b.horiz !== a.horiz && x > b.x0 - 1e-6 && x < b.x1 + 1e-6 && z > b.z0 - 1e-6 && z < b.z1 + 1e-6), 'uncapped end not inside a crossing wall: ' + JSON.stringify(a));
+  }
 });
 console.log(n + ' tests passed');
