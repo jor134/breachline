@@ -34,7 +34,15 @@ async function loadSamples() {
 function sample(name, pos, gain = 1) {
   const b = samples[name]; if (!b || !ctx) return false; const s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = b; s.playbackRate.value = 0.96 + Math.random() * 0.08; g.gain.value = gain; s.connect(g); g.connect(out(pos)); s.start(); return true;
 }
+// Continuous rain: one looping noise source; quieter and duller under a roof.
+let amb = null;
+export function setAmbience(rain, inside) {
+  if (!ctx) return;
+  if (!amb) { const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true; const f = ctx.createBiquadFilter(); f.type = 'lowpass'; const g = ctx.createGain(); g.gain.value = 0; src.connect(f); f.connect(g); g.connect(master); src.start(); amb = { f, g }; }
+  const t = ctx.currentTime; amb.g.gain.setTargetAtTime(rain * (inside ? 0.1 : 0.34), t, 0.4); amb.f.frequency.setTargetAtTime(inside ? 520 : 5200, t, 0.4);
+}
 export const sfx = {
+  thunder() { if (sample('thunder', null)) return; burst(null, 3.2, 160, 2.2); tone(null, 70, 24, 2.6, 1.6); setTimeout(() => burst(null, 2.2, 110, 1.2), 500); },
   nvg(on) { tone(null, on ? 500 : 2600, on ? 2800 : 400, on ? 0.5 : 0.25, 0.12, 'sine'); burst(null, 0.03, 4000, 0.3, 'highpass'); },
   rattle(pos) { if (sample('locked', pos)) return; for (let i = 0; i < 3; i++) setTimeout(() => burst(pos, 0.04, 1500, 0.5, 'bandpass', 4), i * 70); },
   unlock(pos) { if (sample('unlock', pos)) return; burst(pos, 0.03, 3500, 0.5, 'highpass'); setTimeout(() => tone(pos, 500, 700, 0.06, 0.25, 'square'), 80); },

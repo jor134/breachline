@@ -1,6 +1,6 @@
 // BREACHLINE service worker: network-first for the app so updates arrive, cache as offline fallback.
-const CACHE = 'breachline-v4';
-const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'js/game.js', 'js/gfx.js', 'js/actors.js', 'js/audio.js', 'js/shared.js', 'js/mats.js', 'sfx/manifest.json', 'js/core/level.js', 'js/core/sim.js', 'js/core/host.js', 'js/core/weapon.js'];
+const CACHE = 'breachline-v5';
+const CORE = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'vendor/three.module.min.js', 'js/game.js', 'js/gfx.js', 'js/actors.js', 'js/audio.js', 'js/shared.js', 'js/mats.js', 'js/weather.js', 'sfx/manifest.json', 'js/core/level.js', 'js/core/sim.js', 'js/core/host.js', 'js/core/weapon.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {

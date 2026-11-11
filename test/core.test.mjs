@@ -10,7 +10,7 @@ t('level builds walls and 14 doors', () => { assert.ok(L.boxes.filter(b => b.kin
 t('every spot is walkable and reachable from spawn', () => {
   for (const [f, x, z] of [...SUSPECT_SPOTS, ...CIV_SPOTS]) {
     assert.ok(!circleHits(L, null, x, z, 0.25, f * H), `spot blocked ${f},${x},${z}`);
-    const p = findPath(L, SPAWN[0][0], SPAWN[0][1], 0, x, z, f * H); assert.ok(p && p.length > 5, `no path to ${f},${x},${z}`);
+    const p = findPath(L, SPAWN[0][0], SPAWN[0][1], 0, x, z, f * H); assert.ok(p && p.length >= 2, `no path to ${f},${x},${z}`);
     const e = p[p.length - 1]; assert.ok(Math.hypot(e[0] - x, e[1] - z) < 0.8 && e[2] === f, `path ends wrong for ${f},${x},${z}: ${e}`);
   }
 });
@@ -18,7 +18,7 @@ t('bombs are within reach of a standing spot', () => {
   for (const [f, x, z] of BOMB_SPOTS) { let ok = false; for (let a = 0; a < 6.28; a += 0.3) for (const r of [0.5, 0.7, 0.9]) { const px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (!circleHits(L, null, px, pz, 0.25, f * H) && findPath(L, 12, 27, 0, px, pz, f * H)) ok = true; } assert.ok(ok, `bomb unreachable ${f},${x},${z}`); }
 });
 t('stairs: path climbs, ground height is continuous', () => {
-  const p = findPath(L, 12, 12, 0, 12, 2, H); assert.ok(p.some(c => c[2] === 0) && p[p.length - 1][2] === 1);
+  const p = findPath(L, 12, 12, 0, 12, 2, H, true); assert.ok(p.some(c => c[2] === 0) && p[p.length - 1][2] === 1);
   let y = 0, prev = 0; for (const [x, z] of p) { y = groundY(x, z, y); assert.ok(Math.abs(y - prev) < 0.45, 'jump ' + prev + '->' + y); prev = y; } assert.equal(y, H);
 });
 t('walls stop bullets, open doorway does not, floors block', () => {
@@ -133,15 +133,15 @@ t('locked doors: rattle, pick quietly, or kick loudly', () => {
 });
 t('hidden rear entry is reachable from spawn without entering through the front', () => {
   const h = L.doors.find(q => q.hidden), legs = [[12, 27, 0], [28, 17, 0], [28, -2, -H], [24.5, -2.2, -H], [h.cx, h.cz - 1, -H]];
-  for (let i = 1; i < legs.length; i++) { const a = legs[i - 1], b = legs[i], path = findPath(L, a[0], a[1], a[2], b[0], b[1], b[2]); assert.ok(path && path.every(c => !(c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16)), 'leg ' + i + ' stays outside'); const e = path.at(-1); assert.ok(Math.hypot(e[0] - b[0], e[1] - b[1]) < 0.8, 'leg ' + i + ' arrives');
+  for (let i = 1; i < legs.length; i++) { const a = legs[i - 1], b = legs[i], path = findPath(L, a[0], a[1], a[2], b[0], b[1], b[2], true); assert.ok(path && path.every(c => !(c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16)), 'leg ' + i + ' stays outside'); const e = path.at(-1); assert.ok(Math.hypot(e[0] - b[0], e[1] - b[1]) < 0.8, 'leg ' + i + ' arrives');
     let y = a[2], prev = a[2]; for (const [x, z] of path) { y = groundY(x, z, y); assert.ok(Math.abs(y - prev) < 0.45, 'terrain step'); prev = y; } assert.ok(Math.abs(y - b[2]) < 0.01, 'leg ' + i + ' ends at the right height'); }
   assert.ok(findPath(L, h.cx, h.cz - 0.8, -H, 20, 3, -H).length < 12, 'door leads straight into the plant room');
 });
 t('basement: inside stairs go down from the utility room, the walk-out opens onto the back yard', () => {
-  const p = findPath(L, 12, 2, 0, 12, 12, -H); assert.ok(p && p.at(-1)[2] === -1); let y = 0, prev = 0, min = 0; for (const [x, z] of p) { y = groundY(x, z, y); assert.ok(Math.abs(y - prev) < 0.45, 'jump ' + prev + '->' + y); prev = y; } assert.equal(y, -H);
+  const p = findPath(L, 12, 2, 0, 12, 12, -H, true); assert.ok(p && p.at(-1)[2] === -1); let y = 0, prev = 0, min = 0; for (const [x, z] of p) { y = groundY(x, z, y); assert.ok(Math.abs(y - prev) < 0.45, 'jump ' + prev + '->' + y); prev = y; } assert.equal(y, -H);
   assert.ok(p.every(c => c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16), 'route stays indoors'); assert.ok(p.length < 45, 'uses the stairs, length ' + p.length);
-  const up = findPath(L, 12, 12, -H, 12, 2, H); assert.ok(up && up.at(-1)[2] === 1 && up.every(c => c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16), 'basement to upper floor indoors');
-  const w = L.doors.find(d => d.f === -1 && d.exterior && !d.hidden), out = findPath(L, 12, -5, -H, 12, 2, -H); assert.ok(out.length < 20 && out.some(c => Math.abs(c[0] - w.cx) < 0.6 && Math.abs(c[1] - w.cz) < 0.6), 'walk-out door');
+  const up = findPath(L, 12, 12, -H, 12, 2, H, true); assert.ok(up && up.at(-1)[2] === 1 && up.every(c => c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16), 'basement to upper floor indoors');
+  const w = L.doors.find(d => d.f === -1 && d.exterior && !d.hidden), out = findPath(L, 12, -5, -H, 12, 2, -H, true); assert.ok(out.length < 20 && out.some(c => Math.abs(c[0] - w.cx) < 0.6 && Math.abs(c[1] - w.cz) < 0.6), 'walk-out door');
   assert.equal(groundY(12, -5, 0), -H); assert.equal(groundY(12, 20, -H), 0); assert.ok(Math.abs(groundY(-3, 8, 0) + H / 2) < 1e-9);
   assert.ok(rayStatic(L, null, 12, 1.5, 12, 0, -1, 0, 50) < 1.6, 'ground floor slab'); assert.ok(Math.abs(rayStatic(L, null, 12, -1.7, 12, 0, -1, 0, 50) - 1.5) < 0.01, 'basement floor');
   assert.ok(rayStatic(L, null, 14.25, -2.5, 8.5, 0, 1, 0, 50) > 5, 'stairwell is open through all three storeys');
@@ -184,5 +184,25 @@ t('walls that run into other walls have no end faces; ends at doorways and glass
     if (cap) continue; const x = a.horiz ? (end ? a.x1 - 0.05 : a.x0 + 0.05) : (a.x0 + a.x1) / 2, z = a.horiz ? (a.z0 + a.z1) / 2 : (end ? a.z1 - 0.05 : a.z0 + 0.05);
     assert.ok(w.some(b => b !== a && b.f === a.f && b.horiz !== a.horiz && x > b.x0 - 1e-6 && x < b.x1 + 1e-6 && z > b.z0 - 1e-6 && z < b.z1 + 1e-6), 'uncapped end not inside a crossing wall: ' + JSON.stringify(a));
   }
+});
+t('paths are straightened, and walking them never clips a wall', () => {
+  const raw = findPath(L, 12, 27, 0, 5, 6, 0, true), sm = findPath(L, 12, 27, 0, 5, 6, 0); assert.ok(sm.length < raw.length / 2, `smoothed ${sm.length} vs ${raw.length}`);
+  for (const [f, x, z] of SUSPECT_SPOTS) { const p = findPath(L, 12, 27, 0, x, z, f * H); let y = 0;
+    for (let i = 1; i < p.length; i++) { const a = p[i - 1], b = p[i], n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.1); for (let k = 0; k <= n; k++) { const px = a[0] + (b[0] - a[0]) * k / n, pz = a[1] + (b[1] - a[1]) * k / n; const ny = groundY(px, pz, y); assert.ok(Math.abs(ny - y) < 0.2, 'height jump on smoothed path'); y = ny; assert.ok(!circleHits(L, null, px, pz, 0.2, y), `clips at ${px.toFixed(2)},${pz.toFixed(2)}`); } }
+    assert.equal(Math.round(y / H), f); }
+});
+t('suspects accelerate and stop smoothly, and sidestep in a firefight', () => {
+  const [s, p] = mkSim(11); put(s, p, 12, 1.65, 26); s.shot(1, { o: [12, 1.5, 26], d: [0, 1, 0], w: 'rifle' });
+  const mover = s.npcs.filter(n => n.st === 'a' && !n.hold); let maxJump = 0, maxAcc = 0; const last = new Map(mover.map(n => [n, [n.x, n.z, 0]]));
+  for (let i = 0; i < 15 * 10; i++) { s.tick(1 / 15); for (const n of mover) { const [x, z, v] = last.get(n), d = Math.hypot(n.x - x, n.z - z), sp = d * 15; maxJump = Math.max(maxJump, d); if (n.st === 'a') maxAcc = Math.max(maxAcc, Math.abs(sp - v)); last.set(n, [n.x, n.z, sp]); } }
+  assert.ok(mover.length > 0 && maxJump < 0.25, 'step per tick ' + maxJump); assert.ok(maxAcc < 1.2, 'speed change per tick ' + maxAcc);
+  let stepped = 0; for (let seed = 1; seed <= 12; seed++) { const [s2, p2] = mkSim(seed); const n = s2.npcs[0]; for (const o of s2.npcs) if (o !== n) o.st = 'u'; beside(s2, p2, n, 2.5); const x0 = n.x, z0 = n.z; p2.hp = 1e6; for (let i = 0; i < 15 * 12; i++) { s2.tick(1 / 15); assert.ok(!circleHits(L, null, n.x, n.z, 0.15, n.y)); } if (Math.hypot(n.x - x0, n.z - z0) > 0.5) stepped++; }
+  assert.ok(stepped >= 3, 'sidestepped in ' + stepped + '/12 fights');
+});
+t('weather: shared per mission, selectable, and it changes what suspects see and hear', () => {
+  const kinds = new Set(); for (let seed = 1; seed < 60; seed++) { const s = new Sim(); s.start(seed); kinds.add(s.weather); assert.equal(s.init().weather, s.weather); } assert.equal(kinds.size, 4);
+  const mk = wx => { const s = new Sim(); s.addPlayer(1, 'T'); s.start(7, false, wx); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; Object.assign(n, { x: 8, z: 15.2, y: 0, yaw: Math.atan2(1.4 - 8, 8.8 - 15.2), sweep: 0, patrol: null }); s.pose(1, { h: [1.4, 1.65, 8.8, 0, 0, 0, 1], g: [1, 0] }); for (let i = 0; i < 20; i++) s.tick(1 / 15); return n.st; };
+  assert.equal(mk('clear'), 'c'); assert.equal(mk('fog'), 'g', 'fog hides you at 9.5 m'); assert.equal(mk('rain'), 'c');
+  const h = new RoomHost(() => { }); h.join(1, 'A'); h.message(1, { t: 'restart', wx: 'storm' }); assert.equal(h.sim.weather, 'storm'); h.message(1, { t: 'restart' }); assert.equal(h.sim.weather, 'storm', 'choice sticks'); h.message(1, { t: 'restart', wx: 'bogus' }); assert.equal(h.sim.weather, 'storm');
 });
 console.log(n + ' tests passed');

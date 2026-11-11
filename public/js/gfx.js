@@ -90,7 +90,8 @@ export function buildWorld(scene) {
   const stars = new THREE.Points(sgeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.7, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.45, depthWrite: false })); stars.frustumCulled = false; scene.add(stars);
   const moon = new THREE.Mesh(new THREE.CircleGeometry(6, 24), new THREE.MeshBasicMaterial({ color: 0xe9edff, fog: false, transparent: true, depthWrite: false })); moon.position.set(12 - 95, 80, 8 - 130); moon.lookAt(12, 0, 8); scene.add(moon);
   const hillM = new THREE.MeshBasicMaterial({ color: 0x1b1d22, fog: false });
-  for (const [x, z, r, h] of [[-150, 10, 90, 44], [-120, 120, 110, 38], [20, 170, 120, 40], [150, 110, 100, 46], [170, 0, 80, 30]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); m.rotation.y = x; scene.add(m); }
+  const hills = new THREE.Group(); scene.add(hills);
+  for (const [x, z, r, h] of [[-150, 10, 90, 44], [-120, 120, 110, 38], [20, 170, 120, 40], [150, 110, 100, 46], [170, 0, 80, 30]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); m.rotation.y = x; hills.add(m); }
   // land: street level in front, stepping down beside the house to the back yard, then a cliff and the ocean
   const X0 = YARD.x0 - 70, X1 = YARD.x1 + 70, land = (m, x0, x1, z0, y0, z1, y1, s = 0.3) => b(m).quad([x0, y0, z0], [x1, y0, z0], [x1, y1, z1], [x0, y1, z1], [0, 1, 0], s);
   land('gravel', X0, X1, 16, 0, YARD.z1 + 70, 0); land('gravel', X0, X1, YARD.z0, -H, 0, -H);
@@ -167,14 +168,17 @@ export function buildWorld(scene) {
   scene.background = new THREE.Color(0x2a3040); scene.fog = new THREE.FogExp2(0x3a4152, 0.006);
   const hemi = new THREE.HemisphereLight(0xb9c4dc, 0x7a6a58, 1.25), sun = new THREE.DirectionalLight(0xffc9a0, 0.75), amp = new THREE.HemisphereLight(0x46ff58, 0x0a3410, 0); sun.position.set(-30, 14, 34); scene.add(hemi, sun, amp);
   const lamps = [[12, 2.5, 12.4], [4.5, 2.7, 12]].map(([x, y, z]) => { const l = new THREE.PointLight(0xffd9a8, 10, 11, 1.8); l.position.set(x, y, z); scene.add(l); return l; });
-  const look = (night, nvg) => {
-    const k = nvg ? 0.16 : 1;
-    hemi.intensity = (night ? 0.2 : 1.25) * k; hemi.color.set(night ? 0x6f83a8 : 0xb9c4dc); hemi.groundColor.set(night ? 0x20242c : 0x7a6a58);
-    sun.intensity = (night ? 0.18 : 0.75) * k; sun.color.set(night ? 0xa9bcff : 0xffc9a0); for (const l of lamps) l.intensity = night ? 0 : 10 * k;
-    amp.intensity = nvg ? (night ? 0.8 : 0.5) : 0; setGlossLevel(nvg ? 0.2 : night ? 0.12 : 1);
-    MATS.glow.color.set(nvg ? (night ? 0x0b3410 : 0x9cff9c) : night ? 0x14120e : 0xffe6bd); sky.material.color.set(nvg ? (night ? 0x0d3011 : 0x2f8a3a) : night ? 0x283040 : 0xffffff);
-    stars.material.opacity = night ? 1 : 0.45; stars.material.color.set(nvg ? 0x8cff9c : 0xffffff); moon.material.color.set(nvg ? 0xa8ffb4 : 0xe9edff); moon.material.opacity = night || nvg ? 1 : 0.7;
-    hillM.color.set(nvg ? 0x05160a : night ? 0x040608 : 0x1b1d22); scene.fog.color.set(nvg ? (night ? 0x082409 : 0x1c5a26) : night ? 0x05070b : 0x3a4152); scene.fog.density = night ? 0.011 : 0.006; scene.background.copy(scene.fog.color);
+  const FOGD = { clear: [0.006, 0.011], rain: [0.012, 0.016], storm: [0.016, 0.02], fog: [0.07, 0.075] };
+  const look = (night, nvg, wx = 'clear') => {
+    const k = nvg ? 0.16 : 1, cast = wx !== 'clear', wet = wx === 'rain' || wx === 'storm', dim = cast ? 0.8 : 1;
+    hemi.intensity = (night ? 0.2 : 1.25) * k * dim; hemi.color.set(night ? 0x6f83a8 : cast ? 0xa9afba : 0xb9c4dc); hemi.groundColor.set(night ? 0x20242c : 0x7a6a58);
+    sun.intensity = (night ? 0.18 : 0.75) * k * (cast ? 0.35 : 1); sun.color.set(night ? 0xa9bcff : 0xffc9a0); for (const l of lamps) l.intensity = night ? 0 : 10 * k;
+    amp.intensity = nvg ? (night ? 0.8 : 0.5) : 0; setGlossLevel((nvg ? 0.2 : night ? 0.12 : 1) * (wet ? 1.35 : 1));   // wet surfaces shine more
+    MATS.glow.color.set(nvg ? (night ? 0x0b3410 : 0x9cff9c) : night ? 0x14120e : 0xffe6bd);
+    sky.material.color.set(nvg ? (night ? 0x0d3011 : 0x2f8a3a) : night ? (cast ? 0x161a22 : 0x283040) : cast ? 0x7d828c : 0xffffff); sky.visible = hills.visible = wx !== 'fog';
+    stars.visible = moon.visible = !cast; stars.material.opacity = night ? 1 : 0.45; stars.material.color.set(nvg ? 0x8cff9c : 0xffffff); moon.material.color.set(nvg ? 0xa8ffb4 : 0xe9edff); moon.material.opacity = night || nvg ? 1 : 0.7;
+    hillM.color.set(nvg ? 0x05160a : night ? 0x040608 : 0x1b1d22);
+    scene.fog.color.set(nvg ? (night ? 0x082409 : 0x1c5a26) : night ? (wx === 'fog' ? 0x0d1016 : 0x05070b) : wx === 'fog' ? 0x767c85 : cast ? 0x3d434d : 0x3a4152); scene.fog.density = FOGD[wx][night ? 1 : 0]; scene.background.copy(scene.fog.color);
   };
   return { level, doors, look };
 }

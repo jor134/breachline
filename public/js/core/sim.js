@@ -6,13 +6,16 @@ const DMG = { rifle: { head: 200, torso: 60, legs: 30 }, pistol: { head: 200, to
 export const MISSION_TIME = 720, N_SUSPECTS = 9, N_CIVS = 5, N_BOMBS = 2;
 const r2 = v => Math.round(v * 100) / 100;
 export const PARTS = ['head', 'torso', 'armL', 'armR', 'legL', 'legR'];   // wound bits 1,2,4,8,16,32
+export const WEATHER = ['clear', 'rain', 'fog', 'storm'];
+const SIGHT = { clear: 1, rain: 0.8, fog: 0.4, storm: 0.7 }, HEAR = { clear: 1, rain: 0.7, fog: 1, storm: 0.5 };   // weather hides you and covers noise
 const KNEEL = { k: 1, y: 1, u: 1, w: 1 }, DONE = { d: 1, u: 1, i: 1, j: 1 }, SECURED = { d: 1, u: 1, j: 1 };
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
 export class Sim {
-  constructor() { this.level = buildLevel(); this.players = new Map(); this.events = []; this.night = false; this.reset(1); }
+  constructor() { this.level = buildLevel(); this.players = new Map(); this.events = []; this.night = false; this.wxPick = 'random'; this.weather = 'clear'; this.reset(1); }
   reset(seed) {
     this.seed = seed >>> 0; this.rnd = rng32(this.seed); const rnd = this.rnd;
+    { const r = rng32(this.seed ^ 0x9e3779b9)(); this.weather = WEATHER.includes(this.wxPick) ? this.wxPick : r < 0.35 ? 'clear' : r < 0.6 ? 'rain' : r < 0.8 ? 'fog' : 'storm'; }
     this.phase = 'lobby'; this.timer = MISSION_TIME; this.t = 0; this.report = null;
     this.log = { unauth: 0, execution: 0, civHit: 0, civKilled: 0, ff: 0, downs: 0, wrongWire: 0 };
     const pick = (arr, n) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); };
@@ -21,7 +24,7 @@ export class Sim {
     spots.slice(0, N_SUSPECTS).forEach(([f, x, z], i) => this.npcs.push({
       id: i + 1, kind: 's', v: Math.floor(rnd() * 4), x, z, y: f * H, yaw: rnd() * 6.28, hp: 100, st: 'g', post: [x, z, f * H],
       patrol: rnd() < 0.35 ? spots[N_SUSPECTS + (i % 4)] : null, pt: 0, pwait: 3 + rnd() * 6, resolve: 0.3 + rnd() * 0.65, sweep: (rnd() - 0.5) * 0.8,
-      fakeChance: rnd() < 0.18, fake: false, shouts: 0, path: null, pi: 0, react: 0, cool: 0, burst: 3, lost: 0, tA: 0, tS: 0, hold: false, tgt: 0, lk: null, armed: true, flagged: false }));
+      fakeChance: rnd() < 0.18, fake: false, shouts: 0, spd: 0, strafe: false, path: null, pi: 0, react: 0, cool: 0, burst: 3, lost: 0, tA: 0, tS: 0, hold: false, tgt: 0, lk: null, armed: true, flagged: false }));
     pick(CIV_SPOTS, N_CIVS).forEach(([f, x, z], i) => this.npcs.push({ id: 101 + i, kind: 'c', v: Math.floor(rnd() * 4), x, z, y: f * H, yaw: rnd() * 6.28, hp: 100, st: 'w', stubborn: rnd() < 0.25, flagged: false }));
     this.doorOpen = this.level.doors.map(d => !d.exterior && rnd() < 0.3);
     this.doorLocked = this.level.doors.map((d, i) => d.hidden ? false : d.exterior ? rnd() < 0.6 : !this.doorOpen[i] && rnd() < 0.3);
@@ -31,7 +34,7 @@ export class Sim {
     });
     for (const p of this.players.values()) { p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; }
   }
-  start(seed, night = this.night) { this.night = !!night; this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
+  start(seed, night = this.night, wx = this.wxPick) { this.night = !!night; this.wxPick = wx === 'random' || WEATHER.includes(wx) ? wx : this.wxPick; this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
   ev(o) { this.events.push(o); }
   addPlayer(id, name) {
     const used = new Set([...this.players.values()].map(p => p.slot)); let slot = 0; while (used.has(slot)) slot++;
@@ -41,7 +44,7 @@ export class Sim {
   }
   removePlayer(id) { this.players.delete(id); }
   init() {
-    return { seed: this.seed, night: this.night, npcs: this.npcs.map(n => [n.id, n.kind, n.v]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order]), time: MISSION_TIME };
+    return { seed: this.seed, night: this.night, weather: this.weather, npcs: this.npcs.map(n => [n.id, n.kind, n.v]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order]), time: MISSION_TIME };
   }
   pose(id, m) {
     const p = this.players.get(id); if (!p || !Array.isArray(m.h) || m.h.length < 7 || !m.h.every(Number.isFinite)) return;
@@ -79,6 +82,7 @@ export class Sim {
   }
   hurt(p, dmg, part = 'torso') { if (p.down) return; p.hp -= dmg; p.w |= 1 << PARTS.indexOf(part); this.ev({ e: 'hurt', p: p.id, part }); if (p.hp <= 0) { p.hp = 0; p.down = true; this.log.downs++; this.ev({ e: 'down', p: p.id }); } }
   noise(x, z, radius, src) {
+    radius *= HEAR[this.weather];
     for (const n of this.npcs) if (n.kind === 's' && n.st === 'g' && Math.hypot(n.x - x, n.z - z) < radius) {
       n.st = 'a'; n.tA = 0; n.lk = [src.hx, src.hz, src.y]; n.hold = this.rnd() < 0.45; n.path = null;
     }
@@ -129,19 +133,31 @@ export class Sim {
   // ---- simulation ----
   sees(n, p, d) {
     const lit = this.night && p.light;                 // in the dark a flashlight gives you away at any range, even through glass
-    if (d > (this.night && !lit ? 7 : 22)) return false;
+    if (d > Math.max(3.5, (this.night && !lit ? 7 : 22) * SIGHT[this.weather])) return false;
     if (d > 2.5) { const a = Math.atan2(p.hx - n.x, p.hz - n.z); if (Math.abs(angDiff(a, n.yaw)) > 1.05) return false; }
     return this.clear(n.x, this.eyeY(n), n.z, p.hx, p.hy, p.hz, d > 8 && !lit);   // a lit room's glass only shows what is close
   }
   face(n, x, z, dt, rate) { const a = Math.atan2(x - n.x, z - n.z), d = angDiff(a, n.yaw), s = rate * dt; n.yaw += Math.abs(d) < s ? d : Math.sign(d) * s; }
   goto(n, x, z, y) { n.path = findPath(this.level, n.x, n.z, n.y, x, z, y); n.pi = 1; return !!n.path; }
-  walk(n, dt, speed) {
-    if (!n.path || n.pi >= n.path.length) { n.path = null; return false; }
-    const [tx, tz] = n.path[n.pi], dx = tx - n.x, dz = tz - n.z, d = Math.hypot(dx, dz), s = speed * dt;
-    if (d <= s) { n.x = tx; n.z = tz; n.pi++; } else { n.x += dx / d * s; n.z += dz / d * s; this.face(n, tx, tz, dt, 6); }
+  // Follow the path with momentum: speed builds and bleeds off, and the body turns before it commits to a new direction.
+  walk(n, dt, speed, keepFacing = false) {
+    if (!n.path || n.pi >= n.path.length) { n.path = null; n.spd = 0; return false; }
+    const [tx, tz] = n.path[n.pi], dx = tx - n.x, dz = tz - n.z, d = Math.hypot(dx, dz), last = n.pi === n.path.length - 1;
+    let want = speed;
+    if (!keepFacing) { const off = Math.abs(angDiff(Math.atan2(dx, dz), n.yaw)); this.face(n, tx, tz, dt, 5.5); if (off > 1.2) want *= 0.15; else if (off > 0.5) want *= 0.55; }
+    if (last) want = Math.min(want, 0.6 + d * 2.2);                       // ease to a stop at the end
+    n.spd += Math.max(-7 * dt, Math.min(4.5 * dt, want - n.spd));
+    let rem = n.spd * dt;                                               // carry leftover distance past each corner so speed never hiccups
+    while (rem > 0 && n.pi < n.path.length) { const [wx, wz] = n.path[n.pi], ex = wx - n.x, ez = wz - n.z, e = Math.hypot(ex, ez); if (e <= rem + 0.02) { n.x = wx; n.z = wz; n.pi++; rem -= e; } else { n.x += ex / e * rem; n.z += ez / e * rem; rem = 0; } }
     n.y = groundY(n.x, n.z, n.y);
     this.level.doors.forEach((dr, i) => { if (!this.doorOpen[i] && Math.abs(dr.y - n.y) < 1 && Math.hypot(dr.cx - n.x, dr.cz - n.z) < 1.1) { this.doorOpen[i] = true; this.doorLocked[i] = false; this.ev({ e: 'door', d: i, open: true }); } });
     return true;
+  }
+  // In a firefight, shift a step or two sideways between bursts instead of standing rooted.
+  sidestep(n, p) {
+    const dx = p.hx - n.x, dz = p.hz - n.z, d = Math.hypot(dx, dz) || 1, side = this.rnd() < 0.5 ? 1 : -1, r = 1 + this.rnd() * 0.8;
+    const path = findPath(this.level, n.x, n.z, n.y, n.x + dz / d * side * r, n.z - dx / d * side * r, n.y);
+    if (path && path.length >= 2 && path.length <= 4) { n.path = path; n.pi = 1; n.strafe = true; }
   }
   tickSuspect(n, dt) {
     if (DONE[n.st]) return;
@@ -166,10 +182,11 @@ export class Sim {
       if (n.tA > 25) { n.st = 'g'; n.hold = false; this.goto(n, n.post[0], n.post[1], n.post[2]); }
     } else if (n.st === 'c') {
       if (seen) {
-        n.tgt = seen.id; n.lost = 0; n.lk = [seen.hx, seen.hz, seen.y]; n.path = null; this.face(n, seen.hx, seen.hz, dt, 8); n.react -= dt;
-        if (n.react <= 0) { n.cool -= dt; if (n.cool <= 0) { this.npcFire(n, seen, best); n.burst--; if (n.burst > 0) n.cool = 0.16; else { n.burst = 2 + Math.floor(this.rnd() * 3); n.cool = 0.7 + this.rnd() * 0.7; } } }
+        n.tgt = seen.id; n.lost = 0; n.lk = [seen.hx, seen.hz, seen.y]; this.face(n, seen.hx, seen.hz, dt, 8); n.react -= dt;
+        if (n.strafe) { if (!this.walk(n, dt, 1.9, true)) n.strafe = false; }
+        else { n.path = null; n.spd = 0; if (n.react <= 0) { n.cool -= dt; if (n.cool <= 0) { this.npcFire(n, seen, best); n.burst--; if (n.burst > 0) n.cool = 0.16; else { n.burst = 2 + Math.floor(this.rnd() * 3); n.cool = 0.7 + this.rnd() * 0.7; if (this.rnd() < 0.4) this.sidestep(n, seen); } } } }
       } else {
-        n.lost += dt;
+        n.lost += dt; if (n.strafe) { n.strafe = false; n.path = null; }
         if (n.lost > 1.2) { if (!n.path && Math.hypot(n.lk[0] - n.x, n.lk[1] - n.z) > 1.5) this.goto(n, n.lk[0], n.lk[1], n.lk[2]); this.walk(n, dt, 2.6); }
         if (n.lost > 12) { n.st = 'a'; n.tA = 0; n.hold = true; n.path = null; }
       }

@@ -90,41 +90,58 @@ export class Human {
       const [shirt, pants, hair] = CIVC[v % 4]; sleeve = shirt; hand = skin; leg = pants; shoe = 0x2a2a2a;
       up = [[BOX(0.42, 0.56, 0.24), shirt, 0, 0.3, 0], [CYL(0.05, 0.1), skin, 0, 0.62, 0], [SPH(0.112), skin, 0, 0.74, 0], [BOX(0.2, 0.09, 0.21), hair, 0, 0.82, -0.015], [BOX(0.2, 0.14, 0.05), hair, 0, 0.74, -0.095]];
     }
+    // Skeleton: root > body > hips, two legs (hip > thigh, knee > shin + shoe), upper (torso + head) > two arms (shoulder > upper arm, elbow > forearm + hand).
     const g = this.g = new THREE.Group(); g.rotation.order = 'YXZ'; const body = this.body = new THREE.Group(); g.add(body);
     this.upper = new THREE.Group(); this.upper.position.y = 0.9; body.add(this.upper); this.upper.add(merge(up, 'cloth'));
-    this.arms = [-1, 1].map(sx => { const a = new THREE.Group(); a.position.set(sx * 0.275, 0.5, 0); a.add(merge([[CAP(0.055, 0.5), sleeve, 0, -0.28, 0], [SPH(0.05), hand, 0, -0.61, 0]], 'cloth')); this.upper.add(a); return a; });
-    this.legs = [-1, 1].map(sx => { const l = new THREE.Group(); l.position.set(sx * 0.1, 0.9, 0); l.add(merge([[CAP(0.078, 0.7), leg, 0, -0.43, 0], [BOX(0.11, 0.07, 0.26), shoe, 0, -0.85, 0.05], [BOX(0.115, 0.025, 0.265), sole, 0, -0.89, 0.05]], 'cloth')); body.add(l); return l; });
+    this.arms = [-1, 1].map(sx => { const sh = new THREE.Group(), el = new THREE.Group(); sh.position.set(sx * 0.275, 0.5, 0); el.position.y = -0.3; sh.add(merge([[CAP(0.056, 0.2), sleeve, 0, -0.15, 0]], 'cloth'), el); el.add(merge([[CAP(0.05, 0.18), sleeve, 0, -0.13, 0], [SPH(0.05), hand, 0, -0.29, 0]], 'cloth')); this.upper.add(sh); return { sh, el }; });
+    this.legs = [-1, 1].map(sx => { const hip = new THREE.Group(), knee = new THREE.Group(); hip.position.set(sx * 0.1, 0.9, 0); knee.position.y = -0.43; hip.add(merge([[CAP(0.082, 0.28), leg, 0, -0.2, 0]], 'cloth'), knee); knee.add(merge([[CAP(0.07, 0.28), leg, 0, -0.2, 0], [BOX(0.11, 0.07, 0.26), shoe, 0, -0.42, 0.05], [BOX(0.115, 0.025, 0.265), sole, 0, -0.46, 0.05]], 'cloth')); body.add(hip); return { hip, knee }; });
     body.add(merge([[BOX(0.4, 0.18, 0.24), leg, 0, 0.86, 0]], 'cloth'));
-    if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.6, 0.02); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].add(this.gun); }
-    this.kind = kind; this.st = ''; this.tx = 0; this.ty = 0; this.tz = 0; this.tyaw = 0; this.phase = 0; this.first = true; this.flashT = 0; this.yOff = 0;
+    if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
+    this.kind = kind; this.st = ''; this.first = true; this.flashT = 0; this.flinch = 0; this.phase = Math.random() * 6; this.idle = Math.random() * 9; this.speed = 0;
+    this.p0 = new THREE.Vector3(); this.p1 = new THREE.Vector3(); this.y0 = 0; this.y1 = 0; this.it = 0; this.dur = 0.07; this.lastT = 0;
+    this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST);
   }
+  // A new server position arrives ~15 times a second: glide to it at constant speed over one interval instead of chasing it.
   target(x, y, z, yaw, st, armed) {
-    this.tx = x; this.ty = y; this.tz = z; this.tyaw = yaw;
-    if (this.first) { this.g.position.set(x, y, z); this.g.rotation.y = yaw; this.first = false; }
+    const now = performance.now() / 1000;
+    if (this.first) { this.g.position.set(x, y, z); this.g.rotation.y = yaw; this.first = false; this.lastT = now - 0.07; }
+    this.dur = Math.max(0.04, Math.min(0.2, now - this.lastT)); this.lastT = now; this.it = 0;
+    this.p0.copy(this.g.position); this.p0.y -= this.cur.yOff; this.p1.set(x, y, z); this.y0 = this.g.rotation.y; let d = yaw - this.y0; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; this.y1 = this.y0 + d;
     if (this.gun) this.gun.visible = !!armed;
-    if (st !== this.st) { this.st = st; this.pose(); }
-  }
-  pose() {
-    const s = this.st, kneel = s === 'k' || s === 'y' || s === 'u' || s === 'w', lying = s === 'd' || s === 'i' || s === 'j', [l, r] = this.arms;
-    this.g.rotation.x = s === 'j' ? HP : lying ? -HP : 0; this.yOff = lying ? 0.15 : 0;
-    this.body.position.y = kneel ? -0.42 : 0; for (const leg of this.legs) { leg.scale.y = kneel ? 0.53 : 1; leg.rotation.x = 0; }
-    this.upper.rotation.x = s === 'w' ? 0.55 : 0; l.rotation.z = r.rotation.z = 0;
-    const ax = { g: -0.75, a: -1.1, c: -1.5, s: -3.0, k: -2.7, y: -2.7, u: 0.55, w: -2.5, d: -0.2, i: -0.3, j: 0.5 }[s] ?? 0;
-    r.rotation.x = ax; l.rotation.x = (s === 'g' || s === 'a') ? -0.5 : ax; if (s === 'c') l.rotation.z = 0.5;
-    if (s === 's' || s === 'k' || s === 'y') { l.rotation.z = -0.25; r.rotation.z = 0.25; }
-    if (s === 'd' || s === 'i') { l.rotation.z = -0.7; r.rotation.z = 0.5; }
+    if (st !== this.st) { this.st = st; this.tgt = Object.assign({}, REST, POSE[st]); }
   }
   update(dt) {
-    const p = this.g.position, k = 1 - Math.exp(-12 * dt), dx = this.tx - p.x, dz = this.tz - p.z, sp = Math.hypot(dx, dz) / Math.max(dt, 1e-3) * k;
-    p.x += dx * k; p.z += dz * k; p.y += (this.ty + this.yOff - p.y) * k;
-    let d = this.tyaw - this.g.rotation.y; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; this.g.rotation.y += d * k;
-    const standing = this.st === 'g' || this.st === 'a' || this.st === 'c';
-    if (standing && sp > 0.3) { this.phase += dt * 8; const a = Math.sin(this.phase) * 0.5; this.legs[0].rotation.x = a; this.legs[1].rotation.x = -a; } else if (standing) { this.legs[0].rotation.x *= 0.8; this.legs[1].rotation.x *= 0.8; }
-    if (this.st === 'i') this.arms[0].rotation.x = -0.3 + Math.sin((this.phase += dt * 2)) * 0.12;   // wounded, still moving
-    if (this.gun) { if (this.flashT > 0) { this.flashT -= dt; this.gun.userData.flash.visible = this.flashT > 0; } }
+    const p = this.g.position, px = p.x, pz = p.z; this.it += dt; const a = Math.min(1.25, this.it / this.dur);
+    p.x = this.p0.x + (this.p1.x - this.p0.x) * a; p.z = this.p0.z + (this.p1.z - this.p0.z) * a; const baseY = this.p0.y + (this.p1.y - this.p0.y) * Math.min(1, a); this.g.rotation.y = this.y0 + (this.y1 - this.y0) * Math.min(1, a);
+    const moved = Math.hypot(p.x - px, p.z - pz); this.speed += (moved / Math.max(dt, 1e-3) - this.speed) * Math.min(1, dt * 8);
+    // blend joints toward the pose for the current state (falling over is slower than raising a rifle)
+    const c = this.cur, t = this.tgt, k = 1 - Math.exp(-9 * dt), kl = 1 - Math.exp(-5.5 * dt);
+    for (const j in c) c[j] += (t[j] - c[j]) * (j === 'lie' || j === 'yOff' || j === 'drop' ? kl : k);
+    // layered motion: walk cycle scaled by real ground speed (so feet do not slide), breathing, weight shift, flinch, recoil
+    const st = this.st, up = st === 'g' || st === 'a' || st === 'c', w = up ? Math.min(1, this.speed / 1.3) : 0, run = up ? Math.max(0, Math.min(1, (this.speed - 1.6) / 1.4)) : 0;
+    if (up) this.phase += moved * (2 * Math.PI / (1.25 + 0.5 * run)); this.idle += dt;
+    const ph = this.phase, A = (0.42 + 0.25 * run) * w, br = Math.sin(this.idle * 1.6) * 0.012, sway = up ? Math.sin(this.idle * 0.55) * 0.02 * (1 - w) : 0, hurt = st === 'i' ? Math.sin(this.idle * 2.2) * 0.1 : 0;
+    this.flinch = Math.max(0, this.flinch - dt * 4); const fl = this.flinch * this.flinch, kick = this.flashT > 0 ? 0.07 : 0;
+    const [L, R] = this.legs;
+    L.hip.rotation.x = c.hl - A * Math.sin(ph); L.knee.rotation.x = c.kl + (0.25 + 0.75 * Math.max(0, Math.cos(ph))) * A * 1.5;
+    R.hip.rotation.x = c.hr + A * Math.sin(ph); R.knee.rotation.x = c.kr + (0.25 + 0.75 * Math.max(0, -Math.cos(ph))) * A * 1.5;
+    this.body.position.y = c.drop - Math.abs(Math.sin(ph)) * 0.035 * w - 0.02 * w; this.body.rotation.z = sway;
+    this.upper.rotation.set(c.spine + 0.07 * w + 0.12 * run + br + fl * 0.25, Math.sin(ph) * 0.07 * w + fl * 0.4, -Math.sin(ph) * 0.03 * w - sway);
+    const [la, ra] = this.arms, bob = Math.sin(ph * 2) * 0.04 * w;
+    la.sh.rotation.set(c.slx + bob + br + hurt - kick, 0, c.slz); la.el.rotation.x = c.el; ra.sh.rotation.set(c.srx + bob + br - kick, 0, c.srz); ra.el.rotation.x = c.er - kick;
+    this.g.rotation.x = c.lie; p.y = baseY + c.yOff;
+    if (this.gun) { if (this.flashT > 0) this.flashT -= dt; this.gun.userData.flash.visible = this.flashT > 0; }
   }
-  muzzle(out) { return out.set(this.g.position.x + Math.sin(this.g.rotation.y) * 0.6, this.g.position.y + 1.4, this.g.position.z + Math.cos(this.g.rotation.y) * 0.6); }
+  muzzle(out) { return out.set(this.g.position.x + Math.sin(this.g.rotation.y) * 0.6, this.g.position.y + 1.35, this.g.position.z + Math.cos(this.g.rotation.y) * 0.6); }
 }
+// Joint angles per state. h = hip, k = knee, s?x/s?z = shoulder swing / spread, e = elbow, l / r = left / right.
+const REST = { hl: 0, hr: 0, kl: 0, kr: 0, slx: 0, slz: 0, srx: 0, srz: 0, el: 0, er: 0, spine: 0, drop: 0, lie: 0, yOff: 0 };
+const KN = { kl: 1.65, kr: 1.65, drop: -0.42 }, UPH = { slx: -2.6, srx: -2.6, el: -0.5, er: -0.5, slz: -0.3, srz: 0.3 }, BACK = { slx: 0.55, srx: 0.55, el: 0.4, er: 0.4, slz: 0.25, srz: -0.25 };
+const POSE = {
+  g: { srx: -0.2, er: -1.0, slx: -0.85, slz: 0.5, el: -0.8 }, a: { srx: -0.5, er: -1.0, slx: -1.05, slz: 0.5, el: -0.75, spine: 0.06 }, c: { srx: -1.05, er: -0.55, slx: -1.3, slz: 0.5, el: -0.35, spine: 0.1, kl: 0.12, kr: 0.12, hl: -0.1, hr: 0.14, drop: -0.02 },
+  s: UPH, k: Object.assign({}, UPH, KN), y: Object.assign({}, UPH, KN), u: Object.assign({}, BACK, KN), w: Object.assign({ slx: -2.3, srx: -2.3, el: -1.7, er: -1.7, spine: 0.55 }, KN),
+  d: { lie: -HP, yOff: 0.15, slx: -0.2, slz: -0.7, srx: -0.3, srz: 0.5, kl: 0.2, kr: 0.5, hr: -0.25 }, i: { lie: -HP, yOff: 0.15, slx: -0.5, slz: -0.6, srx: -0.2, srz: 0.4, kl: 0.6, hl: -0.4, kr: 0.15 }, j: Object.assign({ lie: HP, yOff: 0.15 }, BACK),
+};
 
 // ---------- officer body: vest, belt, holders, legs, and arms that reach to the hands ----------
 // Offsets are from the head, with -z forward. These are also the grab zones used by the game.

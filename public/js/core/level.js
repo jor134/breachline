@@ -228,7 +228,20 @@ function nearestWalk(level, x, z, l) {
   return best;
 }
 // A* over the three-layer grid. Doors are treated as passable. Returns [[x,z,storey],...] (storey -1, 0, 1) or null.
-export function findPath(level, sx, sz, sy, tx, tz, ty) {
+// Can something walk the straight line a -> b ([x, z, storey])? Only on one storey and off the stairs.
+function clearWalk(level, a, b) {
+  if (a[2] !== b[2] || inStair(a[0], a[1]) || inStair(b[0], b[1])) return false;
+  const li = a[2] + 1, dx = b[0] - a[0], dz = b[1] - a[1], n = Math.ceil(Math.hypot(dx, dz) / 0.15);
+  for (let i = 1; i < n; i++) { const x = a[0] + dx * i / n, z = a[1] + dz * i / n, y = cellY(li, x, z); if (Number.isNaN(y) || inStair(x, z) || circleHits(level, null, x, z, 0.25, y)) return false; }
+  return true;
+}
+// Drop the grid's zig-zag: keep only the corners a walker actually has to turn at.
+function smoothPath(level, p) {
+  if (p.length < 3) return p; const out = [p[0]]; let i = 0;
+  while (i < p.length - 1) { let j = Math.min(p.length - 1, i + 14); while (j > i + 1 && !clearWalk(level, p[i], p[j])) j--; out.push(p[j]); i = j; }
+  return out;
+}
+export function findPath(level, sx, sz, sy, tx, tz, ty, raw = false) {
   const N = NX * NZ, T3 = 3 * N, start = nearestWalk(level, sx, sz, layerOf(sx, sz, sy)), goal = nearestWalk(level, tx, tz, layerOf(tx, tz, ty));
   if (start < 0 || goal < 0) return null;
   const g = new Float32Array(T3).fill(Infinity), from = new Int32Array(T3).fill(-1), closed = new Uint8Array(T3), W = level.walk, CY = level.cy;
@@ -254,5 +267,5 @@ export function findPath(level, sx, sz, sy, tx, tz, ty) {
   }
   if (from[goal] < 0 && goal !== start) return null;
   const out = []; for (let id = goal; id >= 0; id = from[id]) { const c = id % N, i = c % NX, j = (c - i) / NX; const [x, z] = cellXZ(i, j); out.push([x, z, (id - c) / N - 1]); if (id === start) break; }
-  return out.reverse();
+  out.reverse(); return raw ? out : smoothPath(level, out);
 }
