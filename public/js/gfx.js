@@ -73,6 +73,7 @@ function furnish(b, w) {
     case 'pool': P('pooltile', 0, len, 0, dep, 0, h, 'xXzZ'); P('pooltile', 0, len, 0, 0.18, h - 0.001, h, 'Y'); P('pooltile', 0, len, dep - 0.18, dep, h - 0.001, h, 'Y'); P('pooltile', 0, 0.18, 0.18, dep - 0.18, h - 0.001, h, 'Y'); P('pooltile', len - 0.18, len, 0.18, dep - 0.18, h - 0.001, h, 'Y');
       P('water', 0.18, len - 0.18, 0.18, dep - 0.18, h - 0.05, h - 0.03, 'Y', 0.2); break;
     case 'hedge': P('hedge', 0, len, 0, dep, 0, h); break;
+    case 'pot': P('top', 0.02, len - 0.02, 0.02, dep - 0.02, 0, h - 0.04, 'xXzZ'); P('top', 0, len, 0, dep, h - 0.08, h, 'xXzZyY'); P('walnut', 0.03, len - 0.03, 0.03, dep - 0.03, h - 0.03, h - 0.02, 'Y'); break;
     default: P('stone', 0, len, 0, dep, 0, h);
   }
 }

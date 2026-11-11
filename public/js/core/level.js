@@ -71,6 +71,26 @@ export const BOMB_SPOTS = [
   [0, 19.5, 12.25, 0.78], [0, 19.5, 3.95, 0.92], [0, 4, 3.75, 0.76], [1, 7, 15.4, 0.85], [1, 17, 0.6, 0.76], [0, 14.1, 0.75, 0.9], [1, 4, 6.25, 0.76],
 ];
 
+// Planting. Trees: [x, z, model, height, turn]. Shrubs: [x, z, model, height]. Pots (indoors): [floor, x, z, model, height].
+// Tree trunks and pots stop people and bullets; shrubs only hide things.
+export const VEG = (() => {
+  let seed = 11; const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const trees = [[-5.5, 28, 'common_tree_1', 7.5], [3, 28.6, 'common_tree_3', 6.5], [20.2, 28.7, 'common_tree_2', 7], [28.5, 23.5, 'common_tree_1', 8], [-6, 19.5, 'palm_tree_1', 8.5], [30, 18, 'palm_tree_2', 8],
+    [-5.6, 9, 'common_tree_2', 7], [29.8, 10, 'common_tree_3', 7.5], [30.2, 5.5, 'pine_tree_1', 8], [-6.2, 4.5, 'pine_tree_1', 7],
+    [2.2, -12, 'palm_tree_3', 9], [23.6, -13.6, 'palm_tree_1', 8.5], [-4.2, -9, 'palm_tree_2', 9.5], [28.2, -8.6, 'palm_tree_3', 8], [-6, -3, 'common_tree_1', 7], [30, -4.5, 'common_tree_2', 6.5]].map(t => [...t, r() * 6.28]);
+  const shrubs = [], B = ['bush_1', 'bush_2', 'bush_3', 'bush_4', 'bush_5'], G = ['grass_1', 'grass_2', 'grass_3', 'grass_4'], P = ['plant_1', 'plant_2', 'plant_3'];
+  const row = (x0, z0, x1, z1, step, kinds, h) => { const n = Math.max(1, Math.round(Math.hypot(x1 - x0, z1 - z0) / step)); for (let i = 0; i <= n; i++) shrubs.push([x0 + (x1 - x0) * i / n + (r() - 0.5) * 0.5, z0 + (z1 - z0) * i / n + (r() - 0.5) * 0.5, kinds[Math.floor(r() * kinds.length)], h * (0.75 + r() * 0.5)]); };
+  row(1.3, 16.7, 8.2, 16.7, 1.2, G, 0.5); row(15.8, 16.7, 22.8, 16.7, 1.2, G, 0.5); row(-7.2, 29.2, 8, 29.2, 2.1, B, 1.3); row(16, 29.2, 31.2, 29.2, 2.1, B, 1.3);
+  row(-7.2, 13, -7.2, 27, 2.4, B, 1.4); row(31.2, 13, 31.2, 27, 2.4, B, 1.4); row(-7.2, -15, -7.2, 3, 2.6, B, 1.4); row(31.2, -15, 31.2, 3, 2.6, B, 1.4);
+  row(-6.4, 5.5, -6.4, 11, 1.6, [...B, ...P], 1.1); row(30.6, 6.5, 30.6, 11.5, 1.6, [...B, ...P], 1.1); row(-2.6, 5, -2.6, 11, 1.5, G, 0.55); row(26.8, 5, 26.8, 11, 1.5, G, 0.55);
+  row(1.4, -0.7, 8.2, -0.7, 1.3, G, 0.5); row(13.2, -0.7, 16.5, -0.7, 1.2, G, 0.5); row(4.2, -14.4, 19.8, -14.4, 1.7, [...G, ...P], 0.7); row(1.2, 24.4, 9.6, 24.4, 1.5, [...G, ...P], 0.7);
+  row(-3.2, 17.4, -3.2, 24.6, 1.4, P, 0.9); row(21, 20.6, 26, 20.6, 1.5, [...B, ...P], 1.0); row(0.2, -7.2, 4.2, -7.2, 1.2, P, 0.9); row(20.4, -6.6, 26, -6.6, 1.5, [...B, ...P], 1.0);
+  for (const [x, z] of [[-4.5, 22.5], [27.5, 26], [-5, -12.5], [26.5, -11.5], [29.5, 14.5], [-5.5, 15]]) shrubs.push([x, z, r() < 0.5 ? 'stone_4' : 'stone_5', 0.6 + r() * 0.5]);
+  const pots = [[0, 0.6, 15.4], [0, 14.4, 15.4], [0, 23.4, 15.4], [0, 23.4, 7.3], [0, 8.4, 1.0], [0, 9.6, 8.4], [1, 14.4, 0.6], [1, 8.4, 8.6], [1, 9.6, 15.4], [1, 14.4, 15.4], [1, 15.6, 15.4], [1, 23.4, 7.4], [1, 8.4, 4.6], [1, 8.5, 3.4],
+    [-1, 9.6, 15.4], [-1, 14.4, 15.4], [-1, 14.4, 0.6], [-1, 8.4, 7.4], [-1, 15.6, 15.4], [-1, 0.6, 0.6]].map((p, i) => [...p, i % 3 === 2 ? B[1 + (i % 2) * 2] : P[i % 3], 0.8 + r() * 0.5]);
+  return { trees, shrubs, pots };
+})();
+
 export const NX = (YARD.x1 - YARD.x0) / U, NZ = (YARD.z1 - YARD.z0) / U;
 const inStair = (x, z) => x > STAIR.x0 && x < STAIR.x1 && z > STAIR.z0 && z < STAIR.z1;
 const stairT = z => (STAIR.z1 - z) / (STAIR.z1 - STAIR.z0);
@@ -149,6 +169,8 @@ export function buildLevel() {
   };
   merge(edges, 'wall', T); merge(gedges, 'glass', 0.06);
   for (const [f, x0, z0, x1, z1, h, kind] of FURNITURE) boxes.push({ f, kind: 'furn', sub: kind, x0, x1, z0, z1, y0: f * H, y1: f * H + h });
+  for (const [x, z] of VEG.trees) { const y = terrainY(z); boxes.push({ f: y < -H / 2 ? -1 : 0, kind: 'trunk', x0: x - 0.17, x1: x + 0.17, z0: z - 0.17, z1: z + 0.17, y0: y, y1: y + 3.2 }); }
+  for (const [f, x, z] of VEG.pots) boxes.push({ f, kind: 'furn', sub: 'pot', x0: x - 0.22, x1: x + 0.22, z0: z - 0.22, z1: z + 0.22, y0: f * H, y1: f * H + 0.5 });
   const level = { boxes, doors, walk: null };
   // nav grid, three layers
   const walk = new Uint8Array(3 * NX * NZ), cy = new Float32Array(3 * NX * NZ);

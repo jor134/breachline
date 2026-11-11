@@ -4,6 +4,7 @@ import { buildWorld, label } from './gfx.js';
 import { Human, Officer, Bomb, Body, RIG, makeRifle, makePistol, makeMag, makeTool } from './actors.js';
 import { initAudio, setListener, setAmbience, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
+import { loadVegetation } from './veg.js';
 import { groundY, resolveCircle, rayStatic, SPAWN, BREAKER } from './core/level.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
@@ -18,6 +19,7 @@ const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(72, innerW
 camera.rotation.order = 'YXZ'; rig.add(camera); scene.add(rig);
 addEventListener('resize', () => { if (renderer.xr.isPresenting) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 const world = buildWorld(scene), level = world.level;
+loadVegetation(scene).catch(e => console.warn('vegetation not loaded', e));
 
 const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false }, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
   net: 'offline', room: '', report: null, doorLocked: level.doors.map(() => false), bodyYaw: 0, panel: 'lobby', menu: false, deskPick: null, night: false, nvg: false, tool: 'hands', hintT: 0, wx: 'clear', wxPick: 'random', squad: [], secured: 0, civs: 5, defused: 0, light: true, now: 0, eye: 1.66, crouch: false, yaw: 0, pitch: 0, ads: false, reloading: false, tilt: +(localStorage.getItem('bl_tilt') || 0) };
