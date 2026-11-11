@@ -6,7 +6,7 @@ import * as W from '../public/js/core/weapon.js';
 let n = 0; const t = (name, fn) => { fn(); n++; console.log('ok', name); };
 const L = buildLevel();
 
-t('level builds walls and 14 doors', () => { assert.ok(L.boxes.filter(b => b.kind === 'wall').length > 30); assert.equal(L.doors.length, 15); assert.ok(L.boxes.filter(b => b.kind === 'glass').length >= 8); });
+t('level builds walls and 14 doors', () => { assert.ok(L.boxes.filter(b => b.kind === 'wall').length > 30); assert.equal(L.doors.length, 23); assert.ok(L.boxes.filter(b => b.kind === 'glass').length >= 8); });
 t('every spot is walkable and reachable from spawn', () => {
   for (const [f, x, z] of [...SUSPECT_SPOTS, ...CIV_SPOTS]) {
     assert.ok(!circleHits(L, null, x, z, 0.25, f * H), `spot blocked ${f},${x},${z}`);
@@ -55,7 +55,7 @@ const beside = (s, p, n, r = 1.3) => { for (let a = 0; a < 6.28; a += 0.4) { con
 const aimAt = (s, p, n, dy = 1.3) => { const d = [n.x - p.hx, n.y + dy - p.hy, n.z - p.hz]; s.shot(p.id, { o: [p.hx, p.hy, p.hz], d, w: 'rifle' }); };
 t('mission populates deterministically per seed', () => {
   const [a] = mkSim(42), [b] = mkSim(42), [c] = mkSim(43);
-  assert.equal(a.npcs.filter(n => n.kind === 's').length, 8); assert.equal(a.npcs.filter(n => n.kind === 'c').length, 5); assert.equal(a.bombs.length, 2);
+  assert.equal(a.npcs.filter(n => n.kind === 's').length, 9); assert.equal(a.npcs.filter(n => n.kind === 'c').length, 5); assert.equal(a.bombs.length, 2);
   assert.deepEqual(a.init(), b.init()); assert.notDeepEqual(a.init(), c.init());
 });
 t('suspect spots a player, reacts, shoots, and can down them', () => {
@@ -112,8 +112,8 @@ t('host protocol: join, start, snapshot, 5th player refused, restart after end',
   for (let i = 1; i <= 4; i++) assert.ok(h.join(i, 'P' + i)); assert.equal(h.join(5, 'X'), false); assert.equal(out.at(-1)[1].t, 'full');
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); h.message(2, { t: 'start' }); 
   h.message(1, { t: 'pose', h: [12, 1.65, 27, 0, 0, 0, 1], g: [1, 0] }); h.message(1, 'garbage'); h.message(1, { t: 'pose', h: [NaN] }); h.tick();
-  const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 13); assert.equal(snap.D.length, 15); assert.equal(snap.L.length, 15);
-  assert.ok(JSON.stringify(snap).length < 3000, 'snapshot size ' + JSON.stringify(snap).length);
+  const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 14); assert.equal(snap.D.length, 23); assert.equal(snap.L.length, 23);
+  assert.ok(JSON.stringify(snap).length < 3200, 'snapshot size ' + JSON.stringify(snap).length);
   h.leave(2); h.leave(3); h.leave(4); h.sim.players.get(1).down = true; h.tick(); assert.equal(h.sim.phase, 'ended');
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); assert.ok(!h.sim.players.get(1).down);
 });
@@ -132,9 +132,25 @@ t('locked doors: rattle, pick quietly, or kick loudly', () => {
   for (let seed = 1; seed < 30; seed++) { const [s4] = mkSim(seed); const h = L.doors.findIndex(q => q.hidden); assert.ok(h >= 0 && !s4.doorLocked[h] && !s4.doorOpen[h], 'hidden rear door is closed and never locked'); }
 });
 t('hidden rear entry is reachable from spawn without entering through the front', () => {
-  const h = L.doors.find(q => q.hidden), legs = [[12, 27], [28, 17], [28, -2], [16, -4.5], [h.cx, h.cz - 1]];
-  for (let i = 1; i < legs.length; i++) { const path = findPath(L, legs[i - 1][0], legs[i - 1][1], 0, legs[i][0], legs[i][1], 0); assert.ok(path && path.every(c => !(c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16)), 'leg ' + i + ' stays outside'); const e = path.at(-1); assert.ok(Math.hypot(e[0] - legs[i][0], e[1] - legs[i][1]) < 0.8, 'leg ' + i + ' arrives'); }
-  assert.ok(findPath(L, h.cx, h.cz - 0.8, 0, 12, 2, 0).length < 12, 'door leads straight into the utility room');
+  const h = L.doors.find(q => q.hidden), legs = [[12, 27, 0], [28, 17, 0], [28, -2, -H], [24.5, -2.2, -H], [h.cx, h.cz - 1, -H]];
+  for (let i = 1; i < legs.length; i++) { const a = legs[i - 1], b = legs[i], path = findPath(L, a[0], a[1], a[2], b[0], b[1], b[2]); assert.ok(path && path.every(c => !(c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16)), 'leg ' + i + ' stays outside'); const e = path.at(-1); assert.ok(Math.hypot(e[0] - b[0], e[1] - b[1]) < 0.8, 'leg ' + i + ' arrives');
+    let y = a[2], prev = a[2]; for (const [x, z] of path) { y = groundY(x, z, y); assert.ok(Math.abs(y - prev) < 0.45, 'terrain step'); prev = y; } assert.ok(Math.abs(y - b[2]) < 0.01, 'leg ' + i + ' ends at the right height'); }
+  assert.ok(findPath(L, h.cx, h.cz - 0.8, -H, 20, 3, -H).length < 12, 'door leads straight into the plant room');
+});
+t('basement: inside stairs go down from the utility room, the walk-out opens onto the back yard', () => {
+  const p = findPath(L, 12, 2, 0, 12, 12, -H); assert.ok(p && p.at(-1)[2] === -1); let y = 0, prev = 0, min = 0; for (const [x, z] of p) { y = groundY(x, z, y); assert.ok(Math.abs(y - prev) < 0.45, 'jump ' + prev + '->' + y); prev = y; } assert.equal(y, -H);
+  assert.ok(p.every(c => c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16), 'route stays indoors'); assert.ok(p.length < 45, 'uses the stairs, length ' + p.length);
+  const up = findPath(L, 12, 12, -H, 12, 2, H); assert.ok(up && up.at(-1)[2] === 1 && up.every(c => c[0] > 0 && c[0] < 24 && c[1] > 0 && c[1] < 16), 'basement to upper floor indoors');
+  const w = L.doors.find(d => d.f === -1 && d.exterior && !d.hidden), out = findPath(L, 12, -5, -H, 12, 2, -H); assert.ok(out.length < 20 && out.some(c => Math.abs(c[0] - w.cx) < 0.6 && Math.abs(c[1] - w.cz) < 0.6), 'walk-out door');
+  assert.equal(groundY(12, -5, 0), -H); assert.equal(groundY(12, 20, -H), 0); assert.ok(Math.abs(groundY(-3, 8, 0) + H / 2) < 1e-9);
+  assert.ok(rayStatic(L, null, 12, 1.5, 12, 0, -1, 0, 50) < 1.6, 'ground floor slab'); assert.ok(Math.abs(rayStatic(L, null, 12, -1.7, 12, 0, -1, 0, 50) - 1.5) < 0.01, 'basement floor');
+  assert.ok(rayStatic(L, null, 14.25, -2.5, 8.5, 0, 1, 0, 50) > 5, 'stairwell is open through all three storeys');
+  assert.ok(Math.abs(rayStatic(L, null, -3, 2, 8, 0, -1, 0, 50) - 3.6) < 0.01, 'hillside'); 
+});
+t('night: suspects see a dark officer only up close, a flashlight gives you away', () => {
+  const mk = (night, light) => { const s = new Sim(); s.addPlayer(1, 'T'); s.start(7, night); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; Object.assign(n, { x: 8, z: 15.2, y: 0, yaw: Math.atan2(1.4 - 8, 8.8 - 15.2), sweep: 0, patrol: null }); s.pose(1, { h: [1.4, 1.65, 8.8, 0, 0, 0, 1], g: [1, 0], f: light ? 1 : 0 }); for (let i = 0; i < 20; i++) s.tick(1 / 15); return n.st; };
+  assert.equal(mk(false, false), 'c', 'dusk: seen across the living room'); assert.equal(mk(true, false), 'g', 'night, light off: not seen at 9 m'); assert.equal(mk(true, true), 'c', 'night, light on: seen');
+  const s = new Sim(); s.addPlayer(1, 'T'); s.start(3, true); assert.equal(s.init().night, true); const h = new RoomHost(() => { }); h.join(1, 'A'); h.message(1, { t: 'restart', night: true }); assert.ok(h.sim.night); h.message(1, { t: 'restart' }); assert.ok(h.sim.night, 'restart keeps the mode'); h.message(1, { t: 'restart', night: false }); assert.ok(!h.sim.night);
 });
 t('glass: stops people, not bullets; suspects only see through it up close', () => {
   const [x] = resolveCircle(L, null, 0.2, 12, 0.25, 0); assert.ok(x >= 0.27, 'cannot walk through the west glass');

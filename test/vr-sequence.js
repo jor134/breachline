@@ -31,9 +31,13 @@
   const y0 = B.head.yaw, hx = B.head.pos.x; X.right.pad.axes[2] = 1; await wait(280); X.right.pad.axes[2] = 0; await wait(100); out.turned = +((y0 - B.head.yaw) * 180 / Math.PI).toFixed(0); out.pivot = +(B.head.pos.x - hx).toFixed(2);
   X.right.pad.axes[2] = -1; await wait(280); X.right.pad.axes[2] = 0; await wait(100);
   // 9 start mission by shooting the START button
-  const bw = B.panel.mesh.localToWorld(new THREE.Vector3((512 / 1024 - 0.5) * 1.6, (0.5 - 688 / 768) * 1.2, 0));
+  const sb = B.panel.btns.find(b => b.act === 'dusk'), bw = B.panel.mesh.localToWorld(new THREE.Vector3(((sb.x + sb.w / 2) / 1024 - 0.5) * 1.6, (0.5 - (sb.y + sb.h / 2) / 768) * 1.2, 0));
   const aim = async (target) => { for (let i = 0; i < 3; i++) { const mz = gunPt(B.guns.rifle, 'muzzle'), m = new THREE.Matrix4().lookAt(mz, target, new THREE.Vector3(0, 1, 0)), q = new THREE.Quaternion().setFromRotationMatrix(m), rq = B.rig.quaternion.clone().invert().multiply(q); X.right.q = [rq.x, rq.y, rq.z, rq.w]; await wait(100); } };
   await aim(bw); out.probe = B.panel.cursor.visible; await tap('right', 0); await wait(400); out.phase = B.S.phase; out.magAtStart = B.guns.rifle.st.mag; out.itemAtStart = B.hands[1].item;
+  // tool wheel: hold left A/X, move toward a wedge, release
+  const tool = async (dx, dy) => { X.left.p = toLocal(body([-0.3, -0.45, -0.35])); await wait(300); X.btn('left', 4, 1); for (let i = 0; i < 40 && !B.wheel.open; i++) await wait(150); const ok = B.wheel.open; X.left.p = toLocal(B.wheel.mesh.localToWorld(new THREE.Vector3(dx, dy, 0))); await wait(400); X.btn('left', 4, 0); await wait(300); return ok; };
+  out.wheelOpened = await tool(0.09, 0); out.toolCutters = B.S.tool; const lightBefore = B.S.light; await tap('left', 4); out.tapTogglesLight = B.S.light !== lightBefore; await tap('left', 4);
+  X.left.p = toLocal(B.head.pos.clone().add(new THREE.Vector3(0, 0.07, 0)).addScaledVector(B.head.fwd, 0.05)); await wait(300); await tap('left', 1); out.nvgOn = B.S.nvg; await tap('left', 1); out.nvgOff = !B.S.nvg;
   // 10 door by hand: go to the front door, grip the handle with left
   sim.doorLocked[0] = false; B.rig.position.x += 12 - B.head.pos.x; B.rig.position.z += 17 - B.head.pos.z; await wait(280);
   X.left.p = toLocal(B.world.doors[0].handle.getWorldPosition(new THREE.Vector3())); await wait(260); await tap('left', 1); await wait(250); out.door = sim.doorOpen[0];
@@ -44,7 +48,7 @@
   X.left.p = toLocal(new THREE.Vector3(c.x + 0.2, c.y + 0.9, c.z)); await wait(280); X.btn('left', 1, 1); for (let i = 0; i < 60 && c.st !== 'u'; i++) await wait(300); X.btn('left', 1, 0); await wait(200); out.cuffed = c.st;
   // 12 bomb: stand by it, cut wires in order with left trigger
   const bi = 0, b = sim.bombs[bi], bo = B.S.bombs[bi];
-  B.rig.position.x += b.x - B.head.pos.x; B.rig.position.z += b.z + 0.5 - B.head.pos.z; B.S.feetY = b.y > 3 ? 3.2 : 0; B.rig.position.y = B.S.feetY; await wait(300);
+  B.rig.position.x += b.x - B.head.pos.x; B.rig.position.z += b.z + 0.5 - B.head.pos.z; B.S.feetY = Math.floor(b.y / 3.2) * 3.2; B.rig.position.y = B.S.feetY; await wait(300);
   for (const w of b.order) { X.left.p = toLocal(bo.wirePos(w, new THREE.Vector3())); await wait(280); await tap('left', 0); await wait(200); }
   out.defused = b.defused; out.bdbg = [b.x, b.y, b.z, b.cut.join(''), b.order.join(''), B.head.pos.toArray().map(v => +v.toFixed(2)).join(','), sim.phase, B.hands[0].item, JSON.stringify(B.hands[0].in)]; out.hud = B.S.defused + '/' + B.S.secured;
   // 13 shout with left B
@@ -53,9 +57,11 @@
   await tap('right', 1); out.stowed = B.guns.rifle.where; X.right.p = toLocal(body([0.24, -0.72, 0.02])); await wait(280); await tap('right', 1); out.pistol = B.hands[1].item;
   X.right.p = toLocal(body([0.2, -0.3, -0.4])); X.right.q = [0, 0, 0, 1]; await wait(280); await tap('right', 0); out.pistolMag = B.guns.pistol.st.mag;
   // 15 locked door: rattle, hold to pick, then open; 16 kick; 17 downed suspect arrest; 18 radio menu restart
-  await tap('right', 1); const d1 = B.world.level.doors[1]; sim.doorOpen[1] = false; sim.doorLocked[1] = true;
+  await tap('right', 1); const d1 = B.world.level.doors[1]; B.rig.position.x += 12 - B.head.pos.x; B.rig.position.z += 12 - B.head.pos.z; B.S.feetY = 0; B.rig.position.y = 0; await wait(300); await tool(0, -0.09); out.toolHands = B.S.tool; sim.doorOpen[1] = false; sim.doorLocked[1] = true;
   B.rig.position.x += d1.cx - B.head.pos.x; B.rig.position.z += d1.cz + 0.7 - B.head.pos.z; B.S.feetY = 0; B.rig.position.y = 0; await wait(400);
   X.left.p = toLocal(new THREE.Vector3(d1.cx, 1.0, d1.cz + 0.25)); await wait(300); out.hot = B.world.doors[1].hot;
+  X.btn('left', 0, 1); await wait(500); out.noPickWithoutTool = !B.hands[0].hold && !sim.doorOpen[1]; X.btn('left', 0, 0); await wait(300); await tool(0, 0.09); out.toolPick = B.S.tool;
+  X.left.p = toLocal(new THREE.Vector3(d1.cx, 1.0, d1.cz + 0.25)); await wait(300);
   X.btn('left', 0, 1); await wait(500); out.stillClosed = !sim.doorOpen[1]; out.picking = B.hands[0].hold && B.hands[0].hold.kind;
   for (let i = 0; i < 80 && sim.doorLocked[1]; i++) await wait(300); X.btn('left', 0, 0); await wait(300); out.picked = !sim.doorLocked[1];
   await tap('left', 0); await wait(300); out.openedAfterPick = sim.doorOpen[1];
@@ -65,9 +71,9 @@
   X.left.p = toLocal(new THREE.Vector3(sx.x, 0.4, sx.z)); await wait(300); X.btn('left', 1, 1); for (let i = 0; i < 60 && sx.st !== 'j'; i++) await wait(300); X.btn('left', 1, 0); out.arrestedDowned = sx.st;
   const seed = sim.seed; X.left.p = toLocal(B.bodyPt(B.HOLSTER.radio, new THREE.Vector3())); await wait(300); await tap('left', 1); out.menu = B.S.menu;
   X.left.p = toLocal(body([-0.3, -0.5, -0.3]));
-  const rb = B.panel.btns.find(b => b.act === 'restart'), bw2 = B.panel.mesh.localToWorld(new THREE.Vector3(((rb.x + rb.w / 2) / 1024 - 0.5) * 1.6, (0.5 - (rb.y + rb.h / 2) / 768) * 1.2, 0));
+  const rb = B.panel.btns.find(b => b.act === 'night'), bw2 = B.panel.mesh.localToWorld(new THREE.Vector3(((rb.x + rb.w / 2) / 1024 - 0.5) * 1.6, (0.5 - (rb.y + rb.h / 2) / 768) * 1.2, 0));
   for (let i = 0; i < 3; i++) { const o = B.hands[1].pos, m = new THREE.Matrix4().lookAt(o, bw2, new THREE.Vector3(0, 1, 0)), q = B.rig.quaternion.clone().invert().multiply(new THREE.Quaternion().setFromRotationMatrix(m)); X.right.q = [q.x, q.y, q.z, q.w]; await wait(260); }
-  await tap('right', 0); await wait(600); out.restarted = sim.seed !== seed && sim.phase === 'active'; out.menuClosed = !B.S.menu && !B.panel.mesh.visible;
+  await tap('right', 0); await wait(600); out.restarted = sim.seed !== seed && sim.phase === 'active'; out.nightMission = sim.night && B.S.night; out.menuClosed = !B.S.menu && !B.panel.mesh.visible;
   out.hp = B.S.me.hp;
   return out;
 })()

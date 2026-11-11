@@ -3,13 +3,13 @@ import { buildLevel, groundY, rayStatic, raySphere, findPath, H, SPAWN, SUSPECT_
 
 export function rng32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const DMG = { rifle: { head: 200, torso: 60, legs: 30 }, pistol: { head: 200, torso: 40, legs: 20 } };
-export const MISSION_TIME = 600, N_SUSPECTS = 8, N_CIVS = 5, N_BOMBS = 2;
+export const MISSION_TIME = 720, N_SUSPECTS = 9, N_CIVS = 5, N_BOMBS = 2;
 const r2 = v => Math.round(v * 100) / 100;
 const KNEEL = { k: 1, y: 1, u: 1, w: 1 }, DONE = { d: 1, u: 1, i: 1, j: 1 }, SECURED = { d: 1, u: 1, j: 1 };
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
 export class Sim {
-  constructor() { this.level = buildLevel(); this.players = new Map(); this.events = []; this.reset(1); }
+  constructor() { this.level = buildLevel(); this.players = new Map(); this.events = []; this.night = false; this.reset(1); }
   reset(seed) {
     this.seed = seed >>> 0; this.rnd = rng32(this.seed); const rnd = this.rnd;
     this.phase = 'lobby'; this.timer = MISSION_TIME; this.t = 0; this.report = null;
@@ -30,7 +30,7 @@ export class Sim {
     });
     for (const p of this.players.values()) { p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; }
   }
-  start(seed) { this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
+  start(seed, night = this.night) { this.night = !!night; this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
   ev(o) { this.events.push(o); }
   addPlayer(id, name) {
     const used = new Set([...this.players.values()].map(p => p.slot)); let slot = 0; while (used.has(slot)) slot++;
@@ -40,12 +40,12 @@ export class Sim {
   }
   removePlayer(id) { this.players.delete(id); }
   init() {
-    return { seed: this.seed, npcs: this.npcs.map(n => [n.id, n.kind, n.v]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order]), time: MISSION_TIME };
+    return { seed: this.seed, night: this.night, npcs: this.npcs.map(n => [n.id, n.kind, n.v]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order]), time: MISSION_TIME };
   }
   pose(id, m) {
     const p = this.players.get(id); if (!p || !Array.isArray(m.h) || m.h.length < 7 || !m.h.every(Number.isFinite)) return;
-    p.h = m.h; p.l = m.l || null; p.r = m.r || null; p.g = m.g || [0, 0]; p.hx = m.h[0]; p.hy = m.h[1]; p.hz = m.h[2]; p.has = true;
-    p.y = groundY(p.hx, p.hz, p.hy - 0.9 > H / 2 ? H : 0);
+    p.h = m.h; p.l = m.l || null; p.r = m.r || null; p.g = m.g || [0, 0]; p.hx = m.h[0]; p.hy = m.h[1]; p.hz = m.h[2]; p.has = true; p.light = !!m.f;
+    p.y = groundY(p.hx, p.hz, p.hy - 1.0);
   }
   near(p, x, y, z, d) { return Math.hypot(p.hx - x, p.hz - z) < d && Math.abs(p.y - y) < 1.8; }
   clear(ax, ay, az, bx, by, bz, solidGlass = false) { const dx = bx - ax, dy = by - ay, dz = bz - az, d = Math.hypot(dx, dy, dz); if (d < 0.05) return true; return rayStatic(this.level, this.doorOpen, ax, ay, az, dx / d, dy / d, dz / d, d, solidGlass) >= d - 0.02; }
@@ -126,9 +126,10 @@ export class Sim {
 
   // ---- simulation ----
   sees(n, p, d) {
-    if (d > 22) return false;
+    const lit = this.night && p.light;                 // in the dark a flashlight gives you away at any range, even through glass
+    if (d > (this.night && !lit ? 7 : 22)) return false;
     if (d > 2.5) { const a = Math.atan2(p.hx - n.x, p.hz - n.z); if (Math.abs(angDiff(a, n.yaw)) > 1.05) return false; }
-    return this.clear(n.x, this.eyeY(n), n.z, p.hx, p.hy, p.hz, d > 8);   // at night a lit room's glass only shows what is close
+    return this.clear(n.x, this.eyeY(n), n.z, p.hx, p.hy, p.hz, d > 8 && !lit);   // a lit room's glass only shows what is close
   }
   face(n, x, z, dt, rate) { const a = Math.atan2(x - n.x, z - n.z), d = angDiff(a, n.yaw), s = rate * dt; n.yaw += Math.abs(d) < s ? d : Math.sign(d) * s; }
   goto(n, x, z, y) { n.path = findPath(this.level, n.x, n.z, n.y, x, z, y); n.pi = 1; return !!n.path; }

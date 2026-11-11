@@ -35,6 +35,7 @@ function sample(name, pos, gain = 1) {
   const b = samples[name]; if (!b || !ctx) return false; const s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = b; s.playbackRate.value = 0.96 + Math.random() * 0.08; g.gain.value = gain; s.connect(g); g.connect(out(pos)); s.start(); return true;
 }
 export const sfx = {
+  nvg(on) { tone(null, on ? 500 : 2600, on ? 2800 : 400, on ? 0.5 : 0.25, 0.12, 'sine'); burst(null, 0.03, 4000, 0.3, 'highpass'); },
   rattle(pos) { if (sample('locked', pos)) return; for (let i = 0; i < 3; i++) setTimeout(() => burst(pos, 0.04, 1500, 0.5, 'bandpass', 4), i * 70); },
   unlock(pos) { if (sample('unlock', pos)) return; burst(pos, 0.03, 3500, 0.5, 'highpass'); setTimeout(() => tone(pos, 500, 700, 0.06, 0.25, 'square'), 80); },
   kick(pos, ok) { if (sample(ok ? 'breach' : 'kick', pos)) return; tone(pos, 90, 35, 0.25, 1.6, 'sine'); burst(pos, 0.18, 700, 1.2); if (ok) setTimeout(() => burst(pos, 0.3, 1800, 0.7), 60); },

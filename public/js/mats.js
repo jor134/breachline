@@ -17,8 +17,11 @@ export const envMap = (() => {
 })();
 export function sheen(params, gloss = 'satin') {
   const m = new THREE.MeshPhongMaterial(Object.assign({ combine: THREE.AddOperation }, params)), [shin, spec, refl] = GLOSS[gloss] || GLOSS.satin;
-  m.shininess = shin; m.specular.setScalar(spec); if (refl > 0) { m.envMap = envMap; m.reflectivity = refl; } return m;
+  m.shininess = shin; m.specular.setScalar(spec); if (refl > 0) { m.envMap = envMap; m.reflectivity = refl; } m.userData.spec = spec; m.userData.refl = refl; all.push(m); return m;
 }
+const all = [];
+// Reflections picture a lit dusk scene, so they are turned down when the lights go out.
+export function setGlossLevel(k) { for (const m of all) { m.reflectivity = m.userData.refl * k; m.specular.setScalar(m.userData.spec * (0.35 + 0.65 * k)); } }
 const vc = new Map();
 export const vertexSheen = gloss => vc.get(gloss) || vc.set(gloss, sheen({ vertexColors: true }, gloss)).get(gloss);
 let seed = 7; export const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };

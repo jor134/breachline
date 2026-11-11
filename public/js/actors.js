@@ -62,6 +62,12 @@ export function makePistol() {
 }
 export const makeMag = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
 
+export function makeTool(kind) {
+  const ST = 0xb8bcc2, K = 0x17181a, R = 0xb02a2a;
+  return kind === 'pick' ? merge([[BOX(0.02, 0.022, 0.09), K, 0, 0, 0.03], [CYL(0.0025, 0.1), ST, 0, 0.004, -0.06, HP], [BOX(0.004, 0.012, 0.004), ST, 0, 0.01, -0.108], [BOX(0.006, 0.003, 0.1), ST, 0.012, -0.008, -0.04], [BOX(0.006, 0.02, 0.003), ST, 0.012, 0.0, -0.09]], 'metal')
+    : merge([[BOX(0.016, 0.016, 0.11), R, -0.016, 0, 0.045, 0, 0.14], [BOX(0.016, 0.016, 0.11), R, 0.016, 0, 0.045, 0, -0.14], [CYL(0.01, 0.014), ST, 0, 0, -0.012], [BOX(0.01, 0.012, 0.05), ST, -0.006, 0, -0.04, 0, -0.08], [BOX(0.01, 0.012, 0.05), ST, 0.006, 0, -0.04, 0, 0.08]], 'plastic');
+}
+
 // ---------- people ----------
 const SKIN = [0x8a5a3c, 0xc79a7b, 0x6b4630, 0xd8ad8c];
 // suspects: v even = field jacket, face wrap, sunglasses, backpack; v odd = hooded sweatshirt and bandana. Colours vary per suspect.

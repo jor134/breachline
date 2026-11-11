@@ -1,7 +1,7 @@
 // World rendering: a modern glass-and-stone house at dusk. Merged static geometry (one draw call per material), doors, lights.
 import * as THREE from '../vendor/three.module.min.js';
-import { sheen, tex, grid, rnd } from './mats.js';
-import { buildLevel, ROOMS, H, STAIR, FOOT, YARD, DOOR_H } from './core/level.js';
+import { sheen, tex, grid, rnd, setGlossLevel } from './mats.js';
+import { buildLevel, terrainY, ROOMS, H, STAIR, FOOT, YARD, DOOR_H } from './core/level.js';
 
 export const MATS = {};
 function initMats() {
@@ -16,7 +16,7 @@ function initMats() {
     fabric: S(tex('#3c3e44', 6000), 'cloth'), linen: S(tex('#d8d3c8', 5000), 'cloth'), walnut: S(tex('#4b3627', 1200, grid(1, 6, 'rgba(20,10,5,0.3)', false, 0.06)), 'polished'),
     lacquer: S(tex('#ecebe8', 200), 'paint'), top: S(tex('#2a2b2e', 900), 'polished'), car: S(tex('#262b33', 200), 'paint'), hedge: S(tex('#2d4b2b', 9000), 'matte'),
     pooltile: S(tex('#22262a', 400, grid(8, 8, 'rgba(0,0,0,0.5)')), 'polished'), book: S(tex('#7a4a3a', 300, grid(10, 1, 'rgba(0,0,0,0.5)', false, 0.5)), 'satin'),
-    water: sheen({ color: 0x16303a, transparent: true, opacity: 0.86 }, 'water'), glass: sheen({ color: 0x1c2a33, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }, 'glass'),
+    water: sheen({ color: 0x16303a, transparent: true, opacity: 0.86 }, 'water'), ocean: sheen({ color: 0x0e2230 }, 'water'), glass: sheen({ color: 0x1c2a33, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }, 'glass'),
     glow: new THREE.MeshBasicMaterial({ color: 0xffe6bd, fog: false }), dark: new THREE.MeshBasicMaterial({ color: 0x0b0c0e }),
   });
   MATS.door = sheen({ map: MATS.walnut.map }, 'polished'); MATS.steel = sheen({ color: 0xb8bcc2 }, 'metal');
@@ -86,12 +86,20 @@ export function buildWorld(scene) {
   const skyT = new THREE.CanvasTexture(sc); skyT.colorSpace = THREE.SRGBColorSpace;
   const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 20, 12), new THREE.MeshBasicMaterial({ map: skyT, side: THREE.BackSide, fog: false, depthWrite: false })); sky.position.set(12, 0, 8); sky.renderOrder = -1; scene.add(sky);
   const hillM = new THREE.MeshBasicMaterial({ color: 0x1b1d22, fog: false });
-  for (const [x, z, r, h] of [[-90, -60, 80, 46], [20, -130, 110, 38], [130, -70, 90, 52], [-150, 40, 90, 30], [160, 60, 80, 26]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 2, z); m.rotation.y = x; scene.add(m); }
-  b('gravel').quad([YARD.x0 - 60, 0, YARD.z0 - 60], [YARD.x1 + 60, 0, YARD.z0 - 60], [YARD.x1 + 60, 0, YARD.z1 + 60], [YARD.x0 - 60, 0, YARD.z1 + 60], [0, 1, 0], 0.3);
-  b('paver').quad([-3, 0.008, 16], [27, 0.008, 16], [27, 0.008, 25], [-3, 0.008, 25], [0, 1, 0], 0.5);
-  b('paver').quad([-1.4, 0.006, -1.4], [25.4, 0.006, -1.4], [25.4, 0.006, 16], [-1.4, 0.006, 16], [0, 1, 0], 0.5);
-  b('paver').quad([9, 0.007, 25], [15, 0.007, 25], [15, 0.007, YARD.z1], [9, 0.007, YARD.z1], [0, 1, 0], 0.5);
-  for (const [x0, x1, z0, z1] of [[YARD.x0 - 0.3, YARD.x0, YARD.z0, YARD.z1], [YARD.x1, YARD.x1 + 0.3, YARD.z0, YARD.z1], [YARD.x0, YARD.x1, YARD.z0 - 0.3, YARD.z0], [YARD.x0, 9, YARD.z1, YARD.z1 + 0.3], [15, YARD.x1, YARD.z1, YARD.z1 + 0.3]]) b('stone').box(x0, x1, 0, 1.6, z0, z1, 'xXYzZ', 1);
+  for (const [x, z, r, h] of [[-150, 10, 90, 44], [-120, 120, 110, 38], [20, 170, 120, 40], [150, 110, 100, 46], [170, 0, 80, 30]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); m.rotation.y = x; scene.add(m); }
+  // land: street level in front, stepping down beside the house to the back yard, then a cliff and the ocean
+  const X0 = YARD.x0 - 70, X1 = YARD.x1 + 70, land = (m, x0, x1, z0, y0, z1, y1, s = 0.3) => b(m).quad([x0, y0, z0], [x1, y0, z0], [x1, y1, z1], [x0, y1, z1], [0, 1, 0], s);
+  land('gravel', X0, X1, 16, 0, YARD.z1 + 70, 0); land('gravel', X0, X1, YARD.z0, -H, 0, -H);
+  for (const [a, c] of [[X0, -0.1], [24.1, X1]]) { land('gravel', a, c, 12, 0, 16, 0); land('gravel', a, c, 4, -H, 12, 0); land('gravel', a, c, 0, -H, 4, -H); }
+  for (const [a, c] of [[-3.6, -0.1], [24.1, 27.6]]) for (let k = 0; k < 8; k++) { const top = -0.4 * (k + 0.5) + 0.03; b('paver').box(a, c, top - 0.5, top, 11 - k, 12 - k, 'xXYZz', 0.5); }
+  land('paver', -3, 27, 16, 0.008, 25, 0.008, 0.5); land('paver', 9, 15, 25, 0.007, YARD.z1, 0.007, 0.5); land('paver', -3.6, 27.6, YARD.z0 + 0.3, -H + 0.008, 0, -H + 0.008, 0.5);
+  b('stone').box(X0, X1, -H - 14, -H, YARD.z0 - 0.6, YARD.z0, 'zY', 1); land('ocean', -500, 500, YARD.z0 - 520, -H - 11, YARD.z0 - 0.5, -H - 11, 0.05);
+  const wallSeg = (x0, x1, z0, z1, y) => b('stone').box(x0, x1, y, y + 1.6, z0, z1, 'xXYzZ', 1);
+  for (const [x0, x1] of [[YARD.x0 - 0.3, YARD.x0], [YARD.x1, YARD.x1 + 0.3]]) { wallSeg(x0, x1, 12, YARD.z1, 0); wallSeg(x0, x1, YARD.z0, 4, -H); for (let z = 4; z < 12; z += 2) b('stone').box(x0, x1, terrainY(z), terrainY(z + 2) + 1.6, z, z + 2, 'xXYzZ', 1); }
+  wallSeg(YARD.x0, 9, YARD.z1, YARD.z1 + 0.3, 0); wallSeg(15, YARD.x1, YARD.z1, YARD.z1 + 0.3, 0);
+  // glass balustrade along the cliff edge, and a ground-floor deck sheltering the walk-out
+  const rail = (x0, x1, z, y) => { b('glass').quad([x0, y, z], [x1, y, z], [x1, y + 1.05, z], [x0, y + 1.05, z], [0, 0, 1]); b('fascia').box(x0, x1, y + 1.05, y + 1.09, z - 0.03, z + 0.03, ALL, 1); };
+  rail(YARD.x0, YARD.x1, YARD.z0 + 0.15, -H);
   // floors, ceilings with recessed downlights
   for (const [f, , x0, z0, x1, z1, mat] of ROOMS) {
     const y = f * H + 0.004; b(mat).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], 0.5);
@@ -115,22 +123,26 @@ export function buildWorld(scene) {
       for (let i = 0; i <= n; i++) { const u = a + (e - a) * i / n; bx('fascia', u - 0.035, u + 0.035, w.y0 + 0.1, w.y1 - 0.12, 0.05); }
     } else if (w.kind === 'furn') furnish(b, w);
   }
-  // stairs: floating treads
+  // stairs: floating treads, one flight up and one directly beneath it down to the basement
   const run = (STAIR.z1 - STAIR.z0) * 0.85, N = 16;
-  for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N; b('walnut').box(STAIR.x0 + 0.1, STAIR.x1 - 0.1, top - 0.06, top, STAIR.z1 - (i + 1) * run / N, STAIR.z1 - i * run / N, ALL, 1); b('fascia').box(STAIR.x0 + 0.7, STAIR.x0 + 0.8, 0, top - 0.06, STAIR.z1 - (i + 0.9) * run / N, STAIR.z1 - (i + 0.1) * run / N, 'xXzZ', 1); }
-  b('walnut').box(STAIR.x0 + 0.1, STAIR.x1 - 0.1, H - 0.2, H, STAIR.z0, STAIR.z1 - run, 'YZy', 1);
+  for (const off of [0, -H]) {
+    for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N + off; b('walnut').box(STAIR.x0 + 0.1, STAIR.x1 - 0.1, top - 0.06, top, STAIR.z1 - (i + 1) * run / N, STAIR.z1 - i * run / N, ALL, 1); }
+    b('walnut').box(STAIR.x0 + 0.1, STAIR.x1 - 0.1, H - 0.2 + off, H + off, STAIR.z0, STAIR.z1 - run, 'YZy', 1);
+  }
   // roofs: deep flat overhangs, mid-level canopy, raised roof with a dark clerestory band, chimney
   const slab = (x0, x1, y0, y1, z0, z1) => { b('fascia').box(x0, x1, y0, y1, z0, z1, 'xXYzZ', 1); b('soffit').quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0], 0.5); };
   slab(-1.6, 25.6, H - 0.05, H + 0.2, 16.1, 18.7); slab(-1.4, -0.1, H - 0.05, H + 0.2, 6, 16.1);
   slab(-1.8, 25.8, 2 * H, 2 * H + 0.28, -0.9, 19); b('dark').box(11, 24.2, 2 * H + 0.28, 2 * H + 0.8, 0.2, 15.8, 'xXzZ'); slab(9.5, 26.6, 2 * H + 0.8, 2 * H + 1.05, -1.4, 19.6);
   b('stone').box(4.8, 6.2, 2 * H + 0.28, 2 * H + 2.1, 5.8, 7.2, 'xXYzZ', 1);
+  slab(-0.6, 24.6, -0.22, 0, -2.8, -0.1); rail(-0.6, 24.6, -2.77, 0); for (const x of [0.1, 23.9]) b('stone').box(x - 0.25, x + 0.25, -H, -0.22, -2.75, -2.25, 'xXzZ', 1);
   for (const [x0, x1, y0, y1, z0, z1] of [[-0.14, 24.14, H - 0.14, H + 0.2, -0.16, -0.1], [24.1, 24.16, H - 0.14, H + 0.2, -0.1, 16.1], [-0.16, -0.1, H - 0.14, H + 0.2, -0.1, 6]]) b('fascia').box(x0, x1, y0, y1, z0, z1, ALL, 1);
   const spot = (x, y, z) => b('glow').quad([x - 0.07, y, z - 0.07], [x + 0.07, y, z - 0.07], [x + 0.07, y, z + 0.07], [x - 0.07, y, z + 0.07], [0, -1, 0]);
   for (let x = -0.5; x <= 25; x += 1.7) { spot(x, H - 0.056, 17.4); spot(x, 2 * H - 0.006, 17.6); }
   for (let z = 1; z < 16; z += 2.5) { spot(-1, 2 * H - 0.006, z); spot(25, 2 * H - 0.006, z); }
+  for (let x = 1; x <= 24; x += 2.2) spot(x, -0.226, -1.5);
   // interior dressing (no collision): rugs, pendants, chandelier, screen, art
   const rug = (m, x0, x1, z0, z1, y) => b(m).quad([x0, y + 0.008, z0], [x1, y + 0.008, z0], [x1, y + 0.008, z1], [x0, y + 0.008, z1], [0, 1, 0], 1);
-  rug('linen', 1.4, 6.2, 10.6, 15.8, 0); rug('carpet', 17, 22.5, 10.2, 13.3, 0); rug('linen', 2, 6.4, 10.4, 14, H); rug('fabric', 9.8, 14.2, 10.4, 14.6, H);
+  rug('linen', 1.4, 6.2, 10.6, 15.8, 0); rug('carpet', 17, 22.5, 10.2, 13.3, 0); rug('linen', 2, 6.4, 10.4, 14, H); rug('fabric', 9.8, 14.2, 10.4, 14.6, H); rug('fabric', 1.4, 6.6, 10.4, 14.8, -H); b('dark').box(0.11, 0.15, -H + 0.7, -H + 2.5, 9.6, 14.4, 'X'); b('fascia').box(0.1, 0.13, -H + 0.64, -H + 2.56, 9.54, 14.46, 'xXYyzZ'.replace('x', ''), 1);
   for (const [x, z, y0] of [[18.8, 11.75, 0], [19.75, 11.75, 0], [20.7, 11.75, 0], [18.8, 3.6, 0], [20.2, 3.6, 0]]) { b('fascia').box(x - 0.006, x + 0.006, y0 + 2.0, y0 + H, z - 0.006, z + 0.006, 'xXzZ'); b('glow').box(x - 0.09, x + 0.09, y0 + 1.82, y0 + 2.0, z - 0.09, z + 0.09, ALL); }
   for (let i = 0; i < 9; i++) { const a = i * 2.4, r = 0.25 + (i % 3) * 0.22, x = 12 + Math.cos(a) * r, z = 12.4 + Math.sin(a) * r, y = 2.0 + (i % 4) * 0.2; b('fascia').box(x - 0.005, x + 0.005, y + 0.1, H, z - 0.005, z + 0.005, 'xXzZ'); b('glow').box(x - 0.05, x + 0.05, y, y + 0.1, z - 0.05, z + 0.05, ALL); }
   b('dark').box(2, 4.2, 1.0, 2.1, 8.1, 8.14, 'Z'); b('fascia').box(1.96, 4.24, 0.96, 2.14, 8.1, 8.13, 'xXYyZ', 1);
@@ -145,12 +157,19 @@ export function buildWorld(scene) {
     const base = d.horiz ? 0 : -Math.PI / 2; g.rotation.y = base; scene.add(g);
     return { g, base, handle, hm, cur: 0, hot: false };
   });
-  // light: dusk sky, low warm sun for highlights, two warm interior lamps
+  // light: dusk sky, low warm sun for highlights, two warm interior lamps; night = power cut; NVG = green amplification
   scene.background = new THREE.Color(0x2a3040); scene.fog = new THREE.FogExp2(0x3a4152, 0.006);
-  scene.add(new THREE.HemisphereLight(0xb9c4dc, 0x7a6a58, 1.25));
-  const sun = new THREE.DirectionalLight(0xffc9a0, 0.75); sun.position.set(-30, 14, 34); scene.add(sun);
-  for (const [x, y, z] of [[12, 2.5, 12.4], [4.5, 2.7, 12]]) { const l = new THREE.PointLight(0xffd9a8, 10, 11, 1.8); l.position.set(x, y, z); scene.add(l); }
-  return { level, doors };
+  const hemi = new THREE.HemisphereLight(0xb9c4dc, 0x7a6a58, 1.25), sun = new THREE.DirectionalLight(0xffc9a0, 0.75), amp = new THREE.HemisphereLight(0x46ff58, 0x0a3410, 0); sun.position.set(-30, 14, 34); scene.add(hemi, sun, amp);
+  const lamps = [[12, 2.5, 12.4], [4.5, 2.7, 12]].map(([x, y, z]) => { const l = new THREE.PointLight(0xffd9a8, 10, 11, 1.8); l.position.set(x, y, z); scene.add(l); return l; });
+  const look = (night, nvg) => {
+    const k = nvg ? 0.16 : 1;
+    hemi.intensity = (night ? 0.2 : 1.25) * k; hemi.color.set(night ? 0x6f83a8 : 0xb9c4dc); hemi.groundColor.set(night ? 0x20242c : 0x7a6a58);
+    sun.intensity = (night ? 0.18 : 0.75) * k; sun.color.set(night ? 0xa9bcff : 0xffc9a0); for (const l of lamps) l.intensity = night ? 0 : 10 * k;
+    amp.intensity = nvg ? (night ? 0.8 : 0.5) : 0; setGlossLevel(nvg ? 0.2 : night ? 0.12 : 1);
+    MATS.glow.color.set(nvg ? (night ? 0x0b3410 : 0x9cff9c) : night ? 0x14120e : 0xffe6bd); sky.material.color.set(nvg ? (night ? 0x0d3011 : 0x2f8a3a) : night ? 0x283040 : 0xffffff);
+    hillM.color.set(nvg ? 0x05160a : night ? 0x040608 : 0x1b1d22); scene.fog.color.set(nvg ? (night ? 0x082409 : 0x1c5a26) : night ? 0x05070b : 0x3a4152); scene.fog.density = night ? 0.011 : 0.006; scene.background.copy(scene.fog.color);
+  };
+  return { level, doors, look };
 }
 
 export function label(text, color = '#fff', w = 256, h = 64) {

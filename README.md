@@ -1,6 +1,6 @@
 # BREACHLINE
 
-Co-op tactical entry game for Quest (WebXR), up to 4 officers. One level: a two-storey mansion with armed suspects, five hostages and two bombs, reshuffled every mission.
+Co-op tactical entry game for Quest (WebXR), up to 4 officers. One level: a three-storey modern house (walk-out basement, pool terrace above the ocean) with armed suspects, five hostages and two bombs, reshuffled every mission. Dusk or night (power cut) with night vision.
 
 ## Deploy (GitHub + one Cloudflare Worker)
 1. Cloudflare dashboard > Workers & Pages > Create > Import a repository > pick this repo.
