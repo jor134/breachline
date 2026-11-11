@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BREACHLINE</title>
+<meta name="theme-color" content="#0a1020">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+html,body{margin:0;height:100%;background:#0a1020;color:#e8eef5;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+canvas{display:block;position:fixed;inset:0}
+#ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(rgba(6,10,18,.55),rgba(6,10,18,.85));z-index:5;overflow:auto}
+.card{width:min(92vw,440px);padding:22px;background:rgba(12,17,24,.92);border:1px solid #2c4a6b;border-radius:10px}
+h1{margin:0;font-size:34px;letter-spacing:.12em}
+.sub{color:#8fb4dc;margin:2px 0 16px;font-size:14px}
+label{display:block;font-size:12px;color:#9fb0c3;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.08em}
+input[type=text]{width:100%;box-sizing:border-box;padding:11px;font-size:17px;background:#0a0f16;color:#fff;border:1px solid #2c4a6b;border-radius:6px}
+#room{text-transform:uppercase;letter-spacing:.3em;font-weight:700}
+button{padding:13px 16px;font-size:16px;font-weight:700;border:0;border-radius:6px;cursor:pointer;margin-top:12px}
+#vr{width:100%;background:#1f7a3d;color:#fff}#vr:disabled{background:#2a3038;color:#6b7684;cursor:default}
+#desk{width:100%;background:#1c2a3b;color:#cfe0f2}
+#install{display:none;background:#3a6ea5;color:#fff;width:100%}
+.row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px;color:#b9c6d4}
+.row input[type=range]{flex:1}
+#status,#vrnote{font-size:13px;color:#ffcf8a;margin-top:10px;min-height:1em}
+details{margin-top:12px;font-size:13px;color:#b9c6d4}summary{cursor:pointer;color:#8fb4dc}
+#hud{display:none;position:fixed;left:0;right:0;bottom:0;padding:8px 12px;font:14px monospace;background:rgba(0,0,0,.55);z-index:4;white-space:pre}
+</style>
+</head>
+<body>
+<div id="ui"><div class="card">
+  <h1>BREACHLINE</h1><div class="sub">Co-op tactical entry for Quest &middot; up to 4 officers</div>
+  <label for="name">Callsign</label><input id="name" type="text" maxlength="14" placeholder="Officer" autocomplete="off">
+  <label for="room">Room code (share with your squad)</label><input id="room" type="text" maxlength="8" autocomplete="off">
+  <div class="row"><input id="solo" type="checkbox"><span>Solo practice (no server)</span></div>
+  <div class="row"><span>Gun tilt</span><input id="tilt" type="range" min="-40" max="40" step="1"><span id="tiltv"></span></div>
+  <button id="vr">ENTER VR</button><div id="vrnote"></div>
+  <button id="desk">Desktop preview (mouse + keyboard)</button>
+  <button id="install">Install as app</button>
+  <div id="status"></div>
+  <details><summary>Controls</summary>
+  <p><b>VR:</b> left stick walk (click = jog), right stick snap turn. Grip near chest = rifle, right hip = pistol, left belt = magazine. Grip again to stow. Trigger fires. Gun hand A/X drops the mag, B/Y releases the bolt, stick click = semi/auto. Pull the charging handle / slide back with your other hand to rack. Grab the handguard with your other hand to steady the rifle. Other hand B/Y = shout for compliance, A/X = flashlight. Hold grip on a kneeling person to cuff. Cut bomb wires with the trigger of an empty hand.</p>
+  <p><b>Desktop:</b> WASD, mouse, left click fire, right click aim, R reload, F shout, E use / cuff / cut, V semi/auto, 1/2 weapon, C crouch, T flashlight, Enter start.</p></details>
+</div></div>
+<div id="hud"></div>
+<script type="module" src="js/game.js"></script>
+</body>
+</html>

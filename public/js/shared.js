@@ -1,0 +1,1 @@
+export const WIRE_HEX = [0xd02020, 0x2060e0, 0xe0c020, 0x20b040];
