@@ -31,7 +31,7 @@
   const y0 = B.head.yaw, hx = B.head.pos.x; X.right.pad.axes[2] = 1; await wait(280); X.right.pad.axes[2] = 0; await wait(100); out.turned = +((y0 - B.head.yaw) * 180 / Math.PI).toFixed(0); out.pivot = +(B.head.pos.x - hx).toFixed(2);
   X.right.pad.axes[2] = -1; await wait(280); X.right.pad.axes[2] = 0; await wait(100);
   // 9 start mission by shooting the START button
-  const sb = B.panel.btns.find(b => b.act === 'dusk'), bw = B.panel.mesh.localToWorld(new THREE.Vector3(((sb.x + sb.w / 2) / 1024 - 0.5) * 1.6, (0.5 - (sb.y + sb.h / 2) / 768) * 1.2, 0));
+  const sb = B.panel.btns.find(b => b.act === 'start'), bw = B.panel.mesh.localToWorld(new THREE.Vector3(((sb.x + sb.w / 2) / 1024 - 0.5) * 1.6, (0.5 - (sb.y + sb.h / 2) / 768) * 1.2, 0));
   const aim = async (target) => { for (let i = 0; i < 3; i++) { const mz = gunPt(B.guns.rifle, 'muzzle'), m = new THREE.Matrix4().lookAt(mz, target, new THREE.Vector3(0, 1, 0)), q = new THREE.Quaternion().setFromRotationMatrix(m), rq = B.rig.quaternion.clone().invert().multiply(q); X.right.q = [rq.x, rq.y, rq.z, rq.w]; await wait(100); } };
   await aim(bw); out.probe = B.panel.cursor.visible; await tap('right', 0); await wait(400); out.phase = B.S.phase; out.magAtStart = B.guns.rifle.st.mag; out.itemAtStart = B.hands[1].item;
   // tool wheel: hold left A/X, move toward a wedge, release
@@ -71,9 +71,13 @@
   X.left.p = toLocal(new THREE.Vector3(sx.x, 0.4, sx.z)); await wait(300); X.btn('left', 1, 1); for (let i = 0; i < 60 && sx.st !== 'j'; i++) await wait(300); X.btn('left', 1, 0); out.arrestedDowned = sx.st;
   const seed = sim.seed; X.left.p = toLocal(B.bodyPt(B.HOLSTER.radio, new THREE.Vector3())); await wait(300); await tap('left', 1); out.menu = B.S.menu;
   X.left.p = toLocal(body([-0.3, -0.5, -0.3]));
-  const rb = B.panel.btns.find(b => b.act === 'night'), bw2 = B.panel.mesh.localToWorld(new THREE.Vector3(((rb.x + rb.w / 2) / 1024 - 0.5) * 1.6, (0.5 - (rb.y + rb.h / 2) / 768) * 1.2, 0));
+  const rb = B.panel.btns.find(b => b.act === 'start'), bw2 = B.panel.mesh.localToWorld(new THREE.Vector3(((rb.x + rb.w / 2) / 1024 - 0.5) * 1.6, (0.5 - (rb.y + rb.h / 2) / 768) * 1.2, 0));
   for (let i = 0; i < 3; i++) { const o = B.hands[1].pos, m = new THREE.Matrix4().lookAt(o, bw2, new THREE.Vector3(0, 1, 0)), q = B.rig.quaternion.clone().invert().multiply(new THREE.Quaternion().setFromRotationMatrix(m)); X.right.q = [q.x, q.y, q.z, q.w]; await wait(260); }
-  await tap('right', 0); await wait(600); out.restarted = sim.seed !== seed && sim.phase === 'active'; out.nightMission = sim.night && B.S.night; out.menuClosed = !B.S.menu && !B.panel.mesh.visible;
+  await tap('right', 0); await wait(600); out.restarted = sim.seed !== seed && sim.phase === 'active'; out.powerOnAtStart = !sim.night && !B.S.night;
+  // 19 throw the main breaker by hand, then back
+  B.rig.position.x += 22.6 - B.head.pos.x; B.rig.position.z += 0.8 - B.head.pos.z; B.S.feetY = -3.2; B.rig.position.y = -3.2; await wait(400);
+  X.left.p = toLocal(B.breaker.g.position.clone().add(new THREE.Vector3(0, 0, 0.15))); await wait(300); await tap('left', 1); await wait(500); out.powerCut = sim.night && B.S.night;
+  for (let i = 0; i < 20 && sim.t - sim.players.get(1).lastBrk < 1.1; i++) await wait(300); await tap('left', 0); await wait(500); out.powerBack = !sim.night && !B.S.night; out.menuClosed = !B.S.menu && !B.panel.mesh.visible;
   out.hp = B.S.me.hp;
   return out;
 })()

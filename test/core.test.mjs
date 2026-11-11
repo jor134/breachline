@@ -150,7 +150,12 @@ t('basement: inside stairs go down from the utility room, the walk-out opens ont
 t('night: suspects see a dark officer only up close, a flashlight gives you away', () => {
   const mk = (night, light) => { const s = new Sim(); s.addPlayer(1, 'T'); s.start(7, night); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; Object.assign(n, { x: 8, z: 15.2, y: 0, yaw: Math.atan2(1.4 - 8, 8.8 - 15.2), sweep: 0, patrol: null }); s.pose(1, { h: [1.4, 1.65, 8.8, 0, 0, 0, 1], g: [1, 0], f: light ? 1 : 0 }); for (let i = 0; i < 20; i++) s.tick(1 / 15); return n.st; };
   assert.equal(mk(false, false), 'c', 'dusk: seen across the living room'); assert.equal(mk(true, false), 'g', 'night, light off: not seen at 9 m'); assert.equal(mk(true, true), 'c', 'night, light on: seen');
-  const s = new Sim(); s.addPlayer(1, 'T'); s.start(3, true); assert.equal(s.init().night, true); const h = new RoomHost(() => { }); h.join(1, 'A'); h.message(1, { t: 'restart', night: true }); assert.ok(h.sim.night); h.message(1, { t: 'restart' }); assert.ok(h.sim.night, 'restart keeps the mode'); h.message(1, { t: 'restart', night: false }); assert.ok(!h.sim.night);
+  const [s, p] = mkSim(4); assert.ok(!s.night && s.snapshot().pw === 1, 'missions start with the power on');
+  put(s, p, 12, 1.65, 12); s.breaker(1); assert.ok(!s.night, 'too far from the breaker'); put(s, p, 22.6, -H + 1.65, 0.8); s.events.length = 0; s.breaker(1); assert.ok(s.events.some(e => e.e === 'power' && e.on === false)); assert.ok(s.night && s.snapshot().pw === 0);
+  s.breaker(1); assert.ok(s.night, 'one second between throws'); s.t += 2; s.breaker(1); assert.ok(!s.night, 'the breaker switches back on too');
+  let fixed = 0, sent = 0; for (let seed = 1; seed <= 10; seed++) { const [s2, p2] = mkSim(seed); for (const o of s2.npcs) if (o.kind === 's') o.sweep = 0; put(s2, p2, 22.6, -H + 1.65, 0.8); s2.breaker(1); const f = s2.npcs.find(n => n.fix); if (!f) continue; sent++; put(s2, p2, 12, 1.65, 28); for (let i = 0; i < 15 * 80 && s2.night; i++) s2.tick(1 / 15); if (!s2.night) fixed++; }
+  assert.ok(sent >= 4 && fixed >= sent - 1, `a suspect went to restore power in ${sent}/10 missions and managed it in ${fixed}`);
+  const h = new RoomHost(() => { }); h.join(1, 'A'); h.message(1, { t: 'restart', night: true }); assert.ok(!h.sim.night, 'night can no longer be chosen at the start');
 });
 t('glass: stops people, not bullets; suspects only see through it up close', () => {
   const [x] = resolveCircle(L, null, 0.2, 12, 0.25, 0); assert.ok(x >= 0.27, 'cannot walk through the west glass');

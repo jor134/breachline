@@ -4,7 +4,7 @@ JS = """
 (async () => {
   const B = window.__bl, wait = ms => new Promise(r => setTimeout(r, ms)), sim = B.net.host.sim, out = {}, $ = id => document.getElementById(id);
   const tap = async id => { const el = $(id), r = el.getBoundingClientRect(), o = { bubbles: true, cancelable: true, pointerId: 7, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, pointerType: 'touch' }; el.dispatchEvent(new PointerEvent('pointerdown', o)); await wait(250); el.dispatchEvent(new PointerEvent('pointerup', o)); await wait(250); };
-  out.startShown = getComputedStyle($('tstart')).display; await tap('bNight'); await wait(500); out.phase = B.S.phase; out.night = B.S.night; await wait(400); out.startHidden = getComputedStyle($('tstart')).display;
+  out.startShown = getComputedStyle($('tstart')).display; await tap('bDusk'); await wait(500); out.phase = B.S.phase; out.night = B.S.night; await wait(400); out.startHidden = getComputedStyle($('tstart')).display;
   for (const n of sim.npcs) if (n.kind === 's') n.st = 'u';
   // stick: push forward
   const st = $('tstick'), r = st.getBoundingClientRect(), z0 = B.head.pos.z; let o = { bubbles: true, cancelable: true, pointerId: 3, clientX: r.left + r.width / 2, clientY: r.top + 4, pointerType: 'touch' };
@@ -17,6 +17,7 @@ JS = """
   sim.hurt(sim.players.get(1), 5, 'armR'); await wait(400); const q0 = B.guns.rifle.mesh.quaternion.clone(); await wait(500); out.wobble = +q0.angleTo(B.guns.rifle.mesh.quaternion).toFixed(4);
   await tap('bMed'); await wait(500); out.afterMed = [B.S.me.w, B.S.me.med, B.S.me.hp]; await tap('bSwap'); out.gun = B.hands[1].item;
   sim.hurt(sim.players.get(1), 5, 'armL'); await wait(700);
+  B.rig.position.set(22.6, -3.2, 0.9); B.S.feetY = -3.2; await wait(400); await tap('bUse'); await wait(500); out.powerCut = sim.night && B.S.night;
   return out;
 })()
 """

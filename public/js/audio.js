@@ -42,6 +42,7 @@ export function setAmbience(rain, inside) {
   const t = ctx.currentTime; amb.g.gain.setTargetAtTime(rain * (inside ? 0.1 : 0.34), t, 0.4); amb.f.frequency.setTargetAtTime(inside ? 520 : 5200, t, 0.4);
 }
 export const sfx = {
+  power(pos, on) { if (sample(on ? 'poweron' : 'poweroff', pos)) return; tone(pos, 120, 60, 0.12, 1.2, 'square'); burst(pos, 0.08, 1200, 0.9); if (on) tone(null, 50, 110, 0.5, 0.25, 'sawtooth'); else tone(null, 110, 28, 1.3, 0.35, 'sawtooth'); },
   thunder() { if (sample('thunder', null)) return; burst(null, 3.2, 160, 2.2); tone(null, 70, 24, 2.6, 1.6); setTimeout(() => burst(null, 2.2, 110, 1.2), 500); },
   nvg(on) { tone(null, on ? 500 : 2600, on ? 2800 : 400, on ? 0.5 : 0.25, 0.12, 'sine'); burst(null, 0.03, 4000, 0.3, 'highpass'); },
   rattle(pos) { if (sample('locked', pos)) return; for (let i = 0; i < 3; i++) setTimeout(() => burst(pos, 0.04, 1500, 0.5, 'bandpass', 4), i * 70); },

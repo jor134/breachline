@@ -4,7 +4,7 @@ import { buildWorld, label } from './gfx.js';
 import { Human, Officer, Bomb, Body, RIG, makeRifle, makePistol, makeMag, makeTool } from './actors.js';
 import { initAudio, setListener, setAmbience, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
-import { groundY, resolveCircle, rayStatic, SPAWN } from './core/level.js';
+import { groundY, resolveCircle, rayStatic, SPAWN, BREAKER } from './core/level.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 
@@ -90,6 +90,12 @@ const nvgMask = (() => { const c = document.createElement('canvas'); c.width = c
 const irLamp = new THREE.PointLight(0x58ff68, 0, 34, 1.1); camera.add(irLamp);   // the goggles' own illuminator: nearby surfaces read brighter, which gives depth
 const weather = makeWeather(scene), WXS = ['random', 'clear', 'rain', 'fog', 'storm'];
 const cycleWx = () => { S.wxPick = WXS[(WXS.indexOf(S.wxPick) + 1) % WXS.length]; sfx.click(); };
+// main breaker in the plant room: throw the lever to cut every light in the house
+const breaker = (() => { const g = new THREE.Group(); g.position.set(BREAKER.x, BREAKER.y, BREAKER.z); const box = (w, h, d, c, x, y, z, basic) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), basic ? new THREE.MeshBasicMaterial({ color: c }) : new THREE.MeshLambertMaterial({ color: c })); m.position.set(x, y, z); return m; };
+  const lever = new THREE.Group(); lever.position.set(0.08, 0, 0.07); lever.add(box(0.05, 0.2, 0.04, 0xc02020, 0, 0.09, 0.03)); const led = box(0.035, 0.035, 0.01, 0x30ff60, -0.1, 0.2, 0.062, true);
+  g.add(box(0.42, 0.62, 0.12, 0x555a60, 0, 0, 0), box(0.36, 0.5, 0.01, 0x3a3e44, 0, -0.03, 0.062), box(0.2, 0.05, 0.012, 0xe8d040, -0.02, 0.26, 0.062, true), lever, led);
+  for (let i = 0; i < 6; i++) g.add(box(0.06, 0.035, 0.02, 0x15171a, -0.1, 0.1 - i * 0.06, 0.07)); scene.add(g); return { g, lever, led, cur: 0 }; })();
+const nearBreaker = (p, d) => Math.hypot(p.x - BREAKER.x, p.y - BREAKER.y, p.z - BREAKER.z) < d;
 const applyLook = () => { world.look(S.night, S.nvg, S.wx); weather.set(S.wx, S.night, S.nvg); nvgMask.visible = S.nvg; irLamp.intensity = S.nvg ? (S.night ? 3.2 : 1.2) : 0; };
 function toggleNVG() { S.nvg = !S.nvg; sfx.nvg(S.nvg); applyLook(); }
 function hint(x, y, z, text) { if (S.now - S.hintT < 1.2) return; S.hintT = S.now; sayAt(x, y, z, text, '#ffd060'); sfx.beep(null, 300); }
@@ -154,22 +160,22 @@ function showLobbyPanel() {
   panel.draw('BREACHLINE', 'Operation GILDED CAGE  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
     ['Squad: ' + (S.squad.join(', ') || '-'), 'Suspects hold 5 residents on three floors. Two bombs. 12:00.', 'Rear: walk-out basement by the pool; concealed service door',
       'behind the hedges. Shout first. Cuff everyone, downed included.', 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, B/Y = SHOUT. Helmet = NVG.',
-      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['START - DUSK', 'dusk'], ['START - NIGHT', 'night']]);
+      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', 'Lights out: throw the MAIN BREAKER in the plant room (basement,', 'just inside the concealed door). They may send someone to fix it.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['START MISSION', 'start']]);
 }
 function showEndPanel() {
   const R = S.report; if (!R || S.menu) return; S.panel = 'end'; panel.mesh.visible = true; frontOfHead(1.9);
-  panel.draw(R.result, 'Grade ' + R.grade + '   Score ' + R.total + '/100   Time ' + Math.floor(R.time / 60) + ':' + String(R.time % 60).padStart(2, '0'), R.lines, [['AGAIN - DUSK', 'dusk'], ['AGAIN - NIGHT', 'night']]);
+  panel.draw(R.result, 'Grade ' + R.grade + '   Score ' + R.total + '/100   Time ' + Math.floor(R.time / 60) + ':' + String(R.time % 60).padStart(2, '0'), R.lines, [['RESTART', 'start']]);
 }
 function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z); }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Currently: ' + (S.night ? 'NIGHT (power cut)' : 'DUSK') + ', ' + S.wx.toUpperCase()], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['RESTART - DUSK', 'dusk'], ['RESTART - NIGHT', 'night'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase()], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['RESTART MISSION', 'start'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby') showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
   const act = panel.probe(o, d, false); if (!act) return act === '';   // a pull on the panel background is swallowed, not fired
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
-  if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', night: act === 'night', wx: S.wxPick }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
+  if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
   return true;
 }
 
@@ -214,6 +220,7 @@ function applySnap(m) {
   S.secured = sec; for (let i = 0; i < S.doorOpen.length; i++) { S.doorOpen[i] = m.D[i] === '1'; S.doorLocked[i] = m.L[i] === '1'; }
   S.defused = 0; m.B.forEach((b, i) => { const o = S.bombs[i]; if (o) { o.set(b[0], b[1]); o.n = b[2]; } if (b[1]) S.defused++; });
   const seen = new Set(); S.squad = m.P.map(p => p[1]);
+  if (m.pw != null && S.night === !!m.pw) { S.night = !m.pw; applyLook(); }
   for (const [id, name, , hp, down, h, l, r, g, w] of m.P) {
     if (id === S.me.id) { S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); continue; }
     seen.add(id); let o = S.officers.get(id); if (!o) { o = new Officer(name, label(name, '#9fd0ff')); scene.add(o.g); S.officers.set(id, o); }
@@ -236,6 +243,7 @@ function onEvent(e) {
     case 'down': if (e.p === S.me.id) sfx.hurt(); break;
     case 'revive': if (e.p === S.me.id) sfx.ok(); break;
     case 'hit': if (a) a.flinch = 1; break;
+    case 'power': sfx.power(v1.set(BREAKER.x, BREAKER.y, BREAKER.z), e.on); break;
     case 'door': { const d = level.doors[e.d]; sfx.door(v1.set(d.cx, d.y + 1, d.cz)); break; }
     case 'locked': { const d = level.doors[e.d]; sfx.rattle(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'LOCKED', '#ffb060'); break; }
     case 'unlock': { const d = level.doors[e.d]; sfx.unlock(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'UNLOCKED', '#80ff9a'); break; }
@@ -258,7 +266,7 @@ addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => { if (S.mode === 'desktop' && document.pointerLockElement === renderer.domElement) { S.yaw -= e.movementX * 0.0022; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch - e.movementY * 0.0022)); } });
 function deskKey(code) {
   const G = gunIn(hands[1]);
-  if ((code === 'Enter' || code === 'Backslash') && S.phase !== 'active') net.send({ t: 'restart', night: code === 'Backslash', wx: S.wxPick });
+  if (code === 'Enter' && S.phase !== 'active') net.send({ t: 'restart', wx: S.wxPick });
   if (code === 'KeyO') cycleWx();
   if (code === 'KeyM') return toggleMenu();
   if (S.me.down) return;
@@ -281,6 +289,7 @@ function nearestCuffable(p, maxD) { let best = null, bd = maxD; for (const [id, 
 function nearestDowned(p, maxD) { let best = null, bd = maxD; for (const o of S.officers.values()) { if (!o.down) continue; const d = o.head.position.distanceTo(p); if (d < bd) { bd = d; best = o.id; } } return best; }
 function deskInteract() {
   for (let i = 0; i < S.bombs.length; i++) { const b = S.bombs[i]; if (!b.defused && b.g.position.distanceTo(head.pos) < 1.7) { const p = b.g.position; return S.tool === 'cutters' ? net.send({ t: 'cut', b: i, w: b.order[b.n] }) : hint(p.x, p.y + 0.4, p.z, 'SELECT CUTTERS'); } }
+  if (nearBreaker(head.pos, 1.7)) return net.send({ t: 'breaker' });
   const n = nearestCuffable(v1.copy(head.pos).setY(head.pos.y - 0.7), 1.6); if (n != null) return net.send({ t: 'cuff', n });
   const p = nearestDowned(head.pos, 2); if (p != null) return net.send({ t: 'revive', p });
   const bi = nearestDoor(head.pos, 2.2); if (bi < 0) return; net.send({ t: 'door', d: bi });
@@ -399,6 +408,7 @@ function grab(h, o) {   // grip pressed on hand h; o is the other hand
 // empty hand, grip or trigger: cuff, revive, or work a door
 function useWorld(h) {
   if (S.me.down) return false;
+  if (nearBreaker(h.pos, 0.45)) { net.send({ t: 'breaker' }); buzz(h, 1, 60); return true; }
   const n = nearestCuffable(h.pos, 1.0); if (n != null) { h.hold = { kind: 'cuff', id: n, t: 0, need: 1.2 }; return true; }
   const p = nearestDowned(h.pos, 0.9); if (p != null) { h.hold = { kind: 'revive', id: p, t: 0, need: 3 }; return true; }
   const d = nearestDoor(h.pos, 0.95); if (d < 0) return false;
@@ -475,6 +485,7 @@ function frame(t) {
   if (S.phase === 'lobby' && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
   // world animation
   for (const a of S.actors.values()) a.update(dt);
+  breaker.cur += ((S.night ? 1 : 0) - breaker.cur) * Math.min(1, dt * 14); breaker.lever.rotation.x = breaker.cur * 2.2; breaker.led.material.color.setHex(S.night ? 0x401010 : 0x30ff60);
   world.doors.forEach((d, i) => { d.cur += ((S.doorOpen[i] ? 1.65 : 0) - d.cur) * Math.min(1, dt * 7); d.g.visible = true; d.g.rotation.y = d.base + d.cur; });
   for (const l of tracers) if (l.visible && (l.userData.t -= dt) <= 0) l.visible = false;
   for (const m of puffs) if (m.visible) { m.userData.t -= dt; m.material.opacity = Math.max(0, m.userData.t / 0.3); m.scale.setScalar(1 + (0.3 - m.userData.t) * 4); if (m.userData.t <= 0) m.visible = false; }
@@ -525,7 +536,7 @@ function initTouch() {
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
   bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit3' }[S.tool])); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
-  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', night: false, wx: S.wxPick }); S.tmenu = false; }); bind('bNight', () => { net.send({ t: 'restart', night: true, wx: S.wxPick }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
+  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
   const sEnd = e => { if (e.pointerId !== sid) return; sid = null; S.tmove.x = S.tmove.y = 0; knob.style.transform = ''; };
@@ -542,5 +553,5 @@ $('tplay').onclick = () => { initAudio(); connect($('solo').checked); begin('des
 let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('install').style.display = 'inline-block'; });
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.__bl = { weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, world, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, world, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

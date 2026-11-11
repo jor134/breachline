@@ -3,6 +3,8 @@ export const H = 3.2, U = 0.5, T = 0.2, DOOR_H = 2.1;
 export const FOOT = { x0: 0, z0: 0, x1: 24, z1: 16 };
 export const YARD = { x0: -8, z0: -16, x1: 32, z1: 30 };   // front yard at street level, back yard one storey lower, cliff edge at z0
 export const STAIR = { x0: 13.5, x1: 15, z0: 4, z1: 9 };
+// Main electrical breaker: on the plant room's rear wall, just inside the concealed service door.
+export const BREAKER = { x: 22.6, y: -H + 1.4, z: 0.13 };
 export const SPAWN = [[10.5, 27], [11.5, 27], [12.5, 27], [13.5, 27]];
 
 // [floor, name, x0, z0, x1, z1, floorMaterial]
