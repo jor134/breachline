@@ -7,6 +7,8 @@ old specular-glossiness materials converted to metal-roughness (tools/pack_glb.p
 - `thug.glb`: "terrorist" by DJMaesen (https://sketchfab.com/bumstrum), https://sketchfab.com/3d-models/terrorist-ccce1abd9086451da3bed9ec30c82c37
 - `gunman.glb`: "Terrorist 4" by Upgrade titan camera man (https://sketchfab.com/Upgradetitancameraman), https://sketchfab.com/3d-models/terrorist-4-5c7aa149588f418eacb72adc9beea1ec
 - `phoenix.glb`: "Tm Phoenix V2- csgo terrorist characters" by ErhanMatur (https://sketchfab.com/erhanmatur), https://sketchfab.com/3d-models/tm-phoenix-v2-csgo-terrorist-characters-8cd9781067b24cf4b36f0f2916f9ac35
+- `boss.glb`: "Business Man" by qsardor (https://sketchfab.com/qsardor57913), https://sketchfab.com/3d-models/business-man-71abfba65139471dabac10ffeb5bf2bb
+- `civilians.glb`: 22 of the people in "Characters_psx" by Elbolillo (https://sketchfab.com/Elbolilloduro), https://sketchfab.com/3d-models/characters-psx-d940162487c3493b9e203d624fdd763a (subset with tools/subset_glb.py; unrigged in the source, the game fits a skeleton to each)
 - `swat.glb`: "Counter terrorist" by davidthe19th (https://sketchfab.com/davidthe19th), https://sketchfab.com/3d-models/counter-terrorist-878aced6e8b94c2786a84830fe78acac
 
 Note: `phoenix.glb` and `swat.glb` are derived from Valve's Counter-Strike characters (Counter-Strike is a trademark of Valve Corporation).

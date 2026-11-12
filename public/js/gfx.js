@@ -120,10 +120,16 @@ export function buildWorld(scene, id = 'mansion') {
   const ctx = { b, ao, root, hills, hillM, level, map, H, YARD, MATS, THREE, ALL, cx, cz, rnd, sky };
   G.scenery(ctx);
   // floors, ceilings with recessed downlights
+  // stairwells: every floor a flight passes through is open over it, except the landing strip at the top of the flight
+  const holes = {}; for (const st of map.stairs || []) for (let k = 1; k <= st.n; k++) (holes[Math.round(st.yb / H) + k] = holes[Math.round(st.yb / H) + k] || []).push([st.x0, st.z0 + (st.z1 - st.z0) * 0.15, st.x1, st.z1]);
+  const cut = (r, hs) => { let out = [r]; for (const [hx0, hz0, hx1, hz1] of hs || []) { const nx = []; for (const [a, c, e, g] of out) { if (hx1 <= a || hx0 >= e || hz1 <= c || hz0 >= g) { nx.push([a, c, e, g]); continue; }
+      if (c < hz0) nx.push([a, c, e, hz0]); if (g > hz1) nx.push([a, hz1, e, g]); const zc = Math.max(c, hz0), zg = Math.min(g, hz1); if (a < hx0) nx.push([a, zc, hx0, zg]); if (e > hx1) nx.push([hx1, zc, e, zg]); } out = nx; } return out; };
+  for (const [lv, hs] of Object.entries(holes)) for (const [hx0, hz0, hx1, hz1] of hs) { const y = lv * H; b('fascia').box(hx0, hx1, y - 0.22, y, hz1 - 0.04, hz1, 'Z', 1); b('fascia').box(hx0 - 0.002, hx0 + 0.04, y - 0.22, y, hz0, hz1, 'X', 1); b('fascia').box(hx1 - 0.04, hx1 + 0.002, y - 0.22, y, hz0, hz1, 'x', 1); b('fascia').box(hx0, hx1, y - 0.22, y, hz0, hz0 + 0.04, 'z', 1); }   // slab edges round the opening
   for (const [f, , x0, z0, x1, z1, mat] of map.rooms) {
-    const y = f * H + 0.004; b(MATS[mat] ? mat : 'tile').quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], 0.5);
-    const cy = f * H + H - 0.012; b('ceiling').quad([x0, cy, z0], [x1, cy, z0], [x1, cy, z1], [x0, cy, z1], [0, -1, 0], 0.5);
-    for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) { b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
+    const y = f * H + 0.004; for (const [a, c, e, g] of cut([x0, z0, x1, z1], holes[f])) b(MATS[mat] ? mat : 'tile').quad([a, y, c], [e, y, c], [e, y, g], [a, y, g], [0, 1, 0], 0.5);
+    const cy = f * H + H - 0.012; for (const [a, c, e, g] of cut([x0, z0, x1, z1], holes[f + 1])) b('ceiling').quad([a, cy, c], [e, cy, c], [e, cy, g], [a, cy, g], [0, -1, 0], 0.5);
+    const inHole = (hs, x, z, m) => (hs || []).some(([a, c, e, g]) => x > a - m && x < e + m && z > c - m && z < g + m);
+    for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) { if (inHole(holes[f + 1], x, z, 0.2) || inHole(holes[f], x, z, 0.5)) continue; b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
       ao('lightpool', [x - 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z + 1.5], [x - 1.5, y + 0.03, z + 1.5], [0, 1, 0]); }   // pool of light on the floor under each fitting
   }
   // walls: plaster inside, the map's cladding outside, glass with dark mullions
@@ -154,7 +160,6 @@ export function buildWorld(scene, id = 'mansion') {
       for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N + off; b(m).box(st.x0 + 0.1, st.x1 - 0.1, top - 0.06, top, st.z1 - (i + 1) * run / N, st.z1 - i * run / N, ALL, 1); }
       b(m).box(st.x0 + 0.1, st.x1 - 0.1, H - 0.2 + off, H + off, st.z0, st.z1 - run, 'YZy', 1);
     }
-    const top = st.yb + st.n * H - 0.012; b('ceiling').quad([st.x0, top, st.z0], [st.x1, top, st.z0], [st.x1, top, st.z1], [st.x0, top, st.z1], [0, -1, 0]);
   }
   const NOSHADE = { glass: 1, water: 1, glow: 1, ao: 1, aoBlob: 1, lightpool: 1, ocean: 1, ...(G.noshade || {}) };
   for (const k in B) { const m = B[k].mesh(MATS[k]); if (k === 'glass' || k === 'water') m.renderOrder = 5; if (k === 'ao' || k === 'aoBlob' || k === 'lightpool') m.renderOrder = 2; else if (!NOSHADE[k]) { m.castShadow = !(G.noCast || ['gravel']).includes(k); m.receiveShadow = true; } root.add(m); }

@@ -66,7 +66,7 @@ const hands = [0, 1].map(i => { const h = { i, pos: V(), quat: new THREE.Quatern
 const press = (h, k) => h.in[k] > 0.5 && !(h.prev[k] > 0.5), released = (h, k) => !(h.in[k] > 0.5) && h.prev[k] > 0.5;
 const buzz = (h, s, ms) => { try { h.pad && h.pad.hapticActuators && h.pad.hapticActuators[0] && h.pad.hapticActuators[0].pulse(s, ms); } catch { } };
 const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(kind), mesh, ud: mesh.userData, where: 'holster', mags: GUNS[kind].mags, kick: 0, flashT: 0 }; };
-const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol()) };
+const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol(true, true)) };
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
 const HOLSTER = RIG;   // grab zones sit exactly where the holders are drawn on the vest and belt
 const bodyPt = (off, out) => out.set(off[0], 0, off[2]).applyAxisAngle(UP, S.bodyYaw).add(head.pos).setY(head.pos.y + off[1]);
@@ -223,7 +223,7 @@ function drawHud() {
 function applyInit(init) {
   if (init.map && init.map !== M.id) { loadMap(init.map); localStorage.setItem('bl_map', init.map); if (S.mode && S.phase !== 'active') placeAtSpawn(); }
   for (const a of S.actors.values()) scene.remove(a.g, a.blob); S.actors.clear(); for (const b of S.bombs) scene.remove(b.g); S.bombs = []; S.hvtId = 0;
-  for (const [id, kind, v, hvt] of init.npcs) { const a = new Human(kind, v); scene.add(a.g, a.blob); S.actors.set(id, a); if (hvt) S.hvtId = id; }
+  for (const [id, kind, v, hvt] of init.npcs) { const a = new Human(kind, v, id); scene.add(a.g, a.blob); S.actors.set(id, a); if (hvt) S.hvtId = id; }
   S.civs = init.npcs.filter(n => n[1] === 'c').length; if (S.night !== !!init.night || S.wx !== init.weather) { S.night = !!init.night; S.wx = init.weather || 'clear'; applyLook(); }
   for (const [x, y, z, wires, order, yaw] of init.bombs) { const b = new Bomb(x, y, z, wires, order, yaw); b.order = order; b.n = 0; scene.add(b.g); S.bombs.push(b); }
 }
@@ -394,7 +394,7 @@ function placeGuns(dt) {
     G.ud.mag.visible = G.st.mag !== null; if (G.ud.bolt) G.ud.bolt.visible = G.st.locked; if (G.ud.slide) G.ud.slide.position.z = G.ud.slideZ + (G.st.locked ? 0.03 : 0);
     if (G.flashT > 0) G.flashT -= dt; G.ud.flash.visible = G.flashT > 0; m.updateMatrixWorld(true);
   }
-  guns.rifle.ud.ret.visible = guns.rifle.where !== 'holster';   // the reticle's own shader decides, per eye, how much of it shows through the sight window
+  guns.rifle.ud.ret.visible = guns.rifle.where !== 'holster'; if (guns.pistol.ud.ret) guns.pistol.ud.ret.visible = guns.pistol.where !== 'holster';   // the reticle's own shader decides, per eye, how much of it shows through the sight window
   // flashlight follows the gun in hand
   const A = gunIn(hands[1]) || gunIn(hands[0]); torch.visible = !!A && S.light;
   if (A) { A.mesh.localToWorld(torch.position.copy(A.ud.light)); torch.target.position.set(0, 0, -6).add(A.ud.light); A.mesh.localToWorld(torch.target.position); torch.target.updateMatrixWorld(); }

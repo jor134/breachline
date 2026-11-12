@@ -39,3 +39,29 @@ function mergeIdx(list) {   // same vertex layout (each is a clone of one part):
   for (const g of list) { for (const i of g.index.array) idx.push(i + base); base += g.attributes.position.count; }
   out.setIndex(idx); return out;
 }
+
+// Sidearm: FN 509 with red-dot and weapon light ("FN509 Pistol" by Lokeig, CC BY-NC 4.0, see models/m4/LICENSE.md).
+// Model units are about 0.13 mm with the muzzle toward +x; it is turned to the gun frame (muzzle -z) with the top of the grip near the origin.
+// The slide is cut out so it can lock back, and the magazine floor plate so an empty gun shows the open well.
+export const FN = { s: 0.215 / 1684, oy: 0.046, oz: -0.0566, cz: 59 };
+let fnPromise = null;
+export function loadFN509() {
+  return fnPromise || (fnPromise = new Promise((res, rej) => new GLTFLoader().load('models/m4/fn509.glb', g => {
+    g.scene.updateMatrixWorld(true); const meshes = []; g.scene.traverse(o => { if (o.isMesh) meshes.push(o); });
+    const top = meshes.find(o => o.material.name === 'Material_4'), inv = new THREE.Matrix4().copy(top.matrixWorld).invert();
+    const T = new THREE.Matrix4().makeTranslation(0, FN.oy, FN.oz).multiply(new THREE.Matrix4().makeRotationY(Math.PI / 2)).multiply(new THREE.Matrix4().makeScale(FN.s, FN.s, FN.s)).multiply(new THREE.Matrix4().makeTranslation(0, 0, -FN.cz));
+    const frame = new THREE.Group(), slide = new THREE.Group(); let plate = null;
+    for (const o of meshes) {
+      const m = o.material; m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.5; if (!pbrMats.includes(m)) pbrMats.push(m);
+      if (m.transmission > 0) { m.transmission = 0; m.transparent = true; m.opacity = 0.3; m.depthWrite = false; }   // the optic's glass: plain transparency, not a second render pass
+      const geo = o.geometry.clone().applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));   // in the slide's own frame (model units)
+      if (o === top) {
+        const P = geo.attributes.position, I = geo.index.array, sl = [], pl = [], fr = [];
+        for (let t = 0; t < I.length; t += 3) { let y = 0; for (let k = 0; k < 3; k++) y += P.getY(I[t + k]); y /= 3; (y > -105 ? sl : y < -975 ? pl : fr).push(I[t], I[t + 1], I[t + 2]); }
+        const part = idx => { const c = geo.clone(); c.setIndex(idx); c.applyMatrix4(T); return c; };
+        frame.add(new THREE.Mesh(part(fr), m)); slide.add(new THREE.Mesh(part(sl), m)); plate = { geo: part(pl), mat: m };
+      } else (o.material.name === 'Material_26' || o.material.name === 'Material_37' ? slide : frame).add(new THREE.Mesh(geo.applyMatrix4(T), m));   // the optic rides on the slide, the light on the frame
+    }
+    res({ frame, slide, plate });
+  }, undefined, rej)));
+}

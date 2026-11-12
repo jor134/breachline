@@ -1,7 +1,7 @@
 // Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
-import { loadM4 } from './m4.js';
-import { CHARS_ON, SUSPECT_MODELS, loadChar, Skin, mirror, align2 } from './chars.js';
+import { loadM4, loadFN509 } from './m4.js';
+import { CHARS_ON, SUSPECT_MODELS, loadChar, loadCivilians, Skin, mirror, align2 } from './chars.js';
 const HQ = typeof location === 'undefined' || !new URLSearchParams(location.search).get('lite') || !!new URLSearchParams(location.search).get('m4');   // ?lite=1 (tests) keeps the built-in rifle unless &m4=1
 import { sheen, vertexSheen } from './mats.js';
 import { SOFT } from './gfx.js';
@@ -31,6 +31,20 @@ const basic = c => new THREE.MeshBasicMaterial({ color: c });
 
 // ---------- weapons ----------
 let rifleGeo = null, rifleMagGeo = null;
+// Holographic / red-dot reticle: drawn far downrange, and the shader only shows the part of it this eye sees through the sight window,
+// so it stays on the point of aim wherever your eye sits behind the glass, and vanishes when you look past the housing - like the real thing.
+function makeReticle(g, y, hx, hy, z, dotOnly) {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const k = c.getContext('2d'); k.strokeStyle = k.fillStyle = '#ff3020'; k.lineWidth = 11;
+  if (dotOnly) { k.beginPath(); k.arc(128, 128, 34, 0, 6.3); k.fill(); }
+  else { k.beginPath(); k.arc(128, 128, 92, 0, 6.3); k.stroke(); k.beginPath(); k.arc(128, 128, 8, 0, 6.3); k.fill(); for (const [x, yy, w, h] of [[123, 14, 10, 30], [123, 212, 10, 30], [14, 123, 30, 10], [212, 123, 30, 10]]) k.fillRect(x, yy, w, h); }   // lines heavier than a real 1 MOA dot so a headset's pixels can show them
+  const inv = new THREE.Matrix4();
+  const ret = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.ShaderMaterial({ transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { map: { value: new THREE.CanvasTexture(c) }, uInv: { value: inv }, uWin: { value: new THREE.Vector4(0, y, hx, hy) }, uZ: { value: z } },
+    vertexShader: 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: 'uniform sampler2D map; uniform mat4 uInv; uniform vec4 uWin; uniform float uZ; varying vec2 vUv; varying vec3 vW; void main(){ vec3 e = (uInv * vec4(cameraPosition, 1.0)).xyz; vec3 f = (uInv * vec4(vW, 1.0)).xyz; if (e.z <= uZ + 0.01) discard; vec3 p = e + (f - e) * ((uZ - e.z) / (f.z - e.z)); if (abs(p.x - uWin.x) > uWin.z || abs(p.y - uWin.y) > uWin.w) discard; vec4 c = texture2D(map, vUv); if (c.a < 0.05) discard; gl_FragColor = vec4(c.rgb * 2.2, c.a); }' }));
+  ret.position.set(0, y, -60); ret.renderOrder = 20; ret.frustumCulled = false; ret.visible = false; ret.onBeforeRender = () => { inv.copy(g.matrixWorld).invert(); }; g.add(ret);
+  return ret;
+}
 export function makeRifle(holo = false, hq = false) {   // built-in M4-pattern carbine (suspects; officers until the model below loads). hq: swap in the downloaded M4A1 (m4.js)
   const K = 0x17181a, TAN = 0x6f6352, GR = 0x2a2c2f, g = new THREE.Group();
   if (!rifleGeo) {
@@ -50,19 +64,8 @@ export function makeRifle(holo = false, hq = false) {   // built-in M4-pattern c
   const mag = new THREE.Mesh(rifleMagGeo, vertexSheen('metal')); g.add(mag);
   const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.02, 0.06), basic(0xd0a040)); bolt.position.set(0.025, 0.055, -0.05); bolt.visible = false; g.add(bolt);
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 4), basic(0xffd070)); flash.position.set(0, 0.05, -0.69); flash.visible = false; g.add(flash);
-  // Holographic reticle: a ring and dot focused far downrange. The shader only draws the part of it that this eye sees through the sight window,
-  // so it stays on the point of aim wherever your eye sits behind the glass, and vanishes when you look past the housing - like the real thing.
   let ret = null;
-  if (holo) {
-    const c = document.createElement('canvas'); c.width = c.height = 256; const k = c.getContext('2d'); k.strokeStyle = k.fillStyle = '#ff3020'; k.lineWidth = 11; k.beginPath(); k.arc(128, 128, 92, 0, 6.3); k.stroke(); k.beginPath(); k.arc(128, 128, 8, 0, 6.3); k.fill(); for (const [x, y, w, h] of [[123, 14, 10, 30], [123, 212, 10, 30], [14, 123, 30, 10], [212, 123, 30, 10]]) k.fillRect(x, y, w, h);   // lines are drawn heavier than a real 1 MOA dot so a headset's pixels can show them
-    const inv = new THREE.Matrix4();
-    ret = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.ShaderMaterial({ transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
-      uniforms: { map: { value: new THREE.CanvasTexture(c) }, uInv: { value: inv }, uWin: { value: new THREE.Vector4(0, 0.126, 0.0165, 0.0125) }, uZ: { value: -0.05 } },
-      vertexShader: 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
-      fragmentShader: 'uniform sampler2D map; uniform mat4 uInv; uniform vec4 uWin; uniform float uZ; varying vec2 vUv; varying vec3 vW; void main(){ vec3 e = (uInv * vec4(cameraPosition, 1.0)).xyz; vec3 f = (uInv * vec4(vW, 1.0)).xyz; if (e.z <= uZ + 0.01) discard; vec3 p = e + (f - e) * ((uZ - e.z) / (f.z - e.z)); if (abs(p.x - uWin.x) > uWin.z || abs(p.y - uWin.y) > uWin.w) discard; vec4 c = texture2D(map, vUv); if (c.a < 0.05) discard; gl_FragColor = vec4(c.rgb * 2.2, c.a); }' }));
-    ret.position.set(0, 0.126, -60); ret.renderOrder = 20; ret.frustumCulled = false; ret.visible = false; ret.onBeforeRender = () => { inv.copy(g.matrixWorld).invert(); }; g.add(ret);
-    const lens = new THREE.Mesh(new THREE.PlaneGeometry(0.036, 0.028), new THREE.MeshBasicMaterial({ color: 0x40708a, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide })); lens.position.set(0, 0.126, -0.07); lens.userData.lens = true; g.add(lens);
-  }
+  if (holo) { ret = makeReticle(g, 0.126, 0.0165, 0.0125, -0.05, false); const lens = new THREE.Mesh(new THREE.PlaneGeometry(0.036, 0.028), new THREE.MeshBasicMaterial({ color: 0x40708a, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide })); lens.position.set(0, 0.126, -0.07); lens.userData.lens = true; g.add(lens); }
   g.userData = { kind: 'rifle', mag, bolt, flash, ret, muzzle: new THREE.Vector3(0, 0.05, -0.65), light: new THREE.Vector3(0.04, 0.05, -0.45), magwell: new THREE.Vector3(0, -0.05, -0.1), rack: new THREE.Vector3(0, 0.078, 0.075), fore: new THREE.Vector3(0, -0.01, -0.3), sightY: 0.126 };
   if (hq && HQ) loadM4().then(({ body, magGeo, magMat }) => {   // swap in the model; every handling point moves to where it is on the real rifle
     g.children[0].visible = false; g.add(body.clone());
@@ -75,7 +78,7 @@ export function makeRifle(holo = false, hq = false) {   // built-in M4-pattern c
   return g;
 }
 let pistolGeo = null;
-export function makePistol() {
+export function makePistol(holo = false, hq = false) {   // built-in pistol; hq: the downloaded FN 509 once it loads (m4.js), holo: its red dot
   const K = 0x17181a, g = new THREE.Group();
   if (!pistolGeo) pistolGeo = merge([[BOX(0.03, 0.11, 0.046), K, 0, -0.02, 0.018, 0.2], [BOX(0.028, 0.02, 0.15), K, 0, 0.022, -0.045], [BOX(0.008, 0.03, 0.05), K, 0, -0.003, -0.02], [BOX(0.026, 0.02, 0.05), 0x24262a, 0, 0.005, -0.1]], 'plastic').geometry;
   g.add(new THREE.Mesh(pistolGeo, vertexSheen('plastic')));
@@ -83,6 +86,12 @@ export function makePistol() {
   const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.012, 0.05), sheen({ color: 0x3a3f45 }, 'metal')); mag.position.set(0, -0.082, 0.03); g.add(mag);
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), basic(0xffd070)); flash.position.set(0, 0.045, -0.18); flash.visible = false; g.add(flash);
   g.userData = { kind: 'pistol', mag, slide, slideZ: -0.05, flash, muzzle: new THREE.Vector3(0, 0.045, -0.15), light: new THREE.Vector3(0, 0.02, -0.15), magwell: new THREE.Vector3(0, -0.09, 0.03), rack: new THREE.Vector3(0, 0.05, 0.03), sightY: 0.074 };
+  if (hq && HQ) loadFN509().then(({ frame, slide: sl, plate }) => {   // the FN 509: frame, moving slide with the red dot, magazine floor plate
+    g.children[0].visible = false; slide.visible = false; g.add(frame.clone()); const s2 = sl.clone(); g.add(s2);
+    mag.geometry = plate.geo; mag.material = plate.mat; mag.position.set(0, 0, 0);
+    const U = g.userData; U.slide = s2; U.slideZ = 0; U.muzzle.set(0, 0.048, -0.17); U.light.set(0, -0.004, -0.19); U.magwell.set(0, -0.087, 0.02); U.rack.set(0, 0.046, 0.04); U.sightY = 0.0674; flash.position.set(0, 0.048, -0.19);
+    if (holo) { U.ret = makeReticle(s2, 0.0674, 0.0095, 0.007, -0.021, true); U.ret.visible = false; }
+  }).catch(e => console.warn('pistol model not loaded', e));
   return g;
 }
 export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = r.magMat; } }).catch(() => { }); return m; };
@@ -103,7 +112,7 @@ const JACKET = [[0x5f6340, 0x33291f, 0x1f232b, 0x8b8b86], [0x4a4f5c, 0x2a2a2a, 0
 const HOODIE = [[0x2e2e30, 0x4a4b4e, 0x7a3fa0, 0x2aa0b0], [0x3b3f48, 0x2a2c30, 0xa03030, 0x1a1a1a]];
 const CIVC = [[0xd9d2c2, 0x4a5568, 0x3a2a1c], [0x8fa8c8, 0x3b3b3b, 0x151515], [0xc88f8f, 0x565a70, 0x6a4a2a], [0xe0d8c8, 0x6b5a48, 0x9a9a9a]];
 export class Human {
-  constructor(kind, v) {
+  constructor(kind, v, id = 0) {
     const s = kind === 's', skin = SKIN[v % 4]; let up, sleeve, hand, leg, shoe, sole = 0xe8e8e8;
     if (s && v === 4) {   // the high-value target: tailored charcoal suit, open collar, no mask
       const suit = 0x2b2d33, shirt = 0xe9e6df, hair = 0x1e1813; sleeve = suit; hand = skin; leg = suit; shoe = 0x15110e; sole = 0x15110e;
@@ -128,13 +137,13 @@ export class Human {
     this.arms = [-1, 1].map(sx => { const sh = new THREE.Group(), el = new THREE.Group(); sh.position.set(sx * 0.275, 0.5, 0); el.position.y = -0.3; sh.add(merge([[CAP(0.056, 0.2), sleeve, 0, -0.15, 0]], 'cloth'), el); el.add(merge([[CAP(0.05, 0.18), sleeve, 0, -0.13, 0], [SPH(0.05), hand, 0, -0.29, 0]], 'cloth')); this.upper.add(sh); return { sh, el }; });
     this.legs = [-1, 1].map(sx => { const hip = new THREE.Group(), knee = new THREE.Group(); hip.position.set(sx * 0.1, 0.9, 0); knee.position.y = -0.43; hip.add(merge([[CAP(0.082, 0.28), leg, 0, -0.2, 0]], 'cloth'), knee); knee.add(merge([[CAP(0.07, 0.28), leg, 0, -0.2, 0], [BOX(0.11, 0.07, 0.26), shoe, 0, -0.42, 0.05], [BOX(0.115, 0.025, 0.265), sole, 0, -0.46, 0.05]], 'cloth')); body.add(hip); return { hip, knee }; });
     body.add(merge([[BOX(0.4, 0.18, 0.24), leg, 0, 0.86, 0]], 'cloth'));
-    if (s && v === 4) { this.gun = makePistol(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
+    if (s && v === 4) { this.gun = makePistol(false, true); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
     else if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
     this.kind = kind; this.st = ''; this.first = true; this.flashT = 0; this.flinch = 0; this.phase = Math.random() * 6; this.idle = Math.random() * 9; this.speed = 0;
     this.p0 = new THREE.Vector3(); this.p1 = new THREE.Vector3(); this.y0 = 0; this.y1 = 0; this.it = 0; this.dur = 0.07; this.lastT = 0;
     this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST); this.blob = makeBlob(0.5); g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
-    // suspects wear one of the downloaded rigged models (HVT keeps his suit); the stick rig above keeps animating, invisibly, and drives its bones
-    if (s && v !== 4 && CHARS_ON) loadChar(SUSPECT_MODELS[v % SUSPECT_MODELS.length]).then(t => this.attachSkin(t)).catch(e => console.warn('suspect model not loaded', e));
+    // everyone wears a downloaded model (suspects, the boss in his suit, civilians); the stick rig above keeps animating, invisibly, and drives its bones
+    if (CHARS_ON) (s ? loadChar(v === 4 ? 'boss' : SUSPECT_MODELS[v % SUSPECT_MODELS.length]) : loadCivilians().then(l => l[(id * 7 + v * 3) % l.length])).then(t => t && this.attachSkin(t)).catch(e => console.warn('character model not loaded', e));
   }
   attachSkin(tpl) {
     const g = this.g, keepQ = g.quaternion.clone(), keepP = g.position.clone(); g.position.set(0, 0, 0); g.quaternion.identity(); g.updateMatrixWorld(true);
@@ -352,7 +361,7 @@ export class Officer {   // another player
     this.g = new THREE.Group();
     this.head = merge([[SPH(0.125), 0x20242a, 0, 0.01, 0], [BOX(0.2, 0.06, 0.03), 0x0a0a0a, 0, 0.0, -0.11], [BOX(0.15, 0.09, 0.02), 0xc79a7b, 0, -0.06, -0.1], [BOX(0.27, 0.06, 0.1), 0x15181d, 0, 0.0, 0]], 'plastic');
     this.body = new Body();
-    this.items = [0, 1].map(() => { const g = new THREE.Group(), r = makeRifle(false, true), p = makePistol(), m = makeMag('rifle', true); r.visible = p.visible = m.visible = false; g.add(r, p, m); g.userData = { items: [null, r, p, m] }; return g; });
+    this.items = [0, 1].map(() => { const g = new THREE.Group(), r = makeRifle(false, true), p = makePistol(false, true), m = makeMag('rifle', true); r.visible = p.visible = m.visible = false; g.add(r, p, m); g.userData = { items: [null, r, p, m] }; return g; });
     this.tag = tag; tag.position.y = 0.3; this.head.add(tag);
     this.g.add(this.head, this.body.g, ...this.items); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ'); this.hp = [{ pos: new THREE.Vector3(), quat: new THREE.Quaternion() }, { pos: new THREE.Vector3(), quat: new THREE.Quaternion() }];
   }
