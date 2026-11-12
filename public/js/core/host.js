@@ -1,5 +1,5 @@
 // Room host: wraps the simulation behind a message protocol. Runs in the Durable Object, or in the browser for solo practice.
-import { Sim } from './sim.js';
+import { Sim, MAP_IDS } from './sim.js';
 export const TICK = 1 / 15;
 export class RoomHost {
   constructor(send) { this.send = send; this.sim = new Sim(); }   // send(idOrNull, object)
@@ -7,7 +7,7 @@ export class RoomHost {
   join(id, name) {
     if (this.count >= 4) { this.send(id, { t: 'full' }); return false; }
     const p = this.sim.addPlayer(id, name);
-    this.send(id, { t: 'welcome', id, slot: p.slot, init: this.sim.init() });
+    this.send(id, { t: 'welcome', id, slot: p.slot, init: this.sim.init(), n: this.count, ph: this.sim.phase });
     return true;
   }
   leave(id) { this.sim.removePlayer(id); if (!this.count) this.sim.reset(1); }
@@ -28,8 +28,10 @@ export class RoomHost {
       case 'pick': s.pick(id, m.d); break;
       case 'kick': s.kick(id, m.d); break;
       case 'cut': s.cut(id, m.b, m.w); break;
+      case 'snip': s.snip(id, m.d); break;
+      case 'map': if (s.phase !== 'active' && MAP_IDS.includes(m.m) && m.m !== s.mapId) { s.setMap(m.m); s.reset(s.seed); this.send(null, { t: 'init', init: s.init() }); } break;   // lobby only: everyone loads the same map
       case 'restart':
-      case 'start': if (m.t === 'restart' || s.phase !== 'active') { s.start((Date.now() ^ (Math.random() * 1e9)) >>> 0, false, m.wx); this.send(null, { t: 'init', init: s.init() }); } break;
+      case 'start': if (m.t === 'restart' || s.phase !== 'active') { s.start((Date.now() ^ (Math.random() * 1e9)) >>> 0, false, m.wx, MAP_IDS.includes(m.map) ? m.map : s.mapId); this.send(null, { t: 'init', init: s.init() }); } break;
     }
   }
   tick(dt = TICK) { this.sim.tick(dt); this.send(null, this.sim.snapshot()); }

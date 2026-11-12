@@ -267,4 +267,44 @@ await t('end mission by radio or by walking out; scored on what was done', () =>
   for (let i = 0; i < 15 * 3; i++) s.tick(1 / 15); assert.equal(s.phase, 'ended'); assert.ok(s.report.lines.some(l => /Walked out/.test(l[0])));
   [s, p] = mkSim(4); const q = s.addPlayer(2, 'B'); put(s, p, 12, 1.65, 12); s.tick(0.1); put(s, p, 12, 1.65, 27); s.pose(2, { h: [12, 1.65, 12, 0, 0, 0, 1] }); for (let i = 0; i < 15 * 7; i++) s.tick(1 / 15); assert.equal(s.phase, 'active', 'waits for the whole squad');
 });
+
+// ---- marine terminal ----
+const TL = buildLevel('terminal'), TM = TL.map;
+await t('terminal: every spot, padlocked container and the bridge is walkable and reachable from the gate', () => {
+  const [sx, sz] = TM.spawn[0];
+  const spots = [...TM.spots.s, ...TM.spots.c, TM.hvt.at, ...TM.hvt.guards, ...TM.pads.map(p => [p.f, ...p.hostage])];
+  for (const [f, x, z] of spots) {
+    const y = f * TM.H; assert.ok(!circleHits(TL, null, x, z, 0.25, y), `spot blocked ${f},${x},${z}`); assert.ok(Math.abs(TL.groundY(x, z, y) - y) < 0.01, `floor height wrong at ${f},${x},${z}`);
+    const p = findPath(TL, sx, sz, 0, x, z, y); assert.ok(p && p.length >= 2, `no path to ${f},${x},${z}`); const e = p[p.length - 1]; assert.ok(Math.hypot(e[0] - x, e[1] - z) < 0.8 && e[2] === f, `path ends wrong for ${f},${x},${z}: ${e}`);
+  }
+  assert.equal(TM.pads.length, 8); assert.ok(TL.doors.filter(d => d.pad !== undefined).length === 8);
+});
+await t('terminal: gangway climbs to the deck without a jump; the quay edge and hull stop you', () => {
+  const g = 30; let y = 0, prev = 0; for (let x = g - 1; x <= g + 18; x += 0.2) { const z = x < g + 16 ? 1.75 : 0.5; y = TL.groundY(x, z, y); assert.ok(Math.abs(y - prev) < 0.3, 'jump at ' + x + ': ' + prev + '->' + y); prev = y; }
+  for (let z = 0.5; z > -4; z -= 0.2) { y = TL.groundY(g + 17, z, y); } assert.equal(y, 2 * TM.H, 'on the deck');
+  assert.ok(circleHits(TL, null, 20, 0.1, 0.25, 0), 'quay rail'); assert.ok(rayStatic(TL, null, 20, 1.5, 20, 0, 0, -1, 60) < 21, 'hull side stops a bullet');
+  const p = findPath(TL, 44, 70, 0, 90, -14.2, 4 * TM.H); assert.ok(p && p[p.length - 1][2] === 4, 'gate to bridge');
+});
+await t('terminal: bombs and two hostages are inside padlocked containers; kick fails, cutters open them', () => {
+  const s = new Sim('terminal'); s.addPlayer(1, 'A'); s.start(77, false, 'clear', 'terminal');
+  assert.equal(s.npcs.filter(n => n.kind === 's').length, 14); assert.equal(s.npcs.filter(n => n.kind === 'c').length, 8); assert.equal(s.bombs.length, 3);
+  const inPad = (x, z) => TM.pads.find(p => x > p.s[0] && x < p.s[2] && z > p.s[1] && z < p.s[3]);
+  assert.ok(s.bombs.every(b => inPad(b.x, b.z)), 'bombs in containers'); assert.equal(s.npcs.filter(n => n.kind === 'c' && inPad(n.x, n.z)).length, 2);
+  const di = TL.doors.findIndex(d => d.pad !== undefined), d = TL.doors[di]; assert.ok(s.doorLocked[di]);
+  s.pose(1, { h: [d.cx - 1, d.y + 1.65, d.cz, 0, 0, 0, 1] });
+  for (let i = 0; i < 6; i++) { s.t += 1; s.kick(1, di); } assert.ok(!s.doorOpen[di] && s.doorLocked[di], 'a padlocked door holds against kicks');
+  s.pick(1, di); assert.ok(s.doorLocked[di], 'no lock to pick'); s.door(1, di); assert.ok(!s.doorOpen[di]);
+  s.snip(1, di); assert.ok(!s.doorLocked[di]); s.door(1, di); assert.ok(s.doorOpen[di], 'cut and opened');
+  const host = new RoomHost(() => { }); host.join(1, 'A'); host.message(1, { t: 'map', m: 'terminal' }); assert.equal(host.sim.mapId, 'terminal'); host.message(1, { t: 'start' }); assert.equal(host.sim.mapId, 'terminal'); assert.equal(host.sim.init().map, 'terminal');
+});
+await t('terminal: the HVT and two guards hold the bridge, he rarely gives up, arrest scores and killing him costs', () => {
+  const s = new Sim('terminal'); s.addPlayer(1, 'A'); s.start(5, false, 'clear', 'terminal');
+  const hv = s.npcs.find(n => n.hvt), gs = s.npcs.filter(n => n.guard); assert.ok(hv && gs.length === 2 && Math.abs(hv.y - 4 * TM.H) < 0.01);
+  let give = 0; for (let k = 0; k < 400; k++) { const pr = (hv.hvt ? 0.45 : 1) * ((1 - hv.resolve) * 1.3); if (s.rnd() < pr) give++; } assert.ok(give < 20, 'hard to talk down');
+  for (const n of s.npcs) n.st = n.kind === 'c' ? 'u' : 'u'; for (const b of s.bombs) b.defused = true; s.endMission(1);
+  assert.ok(s.report.lines.some(l => /High-value target arrested/.test(l[0]) && l[1] === 10)); assert.equal(s.report.total, 100);
+  const s2 = new Sim('terminal'); s2.addPlayer(1, 'A'); s2.start(5, false, 'clear', 'terminal'); for (const n of s2.npcs) n.st = 'u'; s2.npcs.find(n => n.hvt).st = 'd'; s2.npcs.find(n => n.hvt).just = true; for (const b of s2.bombs) b.defused = true; s2.endMission(1);
+  assert.ok(s2.report.lines.some(l => /High-value target killed/.test(l[0]) && l[1] < 0));
+  const p = s2.players.get(1); const g = new Sim('terminal'); g.addPlayer(1, 'A'); g.start(5, false, 'clear', 'terminal'); const G1 = g.npcs.find(n => n.guard), B = g.npcs.find(n => n.hvt); g.engage(G1, g.players.get(1), 0.3); assert.equal(B.st, 'c', 'the boss joins when a guard is engaged');
+});
 console.log(n + ' tests passed');

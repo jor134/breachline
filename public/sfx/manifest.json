@@ -131,5 +131,11 @@
   "step_snow_2.mp3",
   "step_snow_3.mp3",
   "step_snow_4.mp3"
+ ],
+ "step_metal": [
+  "step_metal_1.mp3",
+  "step_metal_2.mp3",
+  "step_metal_3.mp3",
+  "step_metal_4.mp3"
  ]
 }

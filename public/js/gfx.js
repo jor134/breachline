@@ -1,10 +1,14 @@
-// World rendering: a modern glass-and-stone house at dusk. Merged static geometry (one draw call per material), doors, lights.
+// World rendering shared by every map: merged static geometry (one draw call per material), rooms, walls, glass, furniture, stairs, doors, lights.
+// Each map adds its own scenery and sky from js/maps/<id>-gfx.js.
 import * as THREE from '../vendor/three.module.min.js';
 import { sheen, tex, grid, rnd, setGlossLevel } from './mats.js';
-import { buildLevel, terrainY, ROOMS, H, STAIR, FOOT, YARD, DOOR_H } from './core/level.js';
+import { buildLevel } from './core/level.js';
+import mansionGfx from './maps/mansion-gfx.js';
+import terminalGfx from './maps/terminal-gfx.js';
+const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx };
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
-function initMats() {
+export function initMats() {
   if (MATS.plaster) return;
   const S = (t, gloss, extra) => sheen(Object.assign({ map: t }, extra), gloss);
   Object.assign(MATS, {
@@ -32,7 +36,7 @@ function initMats() {
 }
 
 // Accumulates quads with world-space UVs into one mesh per material.
-class Builder {
+export class Builder {
   constructor() { this.p = []; this.n = []; this.uv = []; this.idx = []; }
   quad(a, b, c, d, nrm, s = 0.5, uv4 = null) {   // uv4: explicit corner UVs for a, b, c, d (used by the shading decals)
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
@@ -55,7 +59,7 @@ class Builder {
     const m = new THREE.Mesh(g, mat); m.matrixAutoUpdate = false; return m;
   }
 }
-const ALL = 'xXyYzZ';
+export const ALL = 'xXyYzZ';
 
 // Furniture is built from parts that fit inside its collision box, so what you see matches what stops you.
 function furnish(b, w) {
@@ -87,58 +91,49 @@ function furnish(b, w) {
     case 'pool': P('pooltile', 0, len, 0, dep, 0, h, 'xXzZ'); P('pooltile', 0, len, 0, 0.18, h - 0.001, h, 'Y'); P('pooltile', 0, len, dep - 0.18, dep, h - 0.001, h, 'Y'); P('pooltile', 0, 0.18, 0.18, dep - 0.18, h - 0.001, h, 'Y'); P('pooltile', len - 0.18, len, 0.18, dep - 0.18, h - 0.001, h, 'Y');
       P('water', 0.18, len - 0.18, 0.18, dep - 0.18, h - 0.05, h - 0.03, 'Y', 0.2); break;
     case 'hedge': P('hedge', 0, len, 0, dep, 0, h); break;
+    case 'crate': P('wood', 0, len, 0, dep, 0, h, ALL, 1); P('fascia', -0.01, len + 0.01, dep * 0.3, dep * 0.34, 0, h + 0.005, 'xXYzZ'); P('fascia', -0.01, len + 0.01, dep * 0.66, dep * 0.7, 0, h + 0.005, 'xXYzZ'); break;
+    case 'console': P('fascia', 0, len, 0, dep, 0, h - 0.25); P('top', 0, len, 0.05, dep, h - 0.25, h, ALL, 1); P('glow', len * 0.08, len * 0.92, dep - 0.02, dep, h - 0.6, h - 0.32, 'xXzZ'); break;
+    case 'binnacle': P('fascia', len * 0.3, len * 0.7, dep * 0.3, dep * 0.7, 0, h - 0.2); P('steel', 0, len, 0, dep, h - 0.2, h); break;
+    case 'booth': P('lacquer', 0, len, 0, dep, 0, h); break;
+    case 'guard': P('lacquer', 0, len, 0, dep, 0, h - 0.1); P('fascia', -0.1, len + 0.1, -0.1, dep + 0.1, h - 0.1, h); P('glass', 0.05, len - 0.05, -0.002, dep + 0.002, 1.0, 2.1, 'xXzZ'); break;
     case 'pot': P('top', 0.02, len - 0.02, 0.02, dep - 0.02, 0, h - 0.04, 'xXzZ'); P('top', 0, len, 0, dep, h - 0.08, h, 'xXzZyY'); P('walnut', 0.03, len - 0.03, 0.03, dep - 0.03, h - 0.03, h - 0.02, 'Y'); break;
     default: P('stone', 0, len, 0, dep, 0, h);
   }
 }
 
-export function buildWorld(scene) {
+export function buildWorld(scene, id = 'mansion') {
   initMats();
-  const level = buildLevel(), B = {}; const b = k => B[k] || (B[k] = new Builder());
-  // sky, far hills, ground
+  const level = buildLevel(id), map = level.map, H = map.H, YARD = map.YARD, G = MAPGFX[level.id], env = G.env, root = new THREE.Group(), B = {}; root.name = 'world'; scene.add(root);
+  if (G.mats) G.mats(MATS);
+  const b = k => B[k] || (B[k] = new Builder()), cx = (YARD.x0 + YARD.x1) / 2, cz = (YARD.z0 + YARD.z1) / 2;
+  // sky dome (gradient), stars, moon, far silhouettes
   const sc = document.createElement('canvas'); sc.width = 4; sc.height = 256; const sg = sc.getContext('2d'), gr = sg.createLinearGradient(0, 0, 0, 256);
-  gr.addColorStop(0, '#1c2638'); gr.addColorStop(0.3, '#3b4a63'); gr.addColorStop(0.47, '#8b8d9c'); gr.addColorStop(0.52, '#d6b08e'); gr.addColorStop(0.56, '#4a4038'); gr.addColorStop(1, '#2a2622'); sg.fillStyle = gr; sg.fillRect(0, 0, 4, 256);
-  const skyT = new THREE.CanvasTexture(sc); skyT.colorSpace = THREE.SRGBColorSpace;
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 20, 12), new THREE.MeshBasicMaterial({ map: skyT, side: THREE.BackSide, fog: false, depthWrite: false })); sky.position.set(12, 0, 8); sky.renderOrder = -1; scene.add(sky);
-  const sp = []; for (let i = 0; i < 900; i++) { const u = rnd() * 6.283, v = 0.04 + rnd() * 0.96, r = Math.sqrt(1 - v * v) * 182; sp.push(12 + Math.cos(u) * r, v * 182, 8 + Math.sin(u) * r); }
+  for (const [t, c] of env.sky) gr.addColorStop(t, c); sg.fillStyle = gr; sg.fillRect(0, 0, 4, 256);
+  const skyT = new THREE.CanvasTexture(sc); skyT.colorSpace = THREE.SRGBColorSpace; const R = env.skyR || 190;
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(R, 20, 12), new THREE.MeshBasicMaterial({ map: skyT, side: THREE.BackSide, fog: false, depthWrite: false })); sky.position.set(cx, 0, cz); sky.renderOrder = -1; root.add(sky);
+  const sp = []; for (let i = 0; i < 900; i++) { const u = rnd() * 6.283, v = 0.04 + rnd() * 0.96, r = Math.sqrt(1 - v * v) * (R - 8); sp.push(cx + Math.cos(u) * r, v * (R - 8), cz + Math.sin(u) * r); }
   const sgeo = new THREE.BufferGeometry(); sgeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
-  const stars = new THREE.Points(sgeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.7, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.45, depthWrite: false })); stars.frustumCulled = false; scene.add(stars);
-  const moon = new THREE.Mesh(new THREE.CircleGeometry(6, 24), new THREE.MeshBasicMaterial({ color: 0xe9edff, fog: false, transparent: true, depthWrite: false })); moon.position.set(12 - 95, 80, 8 - 130); moon.lookAt(12, 0, 8); scene.add(moon);
-  const hillM = new THREE.MeshBasicMaterial({ color: 0x1b1d22, fog: false });
-  const hills = new THREE.Group(); scene.add(hills);
-  for (const [x, z, r, h] of [[-150, 10, 90, 44], [-120, 120, 110, 38], [20, 170, 120, 40], [150, 110, 100, 46], [170, 0, 80, 30]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); m.rotation.y = x; hills.add(m); }
-  // land: street level in front, stepping down beside the house to the back yard, then a cliff and the ocean
-  const X0 = YARD.x0 - 70, X1 = YARD.x1 + 70, land = (m, x0, x1, z0, y0, z1, y1, s = 0.3) => b(m).quad([x0, y0, z0], [x1, y0, z0], [x1, y1, z1], [x0, y1, z1], [0, 1, 0], s);
-  land('gravel', X0, X1, 16, 0, YARD.z1 + 70, 0); land('gravel', X0, X1, YARD.z0, -H, 0, -H);
-  for (const [a, c] of [[X0, -0.1], [24.1, X1]]) { land('gravel', a, c, 12, 0, 16, 0); land('gravel', a, c, 4, -H, 12, 0); land('gravel', a, c, 0, -H, 4, -H); }
-  for (const [a, c] of [[-3.6, -0.1], [24.1, 27.6]]) for (let k = 0; k < 8; k++) { const top = -0.4 * (k + 0.5) + 0.03; b('paver').box(a, c, top - 0.5, top, 11 - k, 12 - k, 'xXYZz', 0.5); }
-  land('paver', -3, 27, 16.1, 0.02, 25, 0.02, 0.5); land('paver', 9, 15, 25, 0.02, YARD.z1, 0.02, 0.5); land('paver', -3.6, 27.6, YARD.z0 + 0.3, -H + 0.02, -0.1, -H + 0.02, 0.5);
-  b('stone').box(X0, X1, -H - 14, -H, YARD.z0 - 0.6, YARD.z0, 'zY', 1); land('ocean', -500, 500, YARD.z0 - 520, -H - 11, YARD.z0 - 0.5, -H - 11, 0.05);
-  const wallSeg = (x0, x1, z0, z1, y) => b('stone').box(x0, x1, y, y + 1.6, z0, z1, 'xXYzZ', 1);
-  for (const [x0, x1] of [[YARD.x0 - 0.3, YARD.x0], [YARD.x1, YARD.x1 + 0.3]]) { wallSeg(x0, x1, 12, YARD.z1, 0); wallSeg(x0, x1, YARD.z0, 4, -H); for (let z = 4; z < 12; z += 2) b('stone').box(x0, x1, terrainY(z), terrainY(z + 2) + 1.6, z, z + 2, 'xXYzZ', 1); }
-  wallSeg(YARD.x0, 9, YARD.z1, YARD.z1 + 0.3, 0); wallSeg(15, YARD.x1, YARD.z1, YARD.z1 + 0.3, 0);
-  // glass balustrade along the cliff edge, and a ground-floor deck sheltering the walk-out
-  const rail = (x0, x1, z, y) => { b('glass').quad([x0, y, z], [x1, y, z], [x1, y + 1.05, z], [x0, y + 1.05, z], [0, 0, 1]); b('fascia').box(x0, x1, y + 1.05, y + 1.09, z - 0.03, z + 0.03, ALL, 1); };
-  rail(YARD.x0, YARD.x1, YARD.z0 + 0.15, -H);
+  const stars = new THREE.Points(sgeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.7, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.45, depthWrite: false })); stars.frustumCulled = false; root.add(stars);
+  const moon = new THREE.Mesh(new THREE.CircleGeometry(6 * R / 190, 24), new THREE.MeshBasicMaterial({ color: 0xe9edff, fog: false, transparent: true, depthWrite: false })); moon.position.set(cx + env.moon[0] * R / 190, env.moon[1] * R / 190, cz + env.moon[2] * R / 190); moon.lookAt(cx, 0, cz); root.add(moon);
+  const hillM = new THREE.MeshBasicMaterial({ color: env.hillColor || 0x1b1d22, fog: false }), hills = new THREE.Group(); root.add(hills);
   const UVQ = [[0, 0], [1, 0], [1, 1], [0, 1]], ao = (k, a, c, d, e, n) => b(k).quad(a, c, d, e, n, 1, UVQ);
+  const ctx = { b, ao, root, hills, hillM, level, map, H, YARD, MATS, THREE, ALL, cx, cz, rnd, sky };
+  G.scenery(ctx);
   // floors, ceilings with recessed downlights
-  for (const [f, , x0, z0, x1, z1, mat] of ROOMS) {
-    const y = f * H + 0.004; b(mat).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], 0.5);
+  for (const [f, , x0, z0, x1, z1, mat] of map.rooms) {
+    const y = f * H + 0.004; b(MATS[mat] ? mat : 'tile').quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], 0.5);
     const cy = f * H + H - 0.012; b('ceiling').quad([x0, cy, z0], [x1, cy, z0], [x1, cy, z1], [x0, cy, z1], [0, -1, 0], 0.5);
     for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) { b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
       ao('lightpool', [x - 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z + 1.5], [x - 1.5, y + 0.03, z + 1.5], [0, 1, 0]); }   // pool of light on the floor under each fitting
   }
-  b('ceiling').quad([STAIR.x0, 2 * H - 0.012, STAIR.z0], [STAIR.x1, 2 * H - 0.012, STAIR.z0], [STAIR.x1, 2 * H - 0.012, STAIR.z1], [STAIR.x0, 2 * H - 0.012, STAIR.z1], [0, -1, 0]);
-  // walls: plaster inside, stacked stone outside, glass with dark mullions
+  // walls: plaster inside, the map's cladding outside, glass with dark mullions
   for (const w of level.boxes) {
     if (w.kind === 'wall' || w.kind === 'lintel') {
-      const wall = w.kind === 'wall', hz = wall ? w.horiz : (w.z1 - w.z0 < 0.3 && w.x1 - w.x0 > 0.3); let out = '';
-      if (w.ext) out = w.horiz ? (w.z0 < 1 ? 'z' : 'Z') : (w.x0 < 1 ? 'x' : 'X');
-      else if (!wall) { if (Math.abs(w.z0 + 0.1) < 0.01) out = 'z'; if (Math.abs(w.z1 - 16.1) < 0.01) out = 'Z'; }
+      const wall = w.kind === 'wall', hz = wall ? w.horiz : (w.z1 - w.z0 < 0.3 && w.x1 - w.x0 > 0.3), out = w.out || '';
       // Only faces that can be seen are drawn: an end buried in a crossing wall has no end face, so no two surfaces share a plane (that was the flicker).
       const faces = hz ? 'zZ' + (wall && w.capA ? 'x' : '') + (wall && w.capB ? 'X' : '') : 'xX' + (wall && w.capA ? 'z' : '') + (wall && w.capB ? 'Z' : '');
-      b('plaster').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, faces.replace(out, '') + (wall ? '' : 'y'));
-      if (out) b('stone').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, out, 1);
+      b(G.inner ? G.inner(w) : 'plaster').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, faces.replace(out, '') + (wall ? '' : 'y'));
+      if (out) b(G.outer(w)).box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, out, 1);
       if (wall) for (const f of (hz ? 'zZ' : 'xX')) {   // contact shading along the foot and head of every inside wall face, and on the floor beside it
         if (f === out) continue; const s = f === 'z' || f === 'x' ? -1 : 1, e = 0.006, y0 = w.y0, y1 = w.y1;
         if (hz) { const zf = (s < 0 ? w.z0 : w.z1) + s * e; ao('ao', [w.x0, y0, zf], [w.x1, y0, zf], [w.x1, y0 + 0.55, zf], [w.x0, y0 + 0.55, zf], [0, 0, s]); ao('ao', [w.x0, y1, zf], [w.x1, y1, zf], [w.x1, y1 - 0.4, zf], [w.x0, y1 - 0.4, zf], [0, 0, s]); ao('ao', [w.x0, y0 + 0.012, zf], [w.x1, y0 + 0.012, zf], [w.x1, y0 + 0.012, zf + s * 0.5], [w.x0, y0 + 0.012, zf + s * 0.5], [0, 1, 0]); }
@@ -152,66 +147,64 @@ export function buildWorld(scene) {
       for (let i = 0; i <= n; i++) { const u = a + (e - a) * i / n; bx('fascia', u - 0.035, u + 0.035, w.y0 + 0.1, w.y1 - 0.12, 0.05); }
     } else if (w.kind === 'furn') { furnish(b, w); if (!['pool', 'hedge', 'wall'].includes(w.sub)) { const e = 0.28, y = w.y0 + 0.016; ao('aoBlob', [w.x0 - e, y, w.z0 - e], [w.x1 + e, y, w.z0 - e], [w.x1 + e, y, w.z1 + e], [w.x0 - e, y, w.z1 + e], [0, 1, 0]); } }
   }
-  // stairs: floating treads, one flight up and one directly beneath it down to the basement
-  const run = (STAIR.z1 - STAIR.z0) * 0.85, N = 16;
-  for (const off of [0, -H]) {
-    for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N + off; b('walnut').box(STAIR.x0 + 0.1, STAIR.x1 - 0.1, top - 0.06, top, STAIR.z1 - (i + 1) * run / N, STAIR.z1 - i * run / N, ALL, 1); }
-    b('walnut').box(STAIR.x0 + 0.1, STAIR.x1 - 0.1, H - 0.2 + off, H + off, STAIR.z0, STAIR.z1 - run, 'YZy', 1);
+  // stairs: floating treads, one flight stacked over the next
+  for (const st of map.stairs || []) {
+    const run = (st.z1 - st.z0) * 0.85, N = 16, m = G.tread || 'walnut';
+    for (let k = 0; k < st.n; k++) { const off = st.yb + k * H;
+      for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N + off; b(m).box(st.x0 + 0.1, st.x1 - 0.1, top - 0.06, top, st.z1 - (i + 1) * run / N, st.z1 - i * run / N, ALL, 1); }
+      b(m).box(st.x0 + 0.1, st.x1 - 0.1, H - 0.2 + off, H + off, st.z0, st.z1 - run, 'YZy', 1);
+    }
+    const top = st.yb + st.n * H - 0.012; b('ceiling').quad([st.x0, top, st.z0], [st.x1, top, st.z0], [st.x1, top, st.z1], [st.x0, top, st.z1], [0, -1, 0]);
   }
-  // roofs: deep flat overhangs, mid-level canopy, raised roof with a dark clerestory band, chimney
-  const slab = (x0, x1, y0, y1, z0, z1) => { b('fascia').box(x0, x1, y0, y1, z0, z1, 'xXYzZ', 1); b('soffit').quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0], 0.5); };
-  slab(-1.6, 25.6, H - 0.05, H + 0.2, 16.1, 18.7); slab(-1.4, -0.1, H - 0.05, H + 0.2, 6, 16.1);
-  slab(-1.8, 25.8, 2 * H, 2 * H + 0.28, -0.9, 19); b('dark').box(11, 24.2, 2 * H + 0.28, 2 * H + 0.8, 0.2, 15.8, 'xXzZ'); slab(9.5, 26.6, 2 * H + 0.8, 2 * H + 1.05, -1.4, 19.6);
-  b('stone').box(4.8, 6.2, 2 * H + 0.28, 2 * H + 2.1, 5.8, 7.2, 'xXYzZ', 1);
-  slab(-0.6, 24.6, -0.22, 0, -2.8, -0.1); rail(-0.6, 24.6, -2.77, 0); for (const x of [0.1, 23.9]) b('stone').box(x - 0.25, x + 0.25, -H, -0.22, -2.75, -2.25, 'xXzZ', 1);
-  for (const [x0, x1, y0, y1, z0, z1] of [[-0.14, 24.14, H - 0.14, H + 0.2, -0.16, -0.1], [24.1, 24.16, H - 0.14, H + 0.2, -0.1, 16.1], [-0.16, -0.1, H - 0.14, H + 0.2, -0.1, 6]]) b('fascia').box(x0, x1, y0, y1, z0, z1, ALL, 1);
-  const spot = (x, y, z) => b('glow').quad([x - 0.07, y, z - 0.07], [x + 0.07, y, z - 0.07], [x + 0.07, y, z + 0.07], [x - 0.07, y, z + 0.07], [0, -1, 0]);
-  for (let x = -0.5; x <= 25; x += 1.7) { spot(x, H - 0.056, 17.4); spot(x, 2 * H - 0.006, 17.6); }
-  for (let z = 1; z < 16; z += 2.5) { spot(-1, 2 * H - 0.006, z); spot(25, 2 * H - 0.006, z); }
-  for (let x = 1; x <= 24; x += 2.2) spot(x, -0.226, -1.5);
-  // interior dressing (no collision): rugs, pendants, chandelier, screen, art
-  const rug = (m, x0, x1, z0, z1, y) => b(m).quad([x0, y + 0.02, z0], [x1, y + 0.02, z0], [x1, y + 0.02, z1], [x0, y + 0.02, z1], [0, 1, 0], 1);
-  rug('linen', 2.1, 8.8, 9.4, 14.2, 0); rug('carpet', 17, 22.5, 10.2, 13.3, 0); rug('linen', 2.6, 6.4, 9.6, 12.4, H); rug('fabric', 9.8, 14.2, 10.4, 14.6, H); rug('fabric', 2.4, 6.8, 9.6, 14.4, -H); b('dark').box(0.11, 0.15, -H + 0.7, -H + 2.5, 9.6, 14.4, 'X'); b('fascia').box(0.1, 0.13, -H + 0.64, -H + 2.56, 9.54, 14.46, 'xXYyzZ'.replace('x', ''), 1);
-  for (const [x, z, y0] of [[18.8, 11.75, 0], [19.75, 11.75, 0], [20.7, 11.75, 0], [18.8, 3.6, 0], [20.2, 3.6, 0]]) { b('fascia').box(x - 0.006, x + 0.006, y0 + 2.0, y0 + H, z - 0.006, z + 0.006, 'xXzZ'); b('glow').box(x - 0.09, x + 0.09, y0 + 1.82, y0 + 2.0, z - 0.09, z + 0.09, ALL); }
-  for (let i = 0; i < 9; i++) { const a = i * 2.4, r = 0.25 + (i % 3) * 0.22, x = 12 + Math.cos(a) * r, z = 12.4 + Math.sin(a) * r, y = 2.0 + (i % 4) * 0.2; b('fascia').box(x - 0.005, x + 0.005, y + 0.1, H, z - 0.005, z + 0.005, 'xXzZ'); b('glow').box(x - 0.05, x + 0.05, y, y + 0.1, z - 0.05, z + 0.05, ALL); }
-  b('dark').box(5.86, 8.14, 0.98, 2.26, 8.1, 8.155, 'Z'); b('fascia').box(5.8, 8.2, 0.92, 2.32, 8.1, 8.15, 'xXYyZ', 1);   // living room TV over the media console, clear of the study door
-  b('walnut').box(9.11, 9.14, 1.1, 2.3, 14, 15.4, 'X', 1); b('top').box(14.86, 14.89, 1.2, 2.2, 14.2, 15.2, 'x', 1);
-  const NOSHADE = { glass: 1, water: 1, glow: 1, ao: 1, aoBlob: 1, lightpool: 1, ocean: 1 };
-  for (const k in B) { const m = B[k].mesh(MATS[k]); if (k === 'glass' || k === 'water') m.renderOrder = 5; if (k === 'ao' || k === 'aoBlob' || k === 'lightpool') m.renderOrder = 2; else if (!NOSHADE[k]) { m.castShadow = k !== 'gravel'; m.receiveShadow = true; } scene.add(m); }
+  const NOSHADE = { glass: 1, water: 1, glow: 1, ao: 1, aoBlob: 1, lightpool: 1, ocean: 1, ...(G.noshade || {}) };
+  for (const k in B) { const m = B[k].mesh(MATS[k]); if (k === 'glass' || k === 'water') m.renderOrder = 5; if (k === 'ao' || k === 'aoBlob' || k === 'lightpool') m.renderOrder = 2; else if (!NOSHADE[k]) { m.castShadow = !(G.noCast || ['gravel']).includes(k); m.receiveShadow = true; } root.add(m); }
 
-  // doors: flush walnut slabs with steel levers; the concealed service door is clad like the wall around it
+  // doors: flush slabs with steel levers; a concealed door is clad like the wall around it; a container has two steel leaves and a padlock
   const doors = level.doors.map(d => {
-    const len = d.horiz ? d.x1 - d.x0 : d.z1 - d.z0, g = new THREE.Group(); g.position.set(d.x0, d.y, d.z0);
-    const leaf = new THREE.Mesh(new THREE.BoxGeometry(len - 0.03, DOOR_H - 0.02, d.hidden ? 0.2 : 0.05), d.hidden ? MATS.stone : MATS.door); leaf.position.set(len / 2, DOOR_H / 2, 0); g.add(leaf);
-    const hm = MATS.steel.clone(), handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.025, 0.17), hm); handle.position.set(len - 0.12, 1.0, 0); handle.visible = !d.hidden; g.add(handle);
-    leaf.castShadow = leaf.receiveShadow = true; const base = d.horiz ? 0 : -Math.PI / 2; g.rotation.y = base; scene.add(g);
+    const len = d.horiz ? d.x1 - d.x0 : d.z1 - d.z0, h = d.h || map.DOOR_H, g = new THREE.Group(), base = d.horiz ? 0 : -Math.PI / 2, swing = d.swing || 1; g.position.set(d.x0, d.y, d.z0);
+    const hm = MATS.steel.clone(), handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.025, 0.17), hm);
+    let g2 = null, lock = null;
+    if (d.pad !== undefined) {   // container: two leaves hinged at the corners, locking bars, a padlock on the middle bar
+      const leafM = MATS[G.contDoor ? G.contDoor(d) : 'steel'], half = len / 2;
+      const mk = (grp, sgn) => { const leaf = new THREE.Mesh(new THREE.BoxGeometry(half - 0.01, h - 0.02, 0.05), leafM); leaf.position.set(half / 2, h / 2, 0); grp.add(leaf); for (const u of [0.25, half - 0.25]) { const bar = new THREE.Mesh(new THREE.BoxGeometry(0.035, h - 0.1, 0.035), MATS.steel); bar.position.set(u, h / 2, -0.045 * swing * sgn); grp.add(bar); } leaf.castShadow = leaf.receiveShadow = true; };
+      mk(g, 1); g2 = new THREE.Group(); g2.position.set(d.x1, d.y, d.z1); mk(g2, -1); g2.rotation.y = base + Math.PI; root.add(g2);
+      lock = new THREE.Group(); const body = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.035), new THREE.MeshLambertMaterial({ color: 0xb08a3a })), shackle = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.006, 6, 12, Math.PI), MATS.steel);
+      shackle.position.y = 0.04; lock.add(body, shackle); lock.position.set((d.x0 + d.x1) / 2 + swing * (d.horiz ? 0 : 0.075), d.y + 1.15, (d.z0 + d.z1) / 2); root.add(lock);
+      handle.visible = false; g.add(handle);
+    } else {
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(len - 0.03, h - 0.02, d.hidden ? 0.2 : 0.05), d.hidden ? MATS.stone : MATS[G.door ? G.door(d) : 'door']); leaf.position.set(len / 2, h / 2, 0); g.add(leaf);
+      handle.position.set(len - 0.12, 1.0, 0); handle.visible = !d.hidden; g.add(handle); leaf.castShadow = leaf.receiveShadow = true;
+    }
+    g.rotation.y = base; root.add(g);
     // tripwire: a thin red line at shin height and a charge on the frame; shown on whichever side the server says it is rigged
     const trap = new THREE.Group(), wire = new THREE.Mesh(new THREE.BoxGeometry(len, 0.004, 0.004), new THREE.MeshBasicMaterial({ color: 0xff3030 })), charge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.14, 0.06), new THREE.MeshLambertMaterial({ color: 0x4a4f3a })), led = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.015, 0.01), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
-    wire.position.set(len / 2, 0.28, 0); charge.position.set(0.05, 0.3, 0); led.position.set(0.05, 0.35, 0.034); trap.add(wire, charge, led); trap.position.set(d.x0, d.y, d.z0); trap.rotation.y = base; trap.visible = false; scene.add(trap);
-    return { g, base, handle, hm, cur: 0, hot: false, trap, horiz: d.horiz };
+    wire.position.set(len / 2, 0.28, 0); charge.position.set(0.05, 0.3, 0); led.position.set(0.05, 0.35, 0.034); trap.add(wire, charge, led); trap.position.set(d.x0, d.y, d.z0); trap.rotation.y = base; trap.visible = false; root.add(trap);
+    return { g, g2, lock, base, swing, handle, hm, cur: 0, hot: false, trap, horiz: d.horiz };
   });
-  // light: dusk sky, low warm sun for highlights, two warm interior lamps; night = power cut; NVG = green amplification
-  scene.background = new THREE.Color(0x2a3040); scene.fog = new THREE.FogExp2(0x3a4152, 0.006);
-  const hemi = new THREE.HemisphereLight(0xb9c4dc, 0x7a6a58, 1.25), sun = new THREE.DirectionalLight(0xffc9a0, 0.75), amp = new THREE.HemisphereLight(0x46ff58, 0x0a3410, 0); scene.add(hemi, sun, amp);
-  // The low sun (moon at night) casts real shadows from the house, trees and car, and shines in through the glass. The scene is static, so the
-  // shadow map is drawn once (and again when the plants and car arrive), not every frame.
-  sun.target.position.set(12, 0, 7); sun.position.set(12 - 30 * 1.7, 14 * 1.7, 7 + 34 * 1.7); scene.add(sun.target); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -36, right: 36, top: 36, bottom: -36, near: 5, far: 170 }); sun.shadow.camera.updateProjectionMatrix(); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.07;
-  const lamps = [[12, 2.5, 12.4], [4.5, 2.7, 12]].map(([x, y, z]) => { const l = new THREE.PointLight(0xffd9a8, 10, 11, 1.8); l.position.set(x, y, z); scene.add(l); return l; });
-  const FOGD = { clear: [0.006, 0.011], rain: [0.012, 0.016], storm: [0.016, 0.02], fog: [0.07, 0.075] };
+  // light: dusk sky, low warm sun for highlights, a few warm lamps; night = power cut; NVG = green amplification
+  scene.background = new THREE.Color(env.fog[0]); scene.fog = new THREE.FogExp2(env.fog[0], env.fogD[0]);
+  const hemi = new THREE.HemisphereLight(0xb9c4dc, 0x7a6a58, 1.25), sun = new THREE.DirectionalLight(env.sunCol || 0xffc9a0, 0.75), amp = new THREE.HemisphereLight(0x46ff58, 0x0a3410, 0); root.add(hemi, sun, amp);
+  // The low sun (moon at night) casts real shadows. The scene is static, so the shadow map is drawn once (and again when models arrive), not every frame.
+  const [tx, tz] = env.sunAt, [dx, dy, dz] = env.sunFrom, S = env.shadow;
+  sun.target.position.set(tx, 0, tz); sun.position.set(tx + dx, dy, tz + dz); root.add(sun.target); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 5, far: Math.hypot(dx, dy, dz) + S * 1.5 }); sun.shadow.camera.updateProjectionMatrix(); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.07;
+  const lamps = env.lamps.map(([x, y, z, i = 10, r = 11]) => { const l = new THREE.PointLight(0xffd9a8, i, r, 1.8); l.position.set(x, y, z); l.userData.i = i; root.add(l); return l; });
+  const FOGD = { clear: env.fogD, rain: [env.fogD[0] * 2, 0.016], storm: [env.fogD[0] * 2.6, 0.02], fog: [0.07, 0.075] };
   const look = (night, nvg, wx = 'clear') => {
     const k = nvg ? 0.16 : 1, cast = wx !== 'clear', wet = wx === 'rain' || wx === 'storm', dim = cast ? 0.8 : 1;
-    hemi.intensity = (night ? 0.2 : 1.25) * k * dim; hemi.color.set(night ? 0x6f83a8 : cast ? 0xa9afba : 0xb9c4dc); hemi.groundColor.set(night ? 0x20242c : 0x7a6a58);
-    sun.intensity = (night ? 0.18 : 0.75) * k * (cast ? 0.35 : 1); sun.color.set(night ? 0xa9bcff : 0xffc9a0); for (const l of lamps) l.intensity = night ? 0 : 10 * k;
+    hemi.intensity = (night ? 0.2 : 1.25 * (env.hemi || 1)) * k * dim; hemi.color.set(night ? 0x6f83a8 : cast ? 0xa9afba : env.hemiSky || 0xb9c4dc); hemi.groundColor.set(night ? 0x20242c : env.hemiGround || 0x7a6a58);
+    sun.intensity = (night ? 0.18 : 0.75 * (env.sunK || 1)) * k * (cast ? 0.35 : 1); sun.color.set(night ? 0xa9bcff : env.sunCol || 0xffc9a0); for (const l of lamps) l.intensity = night ? 0 : l.userData.i * k;
     amp.intensity = nvg ? (night ? 0.8 : 0.5) : 0; setGlossLevel((nvg ? 0.2 : night ? 0.12 : 1) * (wet ? 1.35 : 1));   // wet surfaces shine more
     MATS.glow.color.set(nvg ? (night ? 0x0b3410 : 0x9cff9c) : night ? 0x14120e : 0xffe6bd); MATS.lightpool.opacity = night ? 0 : nvg ? 0.07 : 0.2; MATS.lightpool.color.set(nvg ? 0x60ff70 : 0xffd9a0);
     MATS.ao.opacity = night && !nvg ? 0.3 : 0.55; MATS.aoBlob.opacity = night && !nvg ? 0.4 : 0.75;
     sky.material.color.set(nvg ? (night ? 0x0d3011 : 0x2f8a3a) : night ? (cast ? 0x161a22 : 0x283040) : cast ? 0x7d828c : 0xffffff); sky.visible = hills.visible = wx !== 'fog';
     stars.visible = moon.visible = !cast; stars.material.opacity = night ? 1 : 0.45; stars.material.color.set(nvg ? 0x8cff9c : 0xffffff); moon.material.color.set(nvg ? 0xa8ffb4 : 0xe9edff); moon.material.opacity = night || nvg ? 1 : 0.7;
-    hillM.color.set(nvg ? 0x05160a : night ? 0x040608 : 0x1b1d22);
-    scene.fog.color.set(nvg ? (night ? 0x082409 : 0x1c5a26) : night ? (wx === 'fog' ? 0x0d1016 : 0x05070b) : wx === 'fog' ? 0x767c85 : cast ? 0x3d434d : 0x3a4152); scene.fog.density = FOGD[wx][night ? 1 : 0]; scene.background.copy(scene.fog.color);
+    hillM.color.set(nvg ? 0x05160a : night ? 0x040608 : env.hillColor || 0x1b1d22);
+    scene.fog.color.set(nvg ? (night ? 0x082409 : 0x1c5a26) : night ? (wx === 'fog' ? 0x0d1016 : 0x05070b) : wx === 'fog' ? 0x767c85 : cast ? 0x3d434d : env.fog[0]); scene.fog.density = FOGD[wx][night ? 1 : 0]; scene.background.copy(scene.fog.color);
+    if (G.look) G.look(night, nvg, wx);
   };
-  return { level, doors, look };
+  const dispose = () => { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skyT.dispose(); };
+  return { root, level, map, doors, look, dispose, sun };
 }
 
 export function label(text, color = '#fff', w = 256, h = 64) {

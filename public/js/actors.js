@@ -93,7 +93,11 @@ const CIVC = [[0xd9d2c2, 0x4a5568, 0x3a2a1c], [0x8fa8c8, 0x3b3b3b, 0x151515], [0
 export class Human {
   constructor(kind, v) {
     const s = kind === 's', skin = SKIN[v % 4]; let up, sleeve, hand, leg, shoe, sole = 0xe8e8e8;
-    if (s && v % 2 === 0) {
+    if (s && v === 4) {   // the high-value target: tailored charcoal suit, open collar, no mask
+      const suit = 0x2b2d33, shirt = 0xe9e6df, hair = 0x1e1813; sleeve = suit; hand = skin; leg = suit; shoe = 0x15110e; sole = 0x15110e;
+      up = [[BOX(0.44, 0.56, 0.25), suit, 0, 0.3, 0], [BOX(0.12, 0.3, 0.02), shirt, 0, 0.42, 0.127], [BOX(0.1, 0.26, 0.022), suit, -0.08, 0.4, 0.128, 0, 0, 0.18], [BOX(0.1, 0.26, 0.022), suit, 0.08, 0.4, 0.128, 0, 0, -0.18],
+        [BOX(0.46, 0.08, 0.27), suit, 0, 0.56, 0], [BOX(0.08, 0.012, 0.02), shirt, -0.15, 0.48, 0.13], [CYL(0.05, 0.1), skin, 0, 0.62, 0], [SPH(0.112), skin, 0, 0.74, 0], [BOX(0.2, 0.06, 0.2), hair, 0, 0.83, -0.02], [BOX(0.2, 0.12, 0.05), hair, 0, 0.76, -0.095], [BOX(0.1, 0.03, 0.03), 0x3a2a20, 0, 0.715, 0.1]];
+    } else if (s && v % 2 === 0) {
       const [jk, inner, jeans, wrap] = JACKET[(v >> 1) % 2]; sleeve = jk; hand = skin; leg = jeans; shoe = 0x3a2e26;
       up = [[BOX(0.45, 0.56, 0.27), jk, 0, 0.3, 0], [BOX(0.47, 0.1, 0.29), jk, 0, 0.03, 0], [BOX(0.11, 0.52, 0.02), inner, 0, 0.3, 0.136], [BOX(0.12, 0.09, 0.02), jk, -0.14, 0.4, 0.14], [BOX(0.12, 0.09, 0.02), jk, 0.14, 0.4, 0.14], [BOX(0.13, 0.11, 0.02), jk, -0.14, 0.13, 0.14], [BOX(0.13, 0.11, 0.02), jk, 0.14, 0.13, 0.14],
         [BOX(0.3, 0.4, 0.15), 0x4a3d2c, 0, 0.3, -0.2], [BOX(0.04, 0.5, 0.02), 0x4a3d2c, -0.15, 0.33, 0.137], [BOX(0.04, 0.5, 0.02), 0x4a3d2c, 0.15, 0.33, 0.137],
@@ -112,7 +116,8 @@ export class Human {
     this.arms = [-1, 1].map(sx => { const sh = new THREE.Group(), el = new THREE.Group(); sh.position.set(sx * 0.275, 0.5, 0); el.position.y = -0.3; sh.add(merge([[CAP(0.056, 0.2), sleeve, 0, -0.15, 0]], 'cloth'), el); el.add(merge([[CAP(0.05, 0.18), sleeve, 0, -0.13, 0], [SPH(0.05), hand, 0, -0.29, 0]], 'cloth')); this.upper.add(sh); return { sh, el }; });
     this.legs = [-1, 1].map(sx => { const hip = new THREE.Group(), knee = new THREE.Group(); hip.position.set(sx * 0.1, 0.9, 0); knee.position.y = -0.43; hip.add(merge([[CAP(0.082, 0.28), leg, 0, -0.2, 0]], 'cloth'), knee); knee.add(merge([[CAP(0.07, 0.28), leg, 0, -0.2, 0], [BOX(0.11, 0.07, 0.26), shoe, 0, -0.42, 0.05], [BOX(0.115, 0.025, 0.265), sole, 0, -0.46, 0.05]], 'cloth')); body.add(hip); return { hip, knee }; });
     body.add(merge([[BOX(0.4, 0.18, 0.24), leg, 0, 0.86, 0]], 'cloth'));
-    if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
+    if (s && v === 4) { this.gun = makePistol(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
+    else if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
     this.kind = kind; this.st = ''; this.first = true; this.flashT = 0; this.flinch = 0; this.phase = Math.random() * 6; this.idle = Math.random() * 9; this.speed = 0;
     this.p0 = new THREE.Vector3(); this.p1 = new THREE.Vector3(); this.y0 = 0; this.y1 = 0; this.it = 0; this.dur = 0.07; this.lastT = 0;
     this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST); this.blob = makeBlob(0.5); g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });

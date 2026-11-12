@@ -1,162 +1,48 @@
-// BREACHLINE level: mansion geometry, collision, raycast, navigation. Pure logic (no DOM, no three).
-export const H = 3.2, U = 0.5, T = 0.2, DOOR_H = 2.1;
-export const FOOT = { x0: 0, z0: 0, x1: 24, z1: 16 };
-export const YARD = { x0: -8, z0: -16, x1: 32, z1: 30 };   // front yard at street level, back yard one storey lower, cliff edge at z0
-export const STAIR = { x0: 13.5, x1: 15, z0: 4, z1: 9 };
-// Main electrical breaker: on the plant room's rear wall, just inside the concealed service door.
-export const BREAKER = { x: 22.6, y: -H + 1.4, z: 0.13 };
-export const CAR = { x: 22, z: 24.2, length: 4.4 };
-export const SPAWN = [[10.5, 27], [11.5, 27], [12.5, 27], [13.5, 27]];
+// BREACHLINE level engine: builds walls, doors, collision, bullet rays and navigation from a map definition (core/maps/*).
+// Pure logic (no DOM, no three). Runs in the Durable Object and in the browser.
+import mansion from './maps/mansion.js';
+import terminal from './maps/terminal.js';
+export const MAPS = { mansion, terminal };
+export const MAP_IDS = Object.keys(MAPS);
+export const U = 0.5, T = 0.2;
+const GRID = 4;   // spatial index bucket size (m)
 
-// [floor, name, x0, z0, x1, z1, floorMaterial]
-export const ROOMS = [
-  [0, 'Living room', 0, 8, 9, 16, 'wood'], [0, 'Foyer', 9, 9, 15, 16, 'marble'], [0, 'Dining room', 15, 8, 24, 16, 'wood'],
-  [0, 'Kitchen', 15, 0, 24, 8, 'tile'], [0, 'Hall', 9, 4, 13.5, 9, 'wood'], [0, 'Study', 0, 0, 9, 8, 'carpet'],
-  [0, 'Utility', 9, 0, 15, 4, 'tile'],
-  [-1, 'Rec room', 0, 0, 9, 8, 'wood'], [-1, 'Cinema', 0, 8, 9, 16, 'carpet'], [-1, 'Lower hall', 9, 9, 15, 16, 'tile'], [-1, 'Gym', 15, 8, 24, 16, 'carpet'],
-  [-1, 'Wine cellar', 9, 4, 13.5, 9, 'tile'], [-1, 'Pool lounge', 9, 0, 15, 4, 'marble'], [-1, 'Plant room', 15, 0, 24, 8, 'tile'],
-  [1, 'Landing', 9, 0, 15, 4, 'wood'], [1, 'Corridor', 9, 4, 13.5, 9, 'wood'], [1, 'Master bedroom', 0, 8, 9, 16, 'carpet'],
-  [1, 'Office', 0, 4, 9, 8, 'wood'], [1, 'Bedroom 2', 0, 0, 9, 4, 'carpet'], [1, 'Lounge', 9, 9, 15, 16, 'wood'],
-  [1, 'Bedroom 3', 15, 8, 24, 16, 'carpet'], [1, 'Bedroom 4', 15, 0, 24, 8, 'carpet'],
-];
-// [floor, x0, z0, x1, z1, kind]  kind: door (leaf), arch (lintel, no leaf), gap (no lintel)
-const OPENINGS = [   // optional 7th item: 'ext' (outside door, starts closed) or 'hidden' (concealed outside door, never locked)
-  [0, 11.5, 16, 12.5, 16, 'door', 'ext'], [0, 10.5, 9, 11.5, 9, 'door'], [0, 9, 12, 9, 13.5, 'arch'], [0, 15, 12, 15, 13.5, 'arch'],
-  [0, 13.5, 9, 15, 9, 'gap'], [0, 9, 5.5, 9, 6.5, 'door'], [0, 11, 4, 12, 4, 'door'], [0, 19, 8, 20, 8, 'door'],
-  [0, 15, 1.5, 15, 2.5, 'door'], [0, 4, 8, 5, 8, 'door'], [0, 14, 4, 15, 4, 'door'],
-  [1, 9, 4, 15, 4, 'gap'], [1, 9, 12, 9, 13, 'door'], [1, 9, 1.5, 9, 2.5, 'door'], [1, 9, 5.5, 9, 6.5, 'door'],
-  [1, 10.5, 9, 11.5, 9, 'door'], [1, 15, 12, 15, 13, 'door'], [1, 15, 1.5, 15, 2.5, 'door'],
-  [-1, 13.5, 9, 15, 9, 'gap'], [-1, 9, 12, 9, 13, 'door'], [-1, 15, 12, 15, 13, 'door'], [-1, 10.5, 9, 11.5, 9, 'door'], [-1, 11, 4, 12, 4, 'door'],
-  [-1, 9, 1.5, 9, 3, 'arch'], [-1, 15, 1.5, 15, 2.5, 'door'], [-1, 4, 8, 5, 8, 'door'], [-1, 19, 8, 20, 8, 'door'],
-  [-1, 11.5, 0, 12.5, 0, 'door', 'ext'], [-1, 20, 0, 21, 0, 'door', 'hidden'],
-];
-// Floor-to-ceiling glazing on the outside walls: [floor, x0, z0, x1, z1]. Blocks movement, not bullets or (close) sight.
-const GLASS = [
-  [0, 1, 16, 8.5, 16], [0, 15.5, 16, 23, 16], [1, 1, 16, 8.5, 16], [1, 9.5, 16, 14.5, 16], [1, 15.5, 16, 23, 16],
-  [0, 0, 9, 0, 15], [1, 0, 9, 0, 15], [1, 24, 9, 24, 15],
-  [-1, 1, 0, 8.5, 0], [-1, 9.5, 0, 11.5, 0], [-1, 12.5, 0, 14.5, 0], [0, 2, 0, 7, 0], [1, 2, 0, 7, 0], [1, 16, 0, 23, 0],
-];
-// [floor, x0, z0, x1, z1, height, kind]
-export const FURNITURE = [   // [floor, x0, z0, x1, z1, height, kind, face]  face = the way the front points (seat, shelf opening, foot of bed)
-  // ground: living room seating faces the TV on the study wall
-  [0, 5, 12.6, 8.4, 13.5, 0.8, 'sofa', '-z'], [0, 2.4, 9.6, 3.3, 12.2, 0.8, 'sofa', '+x'], [0, 5.2, 10.2, 8, 11.2, 0.45, 'table'], [0, 5.6, 8.1, 8.4, 8.5, 0.45, 'cabinet'], [0, 0.3, 8.1, 3.6, 8.6, 2, 'shelf', '+z'],
-  [0, 18, 11, 21.5, 12.5, 0.78, 'table'], [0, 23.2, 9, 23.8, 12, 0.9, 'cabinet'],
-  [0, 18, 3, 21, 4.2, 0.92, 'counter'], [0, 23.2, 0.3, 23.8, 6, 0.92, 'counter'], [0, 15.3, 5, 15.9, 7.5, 0.92, 'counter'], [0, 16, 0.3, 19.5, 0.9, 0.92, 'counter'],
-  [0, 3, 3, 5, 4, 0.76, 'table'], [0, 0.2, 0.3, 0.7, 6, 2, 'shelf', '+x'], [0, 2, 0.2, 7, 0.7, 2, 'shelf', '+z'], [0, 6.5, 5, 7.5, 6, 0.8, 'sofa', '-x'],
-  [0, 9.3, 10, 9.8, 11.5, 0.85, 'cabinet'], [0, 9.3, 0.3, 9.8, 3, 1.8, 'shelf', '+x'], [0, 13.5, 0.3, 14.7, 1, 0.9, 'counter'],
-  [0, 2.5, 19.5, 10, 23.5, 0.55, 'pool'], [0, 14.5, 19.6, 20, 20, 0.9, 'wall'], [0, 20.75, 22, 23.25, 26.4, 1.2, 'car'], [0, -4, 18, -3.4, 24, 0.9, 'wall'],
-  // basement and pool terrace: loungers and the outdoor sofa face the ocean, cinema seats face the screen on the west wall
-  [-1, 5, -13.5, 19, -7.5, 0.35, 'pool'], [-1, 15.5, -4.6, 18.5, -3.7, 0.8, 'sofa', '-z'], [-1, 21, -11, 22.4, -9.6, 0.5, 'wall'], [-1, 1, -6, 1.8, -4, 0.4, 'bed', '-z'], [-1, 2.6, -6, 3.4, -4, 0.4, 'bed', '-z'],
-  [-1, 18.6, -1.6, 19.6, -0.5, 1.5, 'hedge'], [-1, 21.4, -1.6, 22.4, -0.5, 1.5, 'hedge'], [-1, 18.8, -3.3, 22.2, -2.8, 1.7, 'hedge'],
-  [-1, 3.2, 3, 5.6, 4.3, 0.8, 'table'], [-1, 0.3, 6.6, 4, 7.2, 1.05, 'counter'], [-1, 6.4, 1.6, 7.3, 4, 0.8, 'sofa', '-x'],
-  [-1, 3, 9.8, 4, 14.2, 0.8, 'sofa', '-x'], [-1, 5.4, 9.8, 6.4, 14.2, 0.8, 'sofa', '-x'], [-1, 8.2, 9, 8.7, 15, 0.5, 'cabinet'],
-  [-1, 17, 10, 18, 12, 0.5, 'cabinet'], [-1, 20, 10, 21, 12.5, 0.9, 'cabinet'], [-1, 23.2, 9, 23.8, 14, 1.8, 'shelf', '-x'],
-  [-1, 9.3, 4.3, 9.8, 8.5, 2, 'shelf', '+x'], [-1, 12.9, 5, 13.3, 8.5, 2, 'shelf', '-x'], [-1, 12.6, 3, 14.85, 3.9, 0.8, 'sofa', '-z'],
-  [-1, 17, 1, 19, 2.5, 1.9, 'cabinet'], [-1, 21.5, 4, 23.5, 6.5, 1.6, 'cabinet'], [-1, 15.3, 5, 15.9, 7.5, 0.9, 'counter'],
-  // upper: every headboard against a solid wall
-  [1, 3.4, 8.1, 5.6, 10.3, 0.6, 'bed', '+z'], [1, 0.3, 8.1, 3, 8.6, 2, 'shelf', '+z'], [1, 6, 15.2, 8, 15.8, 0.85, 'cabinet'],
-  [1, 0.1, 1, 2.3, 3.2, 0.6, 'bed', '+x'], [1, 6.5, 0.2, 8, 0.8, 0.76, 'table'], [1, 3, 5.5, 5, 6.5, 0.76, 'table'], [1, 0.2, 4.3, 0.7, 7, 1.6, 'shelf', '+x'],
-  [1, 10.5, 11, 13.5, 11.9, 0.8, 'sofa', '+z'], [1, 11, 12.8, 13, 13.8, 0.45, 'table'], [1, 19, 8.1, 21.2, 10.3, 0.6, 'bed', '+z'], [1, 15.2, 9, 15.7, 11.5, 2, 'shelf', '+x'],
-  [1, 21.7, 3, 23.9, 5.2, 0.6, 'bed', '-x'], [1, 16, 0.2, 18, 0.8, 0.76, 'table'], [1, 10, 0.2, 11.5, 0.7, 0.9, 'cabinet'],
-];
-// candidate positions [floor, x, z]
-export const SUSPECT_SPOTS = [
-  [0, 5, 14.5], [0, 1.2, 13.4], [0, 12, 11], [0, 20, 14], [0, 17, 10], [0, 17, 2], [0, 22, 6.8], [0, 5, 6], [0, 7.5, 2], [0, 11, 6.5], [0, 12, 2],
-  [-1, 5, 6], [-1, 7, 12.6], [-1, 12, 11], [-1, 19, 14], [-1, 11.5, 6.5], [-1, 12, 3], [-1, 19.5, 5.5], [-1, 22, 1.5],
-  [1, 12, 2], [1, 11, 6.5], [1, 6, 10], [1, 2, 14.5], [1, 6, 2.5], [1, 7, 6], [1, 12, 15], [1, 10, 10.5], [1, 17, 14], [1, 22, 14], [1, 17, 6], [1, 22, 2],
-];
-export const CIV_SPOTS = [
-  [-1, 1, 15], [-1, 22.5, 15], [-1, 8, 0.8], [-1, 23, 7.3],
-  [0, 7.5, 15], [0, 22, 15], [0, 21.5, 7], [0, 8, 7], [0, 14, 3], [1, 7.5, 14.5], [1, 3.4, 2.4], [1, 8, 5], [1, 16.5, 9.5], [1, 23, 7], [1, 14, 10],
-];
-// [floor, x, z, surfaceHeight]
-export const BOMB_SPOTS = [
-  [-1, 4.4, 4.05, 0.8], [-1, 2, 6.9, 1.05], [-1, 15.6, 6.2, 0.9],
-  [0, 19.5, 12.25, 0.78], [0, 19.5, 3.95, 0.92], [0, 4, 3.75, 0.76], [1, 7, 15.4, 0.85], [1, 17, 0.6, 0.76], [0, 14.1, 0.75, 0.9], [1, 4, 6.25, 0.76],
-];
+const cache = new Map();
+export function buildLevel(id = 'mansion') {
+  if (!MAPS[id]) id = 'mansion';
+  if (cache.has(id)) return cache.get(id);
+  const map = MAPS[id], H = map.H, DOOR_H = map.DOOR_H, YARD = map.YARD, NX = Math.round((YARD.x1 - YARD.x0) / U), NZ = Math.round((YARD.z1 - YARD.z0) / U), LAYERS = map.layers;
+  const level = { id, map, H, YARD, NX, NZ, layers: LAYERS, boxes: [], doors: [], walk: null, cy: null };
 
-// What a footstep sounds like here: wood, carpet, concrete (tile, marble, paving) or gravel outside.
-const STEP = { wood: 'wood', carpet: 'carpet', tile: 'concrete', marble: 'concrete' };
-export function floorAt(x, z, y) {
-  if (inFoot(x, z)) { if (inStair(x, z)) return 'wood'; const f = Math.max(-1, Math.min(1, Math.round(y / H))); for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return STEP[r[6]] || 'concrete'; return 'concrete'; }
-  if ((z > 16 && z < 25 && x > -3 && x < 27) || (x > 9 && x < 15 && z >= 25) || (z < 0 && x > -3.6 && x < 27.6) || ((x < 0 && x > -3.6 || x > 24 && x < 27.6) && z > 4 && z < 12)) return 'concrete';
-  return 'snow';   // gravel: the crunchy snow recording is the closest match
-}
-// Walking out through the front gate ends the mission (see Sim.tick).
-export const EXIT = { x0: 8.6, x1: 15.4, z0: 25.6, z1: 30 };
-// Planting. Trees: [x, z, model, height, turn]. Shrubs: [x, z, model, height]. Pots (indoors): [floor, x, z, model, height].
-// Tree trunks and pots stop people and bullets; shrubs only hide things.
-export const VEG = (() => {
-  let seed = 11; const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  const trees = [[-5.5, 28, 'common_tree_1', 7.5], [3, 28.6, 'common_tree_3', 6.5], [20.2, 28.7, 'common_tree_2', 7], [28.5, 23.5, 'common_tree_1', 8], [-6, 19.5, 'palm_tree_1', 8.5], [30, 18, 'palm_tree_2', 8],
-    [-5.6, 9, 'common_tree_2', 7], [29.8, 10, 'common_tree_3', 7.5], [30.2, 5.5, 'pine_tree_1', 8], [-6.2, 4.5, 'pine_tree_1', 7],
-    [2.2, -12, 'palm_tree_3', 9], [23.6, -13.6, 'palm_tree_1', 8.5], [-4.2, -9, 'palm_tree_2', 9.5], [28.2, -8.6, 'palm_tree_3', 8], [-6, -3, 'common_tree_1', 7], [30, -4.5, 'common_tree_2', 6.5]].map(t => [...t, r() * 6.28]);
-  const shrubs = [], B = ['bush_1', 'bush_2', 'bush_3', 'bush_4', 'bush_5'], G = ['grass_1', 'grass_2', 'grass_3', 'grass_4'], P = ['plant_1', 'plant_2', 'plant_3'];
-  const row = (x0, z0, x1, z1, step, kinds, h) => { const n = Math.max(1, Math.round(Math.hypot(x1 - x0, z1 - z0) / step)); for (let i = 0; i <= n; i++) shrubs.push([x0 + (x1 - x0) * i / n + (r() - 0.5) * 0.5, z0 + (z1 - z0) * i / n + (r() - 0.5) * 0.5, kinds[Math.floor(r() * kinds.length)], h * (0.75 + r() * 0.5)]); };
-  row(1.3, 16.7, 8.2, 16.7, 1.2, G, 0.5); row(15.8, 16.7, 22.8, 16.7, 1.2, G, 0.5); row(-7.2, 29.2, 8, 29.2, 2.1, B, 1.3); row(16, 29.2, 31.2, 29.2, 2.1, B, 1.3);
-  row(-7.2, 13, -7.2, 27, 2.4, B, 1.4); row(31.2, 13, 31.2, 27, 2.4, B, 1.4); row(-7.2, -15, -7.2, 3, 2.6, B, 1.4); row(31.2, -15, 31.2, 3, 2.6, B, 1.4);
-  row(-6.4, 5.5, -6.4, 11, 1.6, [...B, ...P], 1.1); row(30.6, 6.5, 30.6, 11.5, 1.6, [...B, ...P], 1.1); row(-2.6, 5, -2.6, 11, 1.5, G, 0.55); row(26.8, 5, 26.8, 11, 1.5, G, 0.55);
-  row(1.4, -0.7, 8.2, -0.7, 1.3, G, 0.5); row(13.2, -0.7, 16.5, -0.7, 1.2, G, 0.5); row(4.2, -14.4, 19.8, -14.4, 1.7, [...G, ...P], 0.7); row(1.2, 24.4, 9.6, 24.4, 1.5, [...G, ...P], 0.7);
-  row(-3.2, 17.4, -3.2, 24.6, 1.4, P, 0.9); row(21, 20.6, 26, 20.6, 1.5, [...B, ...P], 1.0); row(0.2, -7.2, 4.2, -7.2, 1.2, P, 0.9); row(20.4, -6.6, 26, -6.6, 1.5, [...B, ...P], 1.0);
-  for (const [x, z] of [[-4.5, 22.5], [27.5, 26], [-5, -12.5], [26.5, -11.5], [29.5, 14.5], [-5.5, 15]]) shrubs.push([x, z, r() < 0.5 ? 'stone_4' : 'stone_5', 0.6 + r() * 0.5]);
-  const pots = [[0, 0.6, 15.4], [0, 14.4, 15.4], [0, 23.4, 15.4], [0, 23.4, 7.3], [0, 8.4, 1.0], [0, 9.6, 8.4], [1, 14.4, 0.6], [1, 8.4, 8.6], [1, 9.6, 15.4], [1, 14.4, 15.4], [1, 15.6, 15.4], [1, 23.4, 7.4], [1, 8.4, 4.6], [1, 8.5, 3.4],
-    [-1, 9.6, 15.4], [-1, 14.4, 15.4], [-1, 14.4, 0.6], [-1, 8.4, 7.4], [-1, 15.6, 15.4], [-1, 0.6, 0.6]].map((p, i) => [...p, i % 3 === 2 ? B[1 + (i % 2) * 2] : P[i % 3], 0.8 + r() * 0.5]);
-  return { trees, shrubs, pots };
-})();
-
-export const NX = (YARD.x1 - YARD.x0) / U, NZ = (YARD.z1 - YARD.z0) / U;
-const inStair = (x, z) => x > STAIR.x0 && x < STAIR.x1 && z > STAIR.z0 && z < STAIR.z1;
-const stairT = z => (STAIR.z1 - z) / (STAIR.z1 - STAIR.z0);
-const inFoot = (x, z) => x >= FOOT.x0 && x <= FOOT.x1 && z >= FOOT.z0 && z <= FOOT.z1;
-export { inStair, inFoot };
-
-// Outside the house the land steps down from the street (y 0) to the back yard (y -H) along the sides.
-export function terrainY(z) { return z >= 12 ? 0 : z <= 4 ? -H : -H * (12 - z) / 8; }
-const stairUp = z => Math.min(1, stairT(z) / 0.85) * H;   // the flight to the upper floor; the basement flight runs exactly one storey beneath it
-// Height of the walking surface under (x,z) for something currently at feet height prevY.
-export function groundY(x, z, prevY) {
-  if (!inFoot(x, z)) return terrainY(z);
-  if (inStair(x, z)) { const up = stairUp(z); return prevY > up - H / 2 ? up : up - H; }
-  return Math.max(-1, Math.min(1, Math.round(prevY / H))) * H;
-}
-// Nav layers 0,1,2 = basement, ground, upper. Height of layer li at a point, or NaN where that layer has no floor.
-function cellY(li, x, z) {
-  if (!inFoot(x, z)) { const y = terrainY(z); return (y < -H / 2 ? 0 : 1) === li ? y : NaN; }
-  if (inStair(x, z)) { const top = stairT(z) > 0.85, up = stairUp(z); return li === 2 ? (top ? H : NaN) : li === 1 ? (top ? 0 : up) : (top ? NaN : up - H); }
-  return (li - 1) * H;
-}
-export function layerOf(x, z, y) { let best = 1, bd = 1e9; for (let li = 0; li < 3; li++) { const d = Math.abs(cellY(li, x, z) - y); if (d < bd) { bd = d; best = li; } } return best; }
-
-let cached = null;
-export function buildLevel() {
-  if (cached) return cached;
-  const edges = new Set();
-  const k = (f, i, j, o) => f + '|' + i + '|' + j + '|' + o;
-  for (const [f, , x0, z0, x1, z1] of ROOMS) {
-    const i0 = x0 / U, i1 = x1 / U, j0 = z0 / U, j1 = z1 / U;
+  // ---- walls from room plans: every unit edge of every room is a wall unless an opening or glass takes it ----
+  const edges = new Set(), k = (f, i, j, o) => f + '|' + i + '|' + j + '|' + o, rooms = map.rooms || [];
+  for (const [f, , x0, z0, x1, z1] of rooms) {
+    const i0 = Math.round(x0 / U), i1 = Math.round(x1 / U), j0 = Math.round(z0 / U), j1 = Math.round(z1 / U);
     for (let i = i0; i < i1; i++) { edges.add(k(f, i, j0, 'h')); edges.add(k(f, i, j1, 'h')); }
     for (let j = j0; j < j1; j++) { edges.add(k(f, i0, j, 'v')); edges.add(k(f, i1, j, 'v')); }
   }
-  const boxes = [], doors = [], openEnds = new Set(), gedges = new Set(), glassPts = new Set();
-  for (const [f, x0, z0, x1, z1] of GLASS) {
-    if (z0 === z1) for (let x = x0; x <= x1; x += U) glassPts.add(f + '|' + x + '|' + z0); else for (let z = z0; z <= z1; z += U) glassPts.add(f + '|' + x0 + '|' + z);
+  const roomAt = map.indoor || ((f, x, z) => rooms.some(r => r[0] === f && x > r[2] && x < r[4] && z > r[3] && z < r[5]));
+  // which side of a wall line is outdoors: 'z'/'x' = the negative side, 'Z'/'X' = the positive side, '' = indoors both sides
+  const outSide = (f, o, line, u) => { const a = o === 'h' ? roomAt(f, u, line + 0.05) : roomAt(f, line + 0.05, u), b = o === 'h' ? roomAt(f, u, line - 0.05) : roomAt(f, line - 0.05, u); return a && !b ? (o === 'h' ? 'z' : 'x') : b && !a ? (o === 'h' ? 'Z' : 'X') : ''; };
+  const boxes = level.boxes, doors = level.doors, openEnds = new Set(), gedges = new Set();
+  for (const [f, x0, z0, x1, z1] of map.glass || []) {
     openEnds.add(f + '|' + x0 + '|' + z0); openEnds.add(f + '|' + x1 + '|' + z1);
-    if (z0 === z1) for (let i = x0 / U; i < x1 / U; i++) { if (edges.delete(k(f, i, z0 / U, 'h'))) gedges.add(k(f, i, z0 / U, 'h')); }
-    else for (let j = z0 / U; j < z1 / U; j++) { if (edges.delete(k(f, x0 / U, j, 'v'))) gedges.add(k(f, x0 / U, j, 'v')); }
+    if (z0 === z1) for (let i = Math.round(x0 / U); i < Math.round(x1 / U); i++) { if (edges.delete(k(f, i, Math.round(z0 / U), 'h'))) gedges.add(k(f, i, Math.round(z0 / U), 'h')); }
+    else for (let j = Math.round(z0 / U); j < Math.round(z1 / U); j++) { if (edges.delete(k(f, Math.round(x0 / U), j, 'v'))) gedges.add(k(f, Math.round(x0 / U), j, 'v')); }
   }
-  for (const [f, x0, z0, x1, z1, kind, tag] of OPENINGS) {
-    if (z0 === z1) for (let i = x0 / U; i < x1 / U; i++) edges.delete(k(f, i, z0 / U, 'h'));
-    else for (let j = z0 / U; j < z1 / U; j++) edges.delete(k(f, x0 / U, j, 'v'));
-    const hz = z0 === z1;
+  const addDoor = (d) => { d.id = doors.length; doors.push(d); return d; };
+  for (const [f, x0, z0, x1, z1, kind, tag] of map.openings || []) {
+    if (z0 === z1) for (let i = Math.round(x0 / U); i < Math.round(x1 / U); i++) edges.delete(k(f, i, Math.round(z0 / U), 'h'));
+    else for (let j = Math.round(z0 / U); j < Math.round(z1 / U); j++) edges.delete(k(f, Math.round(x0 / U), j, 'v'));
+    const hz = z0 === z1, out = outSide(f, hz ? 'h' : 'v', hz ? z0 : x0, hz ? (x0 + x1) / 2 : (z0 + z1) / 2);
     openEnds.add(f + '|' + x0 + '|' + z0); openEnds.add(f + '|' + x1 + '|' + z1);
-    if (kind !== 'gap') boxes.push({ f, kind: 'lintel', x0: hz ? x0 : x0 - T / 2, x1: hz ? x1 : x0 + T / 2, z0: hz ? z0 - T / 2 : z0, z1: hz ? z0 + T / 2 : z1, y0: f * H + DOOR_H, y1: f * H + H });
+    if (kind !== 'gap') boxes.push({ f, kind: 'lintel', out, x0: hz ? x0 : x0 - T / 2, x1: hz ? x1 : x0 + T / 2, z0: hz ? z0 - T / 2 : z0, z1: hz ? z0 + T / 2 : z1, y0: f * H + DOOR_H, y1: f * H + H });
     if (kind === 'door') {
       const d = 0.04;
-      doors.push({ id: doors.length, f, x0, z0, x1, z1, horiz: hz, hidden: tag === 'hidden', cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, y: f * H, exterior: !!tag,
+      addDoor({ f, x0, z0, x1, z1, horiz: hz, h: DOOR_H, hidden: tag === 'hidden', cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, y: f * H, exterior: !!tag,
         box: { kind: 'door', x0: hz ? x0 : x0 - d, x1: hz ? x1 : x0 + d, z0: hz ? z0 - d : z0, z1: hz ? z0 + d : z1, y0: f * H, y1: f * H + DOOR_H } });
     }
   }
-  // merge unit edges into wall runs (solid walls, then glass panes)
   const merge = (set, kind, th) => {
     const runs = new Map();
     for (const e of set) { const [f, i, j, o] = e.split('|'); const key = f + '|' + o + '|' + (o === 'h' ? j : i); (runs.get(key) || runs.set(key, []).get(key)).push(+(o === 'h' ? i : j)); }
@@ -165,44 +51,78 @@ export function buildLevel() {
       let a = arr[0], p = arr[0];
       const flush = () => {
         let s = a * U, e = (p + 1) * U, capA = true, capB = true;
-        const pt = v => o === 'h' ? fl + '|' + v + '|' + line : fl + '|' + line + '|' + v;
         // An end that runs into a crossing wall is buried in it (no end face, so nothing is coplanar). At a doorway, a free end or a glass line it gets a visible end face.
         const crossing = (set, n) => o === 'h' ? set.has(k(fl, n, +c, 'v')) || set.has(k(fl, n, +c - 1, 'v')) : set.has(k(fl, +c, n, 'h')) || set.has(k(fl, +c - 1, n, 'h'));
         if (kind === 'wall') {
           if (crossing(edges, a)) { s -= T / 2; capA = false; } else if (crossing(gedges, a)) s -= 0.04;
           if (crossing(edges, p + 1)) { e += T / 2; capB = false; } else if (crossing(gedges, p + 1)) e += 0.04;
         }
-        const ext = o === 'h' ? (line === FOOT.z0 || line === FOOT.z1) : (line === FOOT.x0 || line === FOOT.x1);
-        boxes.push(o === 'h' ? { f: fl, kind, ext, capA, capB, horiz: true, x0: s, x1: e, z0: line - th / 2, z1: line + th / 2, y0: fl * H, y1: fl * H + H }
-          : { f: fl, kind, ext, capA, capB, horiz: false, x0: line - th / 2, x1: line + th / 2, z0: s, z1: e, y0: fl * H, y1: fl * H + H });
+        const out = outSide(fl, o, line, (a + 0.5) * U), ext = !!out;
+        boxes.push(o === 'h' ? { f: fl, kind, ext, out, capA, capB, horiz: true, x0: s, x1: e, z0: line - th / 2, z1: line + th / 2, y0: fl * H, y1: fl * H + H }
+          : { f: fl, kind, ext, out, capA, capB, horiz: false, x0: line - th / 2, x1: line + th / 2, z0: s, z1: e, y0: fl * H, y1: fl * H + H });
       };
       for (let n = 1; n < arr.length; n++) { if (arr[n] !== p + 1) { flush(); a = arr[n]; } p = arr[n]; }
       flush();
     }
   };
   merge(edges, 'wall', T); merge(gedges, 'glass', 0.06);
-  for (const [f, x0, z0, x1, z1, h, kind, face] of FURNITURE) boxes.push({ f, kind: 'furn', sub: kind, face, x0, x1, z0, z1, y0: f * H, y1: f * H + h });
-  for (const [x, z] of VEG.trees) { const y = terrainY(z); boxes.push({ f: y < -H / 2 ? -1 : 0, kind: 'trunk', x0: x - 0.17, x1: x + 0.17, z0: z - 0.17, z1: z + 0.17, y0: y, y1: y + 3.2 }); }
-  for (const [f, x, z] of VEG.pots) boxes.push({ f, kind: 'furn', sub: 'pot', x0: x - 0.22, x1: x + 0.22, z0: z - 0.22, z1: z + 0.22, y0: f * H, y1: f * H + 0.5 });
-  const level = { boxes, doors, walk: null };
-  // nav grid, three layers
-  const walk = new Uint8Array(3 * NX * NZ), cy = new Float32Array(3 * NX * NZ);
-  for (let l = 0; l < 3; l++) for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
-    const x = YARD.x0 + (i + 0.5) * U, z = YARD.z0 + (j + 0.5) * U, y = cellY(l, x, z), id = l * NX * NZ + j * NX + i;
-    cy[id] = y; walk[id] = !Number.isNaN(y) && !circleHits(level, null, x, z, 0.235, y) ? 1 : 0;
+  for (const [f, x0, z0, x1, z1, h, kind, face] of map.furniture || []) boxes.push({ f, kind: 'furn', sub: kind, face, x0, x1, z0, z1, y0: f * H, y1: f * H + h });
+  const veg = map.veg;
+  if (veg) {
+    for (const [x, z] of veg.trees) { const y = map.terrainY(z, x); boxes.push({ f: y < -H / 2 ? -1 : 0, kind: 'trunk', x0: x - 0.17, x1: x + 0.17, z0: z - 0.17, z1: z + 0.17, y0: y, y1: y + 3.2 }); }
+    for (const [f, x, z] of veg.pots) boxes.push({ f, kind: 'furn', sub: 'pot', x0: x - 0.22, x1: x + 0.22, z0: z - 0.22, z1: z + 0.22, y0: f * H, y1: f * H + 0.5 });
   }
-  level.cy = cy;
-  level.walk = walk;
-  return (cached = level);
+  // map-specific solids (containers, hull, cranes, slabs) and extra doors (container doors)
+  if (map.extra) map.extra({ boxes, addDoor, H });
+
+  // ---- spatial index: boxes bucketed on a coarse xz grid ----
+  const G = level.grid = { cs: GRID, x0: YARD.x0 - GRID, z0: YARD.z0 - GRID, nx: Math.ceil((YARD.x1 - YARD.x0) / GRID) + 2, nz: Math.ceil((YARD.z1 - YARD.z0) / GRID) + 2, cells: null, mark: new Uint32Array(boxes.length), stamp: 0 };
+  G.cells = Array.from({ length: G.nx * G.nz }, () => []);
+  const cl = (v, n) => Math.max(0, Math.min(n - 1, v));
+  boxes.forEach((b, bi) => {
+    const i0 = cl(Math.floor((b.x0 - G.x0) / GRID), G.nx), i1 = cl(Math.floor((b.x1 - G.x0) / GRID), G.nx), j0 = cl(Math.floor((b.z0 - G.z0) / GRID), G.nz), j1 = cl(Math.floor((b.z1 - G.z0) / GRID), G.nz);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) G.cells[j * G.nx + i].push(bi);
+  });
+
+  // ---- surfaces and heights ----
+  const surf = map.surfaces;
+  level.surfaces = surf;
+  level.cellY = (li, x, z) => { for (const s of surf(x, z)) if (s[1] === li) return s[0]; return NaN; };
+  // the walking height under (x, z) for something whose feet are at prevY: the highest surface it can step onto
+  level.groundY = (x, z, prevY) => { const ss = surf(x, z); let best = -Infinity, low = Infinity; for (const [h] of ss) { if (h <= prevY + 0.6 && h > best) best = h; if (h < low) low = h; } return best > -Infinity ? best : low < Infinity ? low : prevY; };   // nowhere to stand (open water): stay level
+  level.layerOf = (x, z, y) => { let best = 0, bd = Infinity; for (const [h, li] of surf(x, z)) { const d = Math.abs(h - y); if (d < bd) { bd = d; best = li; } } return best; };
+  level.onStairs = map.onStairs || (() => false);
+  level.inside = map.inside; level.objective = map.objective; level.floorAt = map.floorAt; level.roofY = map.roofY;
+  level.terrainY = map.terrainY;
+  // what rain lands on (roof, stack top, ground): sampled once on a 1 m grid because the client asks thousands of times a frame
+  let roof = null; const RX = Math.ceil(YARD.x1 - YARD.x0), RZ = Math.ceil(YARD.z1 - YARD.z0);
+  level.roofAt = (x, z) => { const i = Math.floor(x - YARD.x0), j = Math.floor(z - YARD.z0); if (i < 0 || j < 0 || i >= RX || j >= RZ) return map.roofY(x, z);
+    if (!roof) { roof = new Float32Array(RX * RZ); for (let b = 0; b < RZ; b++) for (let a = 0; a < RX; a++) roof[b * RX + a] = map.roofY(YARD.x0 + a + 0.5, YARD.z0 + b + 0.5); } return roof[j * RX + i]; };
+
+  // ---- navigation grid: one walkability layer per storey ----
+  const N = NX * NZ, walk = new Uint8Array(LAYERS * N), cy = new Float32Array(LAYERS * N).fill(NaN);
+  for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) {
+    const x = YARD.x0 + (i + 0.5) * U, z = YARD.z0 + (j + 0.5) * U;
+    for (const [y, li] of surf(x, z)) { const id = li * N + j * NX + i; cy[id] = y; walk[id] = !circleHits(level, null, x, z, 0.235, y) ? 1 : 0; }
+  }
+  level.cy = cy; level.walk = walk;
+  level.pf = { g: new Float32Array(LAYERS * N), from: new Int32Array(LAYERS * N), seen: new Uint32Array(LAYERS * N), closed: new Uint32Array(LAYERS * N), gen: 0 };
+  cache.set(id, level);
+  return level;
 }
 
 const blocksAt = (b, feetY) => b.y0 < feetY + 1.2 && b.y1 > feetY + 0.25;
+// visit each box whose bucket overlaps the xz rectangle once
+function eachNear(level, x0, z0, x1, z1, fn) {
+  const G = level.grid, stamp = ++G.stamp, cs = G.cs;
+  const i0 = Math.max(0, Math.floor((x0 - G.x0) / cs)), i1 = Math.min(G.nx - 1, Math.floor((x1 - G.x0) / cs)), j0 = Math.max(0, Math.floor((z0 - G.z0) / cs)), j1 = Math.min(G.nz - 1, Math.floor((z1 - G.z0) / cs));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) for (const bi of G.cells[j * G.nx + i]) { if (G.mark[bi] === stamp) continue; G.mark[bi] = stamp; if (fn(level.boxes[bi]) === true) return true; }
+  return false;
+}
 // doorOpen: array of booleans (closed doors block) or null to ignore doors
 export function circleHits(level, doorOpen, x, z, r, feetY) {
-  for (const b of level.boxes) if (blocksAt(b, feetY) && x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) {
-    const dx = x - Math.max(b.x0, Math.min(x, b.x1)), dz = z - Math.max(b.z0, Math.min(z, b.z1));
-    if (dx * dx + dz * dz < r * r) return true;
-  }
+  const hit = b => { if (!blocksAt(b, feetY) || x <= b.x0 - r || x >= b.x1 + r || z <= b.z0 - r || z >= b.z1 + r) return false; const dx = x - Math.max(b.x0, Math.min(x, b.x1)), dz = z - Math.max(b.z0, Math.min(z, b.z1)); return dx * dx + dz * dz < r * r; };
+  if (eachNear(level, x - r, z - r, x + r, z + r, hit)) return true;
   if (doorOpen) for (const d of level.doors) if (!doorOpen[d.id]) { const b = d.box; if (blocksAt(b, feetY) && x > b.x0 - r && x < b.x1 + r && z > b.z0 - r && z < b.z1 + r) return true; }
   return false;
 }
@@ -220,10 +140,11 @@ export function resolveCircle(level, doorOpen, x, z, r, feetY) {
     }
   };
   for (let pass = 0; pass < 2; pass++) {
-    for (const b of level.boxes) push(b);
+    eachNear(level, x - r - 0.5, z - r - 0.5, x + r + 0.5, z + r + 0.5, push);
     if (doorOpen) for (const d of level.doors) if (!doorOpen[d.id]) push(d.box);
   }
-  x = Math.max(YARD.x0 + 0.4, Math.min(YARD.x1 - 0.4, x)); z = Math.max(YARD.z0 + 0.4, Math.min(YARD.z1 - 0.4, z));
+  const Y = level.YARD;
+  x = Math.max(Y.x0 + 0.4, Math.min(Y.x1 - 0.4, x)); z = Math.max(Y.z0 + 0.4, Math.min(Y.z1 - 0.4, z));
   return [x, z];
 }
 
@@ -235,27 +156,29 @@ function rayBox(b, ox, oy, oz, dx, dy, dz, max) {
   return t0;
 }
 // Distance along a unit ray to the first solid surface (walls, furniture, closed doors, floors), or max.
+// Walks the spatial index cell by cell along the ray (2D DDA) and stops once the next cell starts beyond the nearest hit.
 export function rayStatic(level, doorOpen, ox, oy, oz, dx, dy, dz, max, solidGlass = false) {
-  let best = max;
-  for (const b of level.boxes) { if (b.kind === 'glass' && !solidGlass) continue; const t = rayBox(b, ox, oy, oz, dx, dy, dz, best); if (t >= 0 && t < best) best = t; }
-  if (doorOpen) for (const d of level.doors) if (!doorOpen[d.id]) { const t = rayBox(d.box, ox, oy, oz, dx, dy, dz, best); if (t >= 0 && t < best) best = t; }
-  if (Math.abs(dy) > 1e-9) for (const py of [-H, 0, H, 2 * H]) {
-    const t = (py - oy) / dy; if (t <= 1e-6 || t >= best) continue;
-    const x = ox + dx * t, z = oz + dz * t;
-    if (py === -H || (inFoot(x, z) ? !(py < 2 * H && inStair(x, z)) : (py === 0 && z >= 12))) best = t;
+  let best = max; const G = level.grid, stamp = ++G.stamp, cs = G.cs, boxes = level.boxes;
+  let ci = Math.floor((ox - G.x0) / cs), cj = Math.floor((oz - G.z0) / cs);
+  const sx = dx > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1, ax = Math.abs(dx), az = Math.abs(dz);
+  const tdx = ax > 1e-12 ? cs / ax : Infinity, tdz = az > 1e-12 ? cs / az : Infinity;
+  let tmx = ax > 1e-12 ? (dx > 0 ? (G.x0 + (ci + 1) * cs - ox) : (ox - (G.x0 + ci * cs))) / ax : Infinity;
+  let tmz = az > 1e-12 ? (dz > 0 ? (G.z0 + (cj + 1) * cs - oz) : (oz - (G.z0 + cj * cs))) / az : Infinity;
+  for (let guard = 0, t = 0; guard < G.nx + G.nz + 4 && t <= best; guard++) {
+    if (ci >= 0 && cj >= 0 && ci < G.nx && cj < G.nz) for (const bi of G.cells[cj * G.nx + ci]) {
+      if (G.mark[bi] === stamp) continue; G.mark[bi] = stamp; const b = boxes[bi];
+      if ((b.kind === 'glass' && !solidGlass) || b.kind === 'fence') continue; const h = rayBox(b, ox, oy, oz, dx, dy, dz, best); if (h >= 0 && h < best) best = h;
+    } else if ((ci < 0 && sx < 0) || (cj < 0 && sz < 0) || (ci >= G.nx && sx > 0) || (cj >= G.nz && sz > 0)) break;
+    if (tmx < tmz) { t = tmx; tmx += tdx; ci += sx; } else { t = tmz; tmz += tdz; cj += sz; }
   }
-  const den = dy - 0.4 * dz;   // the sloped ground beside the house: y = 0.4 z - 4.8 for z in 4..12
-  if (Math.abs(den) > 1e-9) { const t = -(oy - 0.4 * oz + 4.8) / den; if (t > 1e-6 && t < best) { const x = ox + dx * t, z = oz + dz * t; if (z > 4 && z < 12 && !inFoot(x, z)) best = t; } }
-  return best;
+  if (doorOpen) for (const d of level.doors) if (!doorOpen[d.id]) { const h = rayBox(d.box, ox, oy, oz, dx, dy, dz, best); if (h >= 0 && h < best) best = h; }
+  return level.map.floorRay(ox, oy, oz, dx, dy, dz, best);
 }
 // Is this point inside something solid (wall, glass, furniture, closed door, floor slab, ground)? Used for thrown objects.
 export function solidAt(level, doorOpen, x, y, z) {
-  for (const b of level.boxes) if (x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1 && z > b.z0 && z < b.z1) return true;
+  if (eachNear(level, x, z, x, z, b => x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1 && z > b.z0 && z < b.z1)) return true;
   if (doorOpen) for (const d of level.doors) if (!doorOpen[d.id]) { const b = d.box; if (x > b.x0 && x < b.x1 && y > b.y0 && y < b.y1 && z > b.z0 && z < b.z1) return true; }
-  if (y < -H) return true;
-  if (!inFoot(x, z)) return y < terrainY(z);
-  if (inStair(x, z)) return false;
-  return (y < 0 && y > -0.2) || (y < H && y > H - 0.2) || (y < 2 * H + 0.3 && y > 2 * H - 0.2);
+  return level.map.solidFloor(x, y, z);
 }
 export function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
   const mx = ox - cx, my = oy - cy, mz = oz - cz, b = mx * dx + my * dy + mz * dz, c = mx * mx + my * my + mz * mz - r * r;
@@ -263,22 +186,20 @@ export function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
   return Math.max(0, -b - Math.sqrt(disc));
 }
 
-const cellOf = (x, z) => [Math.floor((x - YARD.x0) / U), Math.floor((z - YARD.z0) / U)];
-const cellXZ = (i, j) => [YARD.x0 + (i + 0.5) * U, YARD.z0 + (j + 0.5) * U];
 function nearestWalk(level, x, z, l) {
-  const [ci, cj] = cellOf(x, z); let best = -1, bd = 1e9;
+  const { NX, NZ, YARD, layers } = level, N = NX * NZ, ci = Math.floor((x - YARD.x0) / U), cj = Math.floor((z - YARD.z0) / U); let best = -1, bd = 1e9;
   for (let dj = -3; dj <= 3; dj++) for (let di = -3; di <= 3; di++) {
     const i = ci + di, j = cj + dj; if (i < 0 || j < 0 || i >= NX || j >= NZ) continue;
-    for (let ll = 0; ll < 3; ll++) { const id = ll * NX * NZ + j * NX + i; if (!level.walk[id]) continue; const d = di * di + dj * dj + Math.abs(ll - l) * 100; if (d < bd) { bd = d; best = id; } }
+    for (let ll = 0; ll < layers; ll++) { const id = ll * N + j * NX + i; if (!level.walk[id]) continue; const d = di * di + dj * dj + Math.abs(ll - l) * 100; if (d < bd) { bd = d; best = id; } }
   }
   return best;
 }
-// A* over the three-layer grid. Doors are treated as passable. Returns [[x,z,storey],...] (storey -1, 0, 1) or null.
-// Can something walk the straight line a -> b ([x, z, storey])? Only on one storey and off the stairs.
+// Can something walk the straight line a -> b ([x, z, floor])? Only on one floor and off the stairs.
 function clearWalk(level, a, b) {
-  if (a[2] !== b[2] || inStair(a[0], a[1]) || inStair(b[0], b[1])) return false;
-  const li = a[2] + 1, dx = b[0] - a[0], dz = b[1] - a[1], n = Math.ceil(Math.hypot(dx, dz) / 0.15);
-  for (let i = 1; i < n; i++) { const x = a[0] + dx * i / n, z = a[1] + dz * i / n, y = cellY(li, x, z); if (Number.isNaN(y) || inStair(x, z) || circleHits(level, null, x, z, 0.25, y)) return false; }
+  if (a[2] !== b[2] || level.onStairs(a[0], a[1]) || level.onStairs(b[0], b[1])) return false;
+  const li = level.map.layerFloor.indexOf(a[2]), dx = b[0] - a[0], dz = b[1] - a[1], n = Math.ceil(Math.hypot(dx, dz) / 0.15);
+  let y0 = level.cellY(li, a[0], a[1]);
+  for (let i = 1; i < n; i++) { const x = a[0] + dx * i / n, z = a[1] + dz * i / n, y = level.cellY(li, x, z); if (Number.isNaN(y) || Math.abs(y - y0) > 0.3 || level.onStairs(x, z) || circleHits(level, null, x, z, 0.25, y)) return false; y0 = y; }
   return true;
 }
 // Drop the grid's zig-zag: keep only the corners a walker actually has to turn at.
@@ -287,31 +208,40 @@ function smoothPath(level, p) {
   while (i < p.length - 1) { let j = Math.min(p.length - 1, i + 14); while (j > i + 1 && !clearWalk(level, p[i], p[j])) j--; out.push(p[j]); i = j; }
   return out;
 }
-export function findPath(level, sx, sz, sy, tx, tz, ty, raw = false) {
-  const N = NX * NZ, T3 = 3 * N, start = nearestWalk(level, sx, sz, layerOf(sx, sz, sy)), goal = nearestWalk(level, tx, tz, layerOf(tx, tz, ty));
+// A* over the layered grid. Doors are treated as passable. Returns [[x, z, floor], ...] or null. Gives up after maxNodes expansions.
+export function findPath(level, sx, sz, sy, tx, tz, ty, raw = false, maxNodes = 150000) {
+  const { NX, NZ, YARD, layers } = level, N = NX * NZ, start = nearestWalk(level, sx, sz, level.layerOf(sx, sz, sy)), goal = nearestWalk(level, tx, tz, level.layerOf(tx, tz, ty));
   if (start < 0 || goal < 0) return null;
-  const g = new Float32Array(T3).fill(Infinity), from = new Int32Array(T3).fill(-1), closed = new Uint8Array(T3), W = level.walk, CY = level.cy;
+  const P = level.pf, gen = ++P.gen, g = P.g, from = P.from, seen = P.seen, closed = P.closed, W = level.walk, CY = level.cy, LF = level.map.layerFloor;
   const gc = goal % N, gi = gc % NX, gj = (gc - gi) / NX, gl = (goal - gc) / N;
   const hcost = id => { const c = id % N, i = c % NX, j = (c - i) / NX, dx = Math.abs(i - gi), dz = Math.abs(j - gj); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz) + Math.abs((id - c) / N - gl) * 4; };
   const heap = [], hf = [];
   const pushH = (id, f) => { let n = heap.length; heap.push(id); hf.push(f); while (n > 0) { const p = (n - 1) >> 1; if (hf[p] <= hf[n]) break; [heap[p], heap[n]] = [heap[n], heap[p]]; [hf[p], hf[n]] = [hf[n], hf[p]]; n = p; } };
   const popH = () => { const top = heap[0], lid = heap.pop(), lf = hf.pop(); if (heap.length) { heap[0] = lid; hf[0] = lf; let n = 0; for (;;) { let m = n; const a = 2 * n + 1, b = a + 1; if (a < heap.length && hf[a] < hf[m]) m = a; if (b < heap.length && hf[b] < hf[m]) m = b; if (m === n) break; [heap[m], heap[n]] = [heap[n], heap[m]]; [hf[m], hf[n]] = [hf[n], hf[m]]; n = m; } } return top; };
-  g[start] = 0; pushH(start, hcost(start));
-  while (heap.length) {
-    const cur = popH(); if (closed[cur]) continue; closed[cur] = 1;
-    if (cur === goal) break;
+  g[start] = 0; seen[start] = gen; from[start] = -1; pushH(start, hcost(start)); let found = start === goal, count = 0;
+  while (heap.length && !found) {
+    const cur = popH(); if (closed[cur] === gen) continue; closed[cur] = gen;
+    if (cur === goal) { found = true; break; }
+    if (++count > maxNodes) break;
     const c = cur % N, l = (cur - c) / N, i = c % NX, j = (c - i) / NX, y = CY[cur];
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       if (!di && !dj) continue; const i2 = i + di, j2 = j + dj; if (i2 < 0 || j2 < 0 || i2 >= NX || j2 >= NZ) continue;
       const c2 = j2 * NX + i2, diag = di && dj; let nid = -1;
       if (diag) { if (W[l * N + c2] && Math.abs(CY[l * N + c2] - y) < 0.3 && W[l * N + j * NX + i2] && W[l * N + j2 * NX + i]) nid = l * N + c2; }
-      else for (const l2 of [l, l + 1, l - 1]) { if (l2 < 0 || l2 > 2) continue; const id = l2 * N + c2; if (W[id] && Math.abs(CY[id] - y) < 0.6) { nid = id; break; } }   // steps and slopes join layers where heights meet
-      if (nid < 0) continue;
+      else for (const l2 of [l, l + 1, l - 1]) { if (l2 < 0 || l2 >= layers) continue; const id = l2 * N + c2; if (W[id] && Math.abs(CY[id] - y) < 0.6) { nid = id; break; } }   // steps and slopes join layers where heights meet
+      if (nid < 0 || closed[nid] === gen) continue;
       const ng = g[cur] + (diag ? 1.414 : 1);
-      if (ng < g[nid]) { g[nid] = ng; from[nid] = cur; pushH(nid, ng + hcost(nid)); }
+      if (seen[nid] !== gen || ng < g[nid]) { g[nid] = ng; seen[nid] = gen; from[nid] = cur; pushH(nid, ng + hcost(nid)); }
     }
   }
-  if (from[goal] < 0 && goal !== start) return null;
-  const out = []; for (let id = goal; id >= 0; id = from[id]) { const c = id % N, i = c % NX, j = (c - i) / NX; const [x, z] = cellXZ(i, j); out.push([x, z, (id - c) / N - 1]); if (id === start) break; }
+  if (!found) return null;
+  const out = []; for (let id = goal; id >= 0; id = from[id]) { const c = id % N, i = c % NX, j = (c - i) / NX; out.push([YARD.x0 + (i + 0.5) * U, YARD.z0 + (j + 0.5) * U, LF[(id - c) / N]]); if (id === start) break; }
   out.reverse(); return raw ? out : smoothPath(level, out);
 }
+
+// ---- compatibility: the mansion's constants and height rules under their old names (tests and older call sites) ----
+export { H, DOOR_H, FOOT, YARD, STAIR, BREAKER, CAR, SPAWN, ROOMS, FURNITURE, SUSPECT_SPOTS, CIV_SPOTS, BOMB_SPOTS, VEG, EXIT, terrainY, floorAt, inStair, inFoot } from './maps/mansion.js';
+const M0 = () => buildLevel('mansion');
+export const groundY = (x, z, y) => M0().groundY(x, z, y);
+export const layerOf = (x, z, y) => M0().layerOf(x, z, y);
+export const NX = Math.round((mansion.YARD.x1 - mansion.YARD.x0) / U), NZ = Math.round((mansion.YARD.z1 - mansion.YARD.z0) / U);

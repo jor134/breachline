@@ -1,6 +1,8 @@
 # BREACHLINE
 
-Co-op tactical entry game for Quest (WebXR), up to 4 officers. One level: a three-storey modern house (walk-out basement, pool terrace above the ocean) with armed suspects, five hostages and two bombs, reshuffled every mission. Dusk or night (power cut) with night vision.
+Co-op tactical entry game for Quest (WebXR), phones, tablets and desktop, up to 4 officers. Two maps, picked with the MAP button in the lobby (the whole room loads the same one); suspects, hostages and bombs are reshuffled every mission. Dusk, with a breaker that cuts the lights, and night vision.
+- **Mansion** (Operation GILDED CAGE): a three-storey modern house, walk-out basement and pool terrace above the ocean. 9 suspects, 5 hostages, 2 bombs, 12:00.
+- **Terminal** (Operation IRON TIDE): a container port about 120 x 110 m. Container yard, ship-to-shore and yard cranes, trucks, an operations building (breaker), and a moored container ship: board by a gangway, cross the stacked deck, clear the bridge tower. 14 suspects, 8 hostages, 3 bombs in padlocked containers (cut the lock with the cutters, open the doors, defuse inside), 15:00. A high-value target with two bodyguards holds the bridge: arrest him for full marks.
 
 ## Deploy (GitHub + one Cloudflare Worker)
 1. Cloudflare dashboard > Workers & Pages > Create > Import a repository > pick this repo.
@@ -10,8 +12,8 @@ Co-op tactical entry game for Quest (WebXR), up to 4 officers. One level: a thre
 `wrangler.toml` serves `/public` as static assets and routes `/ws/<ROOM>` to a Durable Object (`Room`) that runs the mission.
 
 ## Layout
-- `public/js/core/` pure game logic shared by server and client: `level.js` (mansion, collision, bullets, pathfinding), `sim.js` (suspects, hostages, bombs, rules of engagement, scoring), `weapon.js` (manual gun handling), `host.js` (message protocol).
-- `public/js/` client: `game.js` (VR rig, hands, weapons, HUD, networking), `gfx.js` (world), `actors.js` (people, guns, bombs), `audio.js`.
+- `public/js/core/` pure game logic shared by server and client: `level.js` (walls, collision, bullets, pathfinding for any map), `maps/` (one file per map: layout, floors, spawn points), `sim.js` (suspects, hostages, bombs, rules of engagement, scoring), `weapon.js` (manual gun handling), `host.js` (message protocol).
+- `public/js/` client: `game.js` (VR rig, hands, weapons, HUD, networking), `gfx.js` (shared world rendering), `maps/<id>-gfx.js` (each map's scenery and sky), `actors.js` (people, guns, bombs), `audio.js`.
 - `src/worker.js` Worker + Durable Object.
 - `test/` `node test/core.test.mjs`, `node test/worker.test.mjs`; `vr.py` + `xrmock.js` drive the VR path in headless Chromium with a fake headset.
 
@@ -20,4 +22,4 @@ People, weapons, furniture and the house are built in code. Downloaded models: p
 Sound effects are recorded CC0 libraries from GitHub (Free Firearm Sound Library and Kenney packs), built by `tools/build_sfx.py`; credits in `public/sfx/CREDITS.md`.
 
 ## Not in yet
-Voice chat, flashbangs / less-lethal, downloaded furniture/character models and recorded sounds, AI teammates.
+Voice chat, climbing (container tops, crane ladders), downloaded furniture and character models, AI teammates.

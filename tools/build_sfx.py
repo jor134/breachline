@@ -49,6 +49,7 @@ T = {
 }
 for m in ('wood', 'concrete', 'carpet', 'grass', 'snow'):
   T['step_' + m] = [(IMPACT + '/footstep_%s_%03d.ogg' % (m, i), None, None, -6) for i in (0, 1, 2, 3)]
+T['step_metal'] = [(IMPACT + '/impact_plate_light_%03d.ogg' % i, None, None, -9) for i in (0, 1, 2, 3)]   # ship deck, gangways, inside containers
 
 def peak_db(path):
   out = subprocess.run(['ffmpeg', '-hide_banner', '-nostats', '-i', path, '-af', 'volumedetect', '-f', 'null', '-'], capture_output=True, text=True).stderr

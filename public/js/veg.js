@@ -1,10 +1,10 @@
 // Vegetation: CC0 low-poly models (see models/nature/LICENSE.md), every plant baked into one mesh so the whole garden is a single draw call.
 import * as THREE from '../vendor/three.module.min.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
-import { VEG, terrainY, H } from './core/level.js';
 import { sheen } from './mats.js';
 
-export async function loadVegetation(scene) {
+export async function loadVegetation(scene, map) {
+  const VEG = map.veg, terrainY = map.terrainY, H = map.H; if (!VEG) return null;
   const loader = new GLTFLoader(), names = [...new Set([...VEG.trees, ...VEG.shrubs].map(v => v[2]).concat(VEG.pots.map(p => p[3])))], models = {};
   await Promise.all(names.map(async n => {
     try {

@@ -6,7 +6,7 @@ import { loadCar } from './car.js';
 import { initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
-import { groundY, resolveCircle, rayStatic, inFoot, floorAt, SPAWN, BREAKER, CAR, EXIT, H as STOREY } from './core/level.js';
+import { resolveCircle, rayStatic, MAP_IDS, MAPS } from './core/level.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 
@@ -18,15 +18,24 @@ renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // static sun shadows, drawn once
 try { renderer.xr.setFoveation(1); } catch { }
 document.body.appendChild(renderer.domElement);
-const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.04, 220), rig = new THREE.Group();
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.04, 640), rig = new THREE.Group();
 camera.rotation.order = 'YXZ'; rig.add(camera); scene.add(rig);
 addEventListener('resize', () => { if (renderer.xr.isPresenting) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
-const world = buildWorld(scene), level = world.level;
-if (!new URLSearchParams(location.search).get('lite')) {   // ?lite=1 skips the heavy models (used by the automated tests)
-  const reshade = m => { if (m && m.isMesh) m.castShadow = m.receiveShadow = true; renderer.shadowMap.needsUpdate = true; };
-  loadVegetation(scene).then(v => reshade(v.mesh)).catch(e => console.warn('vegetation not loaded', e));
-  loadCar(scene, CAR.x, 0, CAR.z, Math.PI, CAR.length).then(reshade).catch(e => console.warn('car not loaded', e));
+// The world is rebuilt when the squad picks another map in the lobby: geometry, doors, lights, the breaker, the exit, plants and cars.
+let world = null, level = null, M = null, extras = [], mapGen = 0, ready = false;
+function loadMap(id) {
+  if (world && world.level.id === id) return;
+  if (world) world.dispose(); for (const o of extras) { scene.remove(o); o.geometry && o.geometry.dispose(); } extras = []; const gen = ++mapGen;
+  world = buildWorld(scene, id); level = world.level; M = level.map;
+  if (ready) { S.doorTrap = level.doors.map(() => 0); S.doorOpen = level.doors.map(() => false); S.doorLocked = level.doors.map(() => false); S.deskCam = null; S.deskPick = null; for (const h of hands) h.hold = null; placeMapProps(); applyLook(); }
+  renderer.shadowMap.needsUpdate = true;
+  if (!Q.get('lite')) {   // ?lite=1 skips the heavy models (used by the automated tests)
+    const keep = m => { if (!m || gen !== mapGen) { if (m) scene.remove(m); return; } if (m.isMesh) m.castShadow = m.receiveShadow = true; extras.push(m); renderer.shadowMap.needsUpdate = true; };
+    if (M.veg) loadVegetation(scene, M).then(v => keep(v && v.mesh)).catch(e => console.warn('vegetation not loaded', e));
+    for (const c of M.cars || []) loadCar(scene, c.x, 0, c.z, Math.PI, c.length).then(keep).catch(e => console.warn('car not loaded', e));
+  }
 }
+loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : localStorage.getItem('bl_map') && MAP_IDS.includes(localStorage.getItem('bl_map')) ? localStorage.getItem('bl_map') : 'mansion');
 
 const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
   net: 'offline', room: '', report: null, doorLocked: level.doors.map(() => false), bodyYaw: 0, panel: 'lobby', menu: false, deskPick: null, night: false, nvg: false, tool: 'hands', hintT: 0, wx: 'clear', wxPick: 'random', squad: [], secured: 0, civs: 5, defused: 0, light: true, now: 0, eye: 1.66, crouch: false, yaw: 0, pitch: 0, ads: false, reloading: false, tilt: +(localStorage.getItem('bl_tilt') || 0) };
@@ -75,7 +84,7 @@ function resetLoadout() {
   S.reloading = false;
 }
 function placeAtSpawn() {
-  const [x, z] = SPAWN[S.me.slot % 4]; S.feetY = 0; rig.rotation.y = 0; S.yaw = 0; S.pitch = 0;
+  const [x, z] = M.spawn[S.me.slot % 4]; S.feetY = 0; rig.rotation.y = 0; S.yaw = 0; S.pitch = 0;
   if (S.mode === 'vr') { rig.position.y = 0; headWorld(); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; headWorld(); } else rig.position.set(x, 0, z);
 }
 
@@ -97,14 +106,14 @@ let hurtT = 0, flashWhite = 0;
 const nvgMask = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'), r = g.createRadialGradient(128, 128, 60, 128, 128, 104); r.addColorStop(0, 'rgba(0,0,0,0)'); r.addColorStop(1, 'rgba(0,0,0,1)'); g.fillStyle = r; g.fillRect(0, 0, 256, 256);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, depthWrite: false, fog: false })); m.position.z = -0.32; m.renderOrder = 996; m.visible = false; camera.add(m); return m; })();
 const irLamp = new THREE.PointLight(0x58ff68, 0, 34, 1.1); camera.add(irLamp);   // the goggles' own illuminator: nearby surfaces read brighter, which gives depth
-const weather = makeWeather(scene), WXS = ['random', 'clear', 'rain', 'fog', 'storm'];
+const weather = makeWeather(scene, () => level), WXS = ['random', 'clear', 'rain', 'fog', 'storm'];
 const cycleWx = () => { S.wxPick = WXS[(WXS.indexOf(S.wxPick) + 1) % WXS.length]; sfx.click(); };
 // main breaker in the plant room: throw the lever to cut every light in the house
-const breaker = (() => { const g = new THREE.Group(); g.position.set(BREAKER.x, BREAKER.y, BREAKER.z); const box = (w, h, d, c, x, y, z, basic) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), basic ? new THREE.MeshBasicMaterial({ color: c }) : new THREE.MeshLambertMaterial({ color: c })); m.position.set(x, y, z); return m; };
+const breaker = (() => { const g = new THREE.Group(); const box = (w, h, d, c, x, y, z, basic) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), basic ? new THREE.MeshBasicMaterial({ color: c }) : new THREE.MeshLambertMaterial({ color: c })); m.position.set(x, y, z); return m; };
   const lever = new THREE.Group(); lever.position.set(0.08, 0, 0.07); lever.add(box(0.05, 0.2, 0.04, 0xc02020, 0, 0.09, 0.03)); const led = box(0.035, 0.035, 0.01, 0x30ff60, -0.1, 0.2, 0.062, true);
   g.add(box(0.42, 0.62, 0.12, 0x555a60, 0, 0, 0), box(0.36, 0.5, 0.01, 0x3a3e44, 0, -0.03, 0.062), box(0.2, 0.05, 0.012, 0xe8d040, -0.02, 0.26, 0.062, true), lever, led);
   for (let i = 0; i < 6; i++) g.add(box(0.06, 0.035, 0.02, 0x15171a, -0.1, 0.1 - i * 0.06, 0.07)); scene.add(g); return { g, lever, led, cur: 0 }; })();
-const nearBreaker = (p, d) => Math.hypot(p.x - BREAKER.x, p.y - BREAKER.y, p.z - BREAKER.z) < d;
+const nearBreaker = (p, d) => Math.hypot(p.x - M.breaker.x, p.y - M.breaker.y, p.z - M.breaker.z) < d;
 const applyLook = () => { world.look(S.night, S.nvg, S.wx); weather.set(S.wx, S.night, S.nvg); nvgMask.visible = S.nvg; irLamp.intensity = S.nvg ? (S.night ? 3.2 : 1.2) : 0; };
 function toggleNVG() { S.nvg = !S.nvg; sfx.nvg(S.nvg); applyLook(); }
 function hint(x, y, z, text) { if (S.now - S.hintT < 1.2) return; S.hintT = S.now; sayAt(x, y, z, text, '#ffd060'); sfx.beep(null, 300); }
@@ -165,11 +174,10 @@ class Panel {
 }
 const panel = new Panel();
 function showLobbyPanel() {
-  if (S.menu) return; S.panel = 'lobby'; panel.mesh.visible = true; panel.place(15.6, 1.5, 25.6, 12, 27.4);
-  panel.draw('BREACHLINE', 'Operation GILDED CAGE  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
-    ['Squad: ' + (S.squad.join(', ') || '-'), 'Suspects hold 5 residents on three floors. Two bombs. 12:00.', 'Rear: walk-out basement by the pool; concealed service door',
-      'behind the hedges. Shout first. Cuff everyone, downed included.', 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, B/Y = SHOUT. Helmet = NVG.',
-      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', 'Lights out: throw the MAIN BREAKER in the plant room (basement,', 'just inside the concealed door). They may send someone to fix it.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['START MISSION', 'start']]);
+  if (S.menu) return; S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
+  panel.draw('BREACHLINE', M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
+    ['Squad: ' + (S.squad.join(', ') || '-'), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, B/Y = SHOUT. Helmet = NVG.',
+      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['START MISSION', 'start']]);
 }
 function showEndPanel() {
   const R = S.report; if (!R || S.menu) return; S.panel = 'end'; panel.mesh.visible = true; frontOfHead(1.9);
@@ -184,8 +192,9 @@ function toggleMenu(open = !S.menu) {
 function tryPanel(o, d) {
   const act = panel.probe(o, d, false); if (!act) return act === '';   // a pull on the panel background is swallowed, not fired
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
+  if (act === 'map') { cycleMap(); return true; }
   if (act === 'end') { net.send({ t: 'end' }); toggleMenu(false); return true; }
-  if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
+  if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick, map: M.id }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
   return true;
 }
 
@@ -195,7 +204,7 @@ const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0625), new THREE.Mes
 let hudT = 0;
 function hudText() {
   const t = Math.max(0, S.timer), mm = Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
-  return { mm, hp: S.me.hp, obj: 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
+  return { mm, hp: S.me.hp, obj: 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
 }
 function drawHud() {
   const h = hudText();
@@ -206,26 +215,27 @@ function drawHud() {
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
-    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu ? 'flex' : 'none'; $('bEnd').style.display = S.phase === 'active' ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); $('bAim').classList.toggle('on', S.ads); }
+    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu ? 'flex' : 'none'; $('bEnd').style.display = S.phase === 'active' ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); $('bMap').textContent = 'MAP: ' + M.name; $('bMap').style.display = S.phase !== 'active' ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
   }
 }
 
 // ---------- server messages ----------
 function applyInit(init) {
-  for (const a of S.actors.values()) scene.remove(a.g, a.blob); S.actors.clear(); for (const b of S.bombs) scene.remove(b.g); S.bombs = [];
-  for (const [id, kind, v] of init.npcs) { const a = new Human(kind, v); scene.add(a.g, a.blob); S.actors.set(id, a); }
+  if (init.map && init.map !== M.id) { loadMap(init.map); localStorage.setItem('bl_map', init.map); if (S.mode && S.phase !== 'active') placeAtSpawn(); }
+  for (const a of S.actors.values()) scene.remove(a.g, a.blob); S.actors.clear(); for (const b of S.bombs) scene.remove(b.g); S.bombs = []; S.hvtId = 0;
+  for (const [id, kind, v, hvt] of init.npcs) { const a = new Human(kind, v); scene.add(a.g, a.blob); S.actors.set(id, a); if (hvt) S.hvtId = id; }
   S.civs = init.npcs.filter(n => n[1] === 'c').length; if (S.night !== !!init.night || S.wx !== init.weather) { S.night = !!init.night; S.wx = init.weather || 'clear'; applyLook(); }
   for (const [x, y, z, wires, order] of init.bombs) { const b = new Bomb(x, y, z, wires, order); b.order = order; b.n = 0; scene.add(b.g); S.bombs.push(b); }
 }
 function onMsg(m) {
-  if (m.t === 'welcome') { S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); }
-  else if (m.t === 'init') applyInit(m.init);
+  if (m.t === 'welcome') { const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && m.ph !== 'active' && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
+  else if (m.t === 'init') { applyInit(m.init); if (S.phase !== 'active') showLobbyPanel(); }
   else if (m.t === 'full') status('That room is full (4 officers). Try another code.');
   else if (m.t === 's') applySnap(m);
 }
 function applySnap(m) {
-  const prev = S.phase; S.phase = m.ph; S.timer = m.tm; S.extract = m.X || 0; if (S.mode && inFoot(head.pos.x, head.pos.z)) S.everInside = true; if (m.ph !== 'active') S.everInside = false; let sec = 0;
-  for (const [id, x, y, z, yaw, st, armed] of m.N) { const a = S.actors.get(id); if (a) a.target(x, y, z, yaw, st, armed); if (id > 100 && st === 'u') sec++; }
+  const prev = S.phase; S.phase = m.ph; S.timer = m.tm; S.extract = m.X || 0; if (S.mode && level.objective(head.pos.x, head.pos.z)) S.everInside = true; if (m.ph !== 'active') S.everInside = false; let sec = 0;
+  S.hvt = ''; for (const [id, x, y, z, yaw, st, armed] of m.N) { const a = S.actors.get(id); if (a) a.target(x, y, z, yaw, st, armed); if (id > 100 && st === 'u') sec++; if (id === S.hvtId) S.hvt = st === 'u' || st === 'j' ? 'ARRESTED' : st === 'd' ? 'DOWN' : 'AT LARGE'; }
   for (const a of S.actors.values()) a.g.visible = a.blob.visible = m.ph !== 'lobby'; for (const b of S.bombs) b.g.visible = m.ph !== 'lobby';
   S.secured = sec; for (let i = 0; i < S.doorOpen.length; i++) { S.doorOpen[i] = m.D[i] === '1'; S.doorLocked[i] = m.L[i] === '1'; }
   S.defused = 0; m.B.forEach((b, i) => { const o = S.bombs[i]; if (o) { o.set(b[0], b[1]); o.n = b[2]; } if (b[1]) S.defused++; });
@@ -255,10 +265,10 @@ function onEvent(e) {
     case 'down': if (e.p === S.me.id) sfx.hurt(); break;
     case 'revive': if (e.p === S.me.id) sfx.ok(); break;
     case 'hit': if (a) a.flinch = 1; break;
-    case 'power': sfx.power(v1.set(BREAKER.x, BREAKER.y, BREAKER.z), e.on); break;
+    case 'power': sfx.power(v1.set(M.breaker.x, M.breaker.y, M.breaker.z), e.on); break;
     case 'door': { const d = level.doors[e.d]; sfx.door(v1.set(d.cx, d.y + 1, d.cz), e.open); break; }
     case 'locked': { const d = level.doors[e.d]; sfx.rattle(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'LOCKED', '#ffb060'); break; }
-    case 'unlock': { const d = level.doors[e.d]; sfx.unlock(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'UNLOCKED', '#80ff9a'); break; }
+    case 'unlock': { const d = level.doors[e.d]; if (e.k === 'cut') { sfx.cut(v1.set(d.cx, d.y + 1.1, d.cz), true); sayAt(d.cx, d.y + 1.6, d.cz, 'LOCK CUT', '#80ff9a'); } else { sfx.unlock(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'UNLOCKED', '#80ff9a'); } break; }
     case 'kick': { const d = level.doors[e.d]; sfx.kick(v1.set(d.cx, d.y + 1, d.cz), e.ok); if (e.ok) world.doors[e.d].cur = 0.9; else sayAt(d.cx, d.y + 1.5, d.cz, 'HELD', '#ffb060'); break; }
     case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (L[2] && a.g.position.distanceTo(head.pos) < 14) sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); } } break;
     case 'shout': if (e.p !== S.me.id) sfx.say('Police! Hands up!', 1); break;
@@ -284,8 +294,9 @@ addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => { if (S.mode === 'desktop' && document.pointerLockElement === renderer.domElement) { S.yaw -= e.movementX * 0.0022; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch - e.movementY * 0.0022)); } });
 function deskKey(code) {
   const G = gunIn(hands[1]);
-  if (code === 'Enter' && S.phase !== 'active') net.send({ t: 'restart', wx: S.wxPick });
+  if (code === 'Enter' && S.phase !== 'active') net.send({ t: 'restart', wx: S.wxPick, map: M.id });
   if (code === 'KeyO') cycleWx();
+  if (code === 'KeyP' && S.phase !== 'active') cycleMap();
   if (code === 'KeyM') return toggleMenu();
   if (S.me.down) return;
   if (code === 'KeyF') doShout();
@@ -315,8 +326,10 @@ function deskInteract() {
   const bi = nearestDoor(head.pos, 2.2); if (bi < 0) return;
   if (S.tool === 'cam' && !S.doorOpen[bi]) { S.deskCam = { id: bi, t: 6 }; if (S.doorTrap[bi]) hint(level.doors[bi].cx, level.doors[bi].y + 1.3, level.doors[bi].cz, 'TRIPWIRE BEHIND DOOR'); return; }
   if (S.tool === 'cutters' && S.doorTrap[bi] && !S.doorOpen[bi]) { S.deskPick = { id: bi, t: 1.5, disarm: true }; return; }
+  const D = level.doors[bi];
+  if (D.pad !== undefined && S.doorLocked[bi]) { if (S.tool === 'cutters') S.deskPick = { id: bi, t: 2.5, snip: true }; else hint(D.cx, D.y + 1.2, D.cz, 'PADLOCKED: USE CUTTERS'); return; }
   net.send({ t: 'door', d: bi });
-  if (S.doorLocked[bi] && !S.doorOpen[bi]) { const d = level.doors[bi]; if (S.tool === 'pick') S.deskPick = { id: bi, t: 0 }; else hint(d.cx, d.y + 1.2, d.cz, 'NEED LOCKPICK OR KICK'); }
+  if (S.doorLocked[bi] && !S.doorOpen[bi]) { if (S.tool === 'pick') S.deskPick = { id: bi, t: 0 }; else hint(D.cx, D.y + 1.2, D.cz, 'NEED LOCKPICK OR KICK'); }
 }
 // nearest door whose opening is within reach of a point (hand or head), on the same storey
 function nearestDoor(p, maxD) { let bd = maxD, bi = -1; level.doors.forEach((d, i) => { const dd = Math.hypot(d.cx - p.x, d.cz - p.z); if (Math.abs(d.y - S.feetY) < 1.2 && dd < bd) { bd = dd; bi = i; } }); return bi; }
@@ -362,7 +375,7 @@ function headWorld() {
 }
 function collide() {
   headWorld(); const [x, z] = resolveCircle(level, S.doorOpen, head.pos.x, head.pos.z, 0.25, S.feetY);
-  rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; S.feetY = groundY(x, z, S.feetY); rig.position.y += (S.feetY - rig.position.y) * 0.35; headWorld();
+  rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; S.feetY = level.groundY(x, z, S.feetY); rig.position.y += (S.feetY - rig.position.y) * 0.35; headWorld();
 }
 
 // ---------- weapon handling ----------
@@ -432,6 +445,7 @@ function useWorld(h) {
   const d = nearestDoor(h.pos, 0.95); if (d < 0) return false;
   if (S.tool === 'cam' && !S.doorOpen[d]) { h.hold = { kind: 'cam', id: d, t: 0, need: 1e9 }; if (S.doorTrap[d]) hint(level.doors[d].cx, level.doors[d].y + 1.3, level.doors[d].cz, 'TRIPWIRE BEHIND DOOR'); return true; }   // slide the camera under: keep holding to watch
   if (S.tool === 'cutters' && S.doorTrap[d] && !S.doorOpen[d]) { h.hold = { kind: 'disarm', id: d, t: 0, need: 2.5 }; return true; }
+  const D0 = level.doors[d]; if (D0.pad !== undefined && S.doorLocked[d]) { if (S.tool === 'cutters') h.hold = { kind: 'snip', id: d, t: 0, need: 1.5 }; else hint(D0.cx, D0.y + 1.2, D0.cz, 'PADLOCKED: USE CUTTERS'); return true; }   // squeeze the cutters through the shackle
   net.send({ t: 'door', d }); buzz(h, 0.5, 30);
   if (S.doorLocked[d] && !S.doorOpen[d]) { const D = level.doors[d]; if (S.tool === 'pick') h.hold = { kind: 'pick', id: d, t: 0, need: 4 }; else hint(D.cx, D.y + 1.2, D.cz, 'NEED LOCKPICK OR KICK'); }   // with the lockpick out, keep holding to pick
   return true;
@@ -469,7 +483,7 @@ function handVR(h, o, dt) {
   const bar = bars[h.i]; bar.visible = !!h.hold;
   if (h.hold) {
     const H = h.hold; let tx, tz, ok = true;
-    if (H.kind === 'pick' || H.kind === 'cam' || H.kind === 'disarm') { const d = level.doors[H.id]; tx = d.cx; tz = d.cz; ok = !S.doorOpen[H.id] && (H.kind === 'pick' ? S.doorLocked[H.id] : H.kind === 'disarm' ? S.doorTrap[H.id] > 0 : true); if (H.kind === 'cam') { dcam.door = H.id; dcam.hand = h; } }
+    if (H.kind === 'pick' || H.kind === 'cam' || H.kind === 'disarm' || H.kind === 'snip') { const d = level.doors[H.id]; tx = d.cx; tz = d.cz; ok = !S.doorOpen[H.id] && (H.kind === 'pick' || H.kind === 'snip' ? S.doorLocked[H.id] : H.kind === 'disarm' ? S.doorTrap[H.id] > 0 : true); if (H.kind === 'cam') { dcam.door = H.id; dcam.hand = h; } }
     else { const tgt = H.kind === 'cuff' ? S.actors.get(H.id) : S.officers.get(H.id), tp = tgt && (H.kind === 'cuff' ? tgt.g.position : tgt.head.position); ok = !!tp; if (tp) { tx = tp.x; tz = tp.z; } }
     if (!ok || Math.hypot(tx - h.pos.x, tz - h.pos.z) > 1.3) h.hold = null;
     else {
@@ -560,7 +574,7 @@ function handPose(h, o) {
 const stepAcc = new Map(), stepPos = new THREE.Vector3(), myStep = { x: 0, z: 0, acc: 0, init: false };
 function stepSound(key, x, y, z, moved, gainK, self) {
   let a = (stepAcc.get(key) || 0) + moved; const stride = 0.7;
-  if (a > stride) { a -= stride; if (Math.hypot(x - head.pos.x, z - head.pos.z) < 26 || self) sfx.step(self ? null : stepPos.set(x, y + 0.05, z), floorAt(x, z, y), gainK); }
+  if (a > stride) { a -= stride; if (Math.hypot(x - head.pos.x, z - head.pos.z) < 26 || self) sfx.step(self ? null : stepPos.set(x, y + 0.05, z), level.floorAt(x, z, y), gainK); }
   stepAcc.set(key, Math.min(a, stride));
 }
 function footsteps() {
@@ -572,13 +586,20 @@ function footsteps() {
 // sounds behind a wall, floor or closed door come through muffled
 setOccluder((x, y, z) => { const dx = x - head.pos.x, dy = y - head.pos.y, dz = z - head.pos.z, d = Math.hypot(dx, dy, dz); return d > 0.5 && rayStatic(level, S.doorOpen, head.pos.x, head.pos.y, head.pos.z, dx / d, dy / d, dz / d, d, true) < d - 0.3; });
 // ---------- walking out: a marked zone at the front gate, and a countdown while the squad stands in it ----------
-const exitMark = (() => { const g = new THREE.Group(), w = EXIT.x1 - EXIT.x0, d = EXIT.z1 - EXIT.z0, m = new THREE.MeshBasicMaterial({ color: 0x40ff80, transparent: true, opacity: 0.55, toneMapped: false });
-  for (const [x, z, sx, sz] of [[0, -d / 2, w, 0.08], [0, d / 2, w, 0.08], [-w / 2, 0, 0.08, d], [w / 2, 0, 0.08, d]]) { const b = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.01, sz), m); b.position.set(x, 0.035, z); g.add(b); }
-  const tag = label('EXIT - LEAVE MISSION', '#7dffa0', 512, 64); tag.scale.set(1.6, 0.2, 1); tag.position.set(0, 2.2, -d / 2 + 0.3); g.add(tag); g.position.set((EXIT.x0 + EXIT.x1) / 2, 0, (EXIT.z0 + EXIT.z1) / 2); scene.add(g); return g; })();
+const exitMat = new THREE.MeshBasicMaterial({ color: 0x40ff80, transparent: true, opacity: 0.55, toneMapped: false }), exitTag = label('EXIT - LEAVE MISSION', '#7dffa0', 512, 64), exitMark = new THREE.Group(); scene.add(exitMark);
+function buildExitMark() {   // a marked rectangle on the ground at the map's way out
+  for (const c of [...exitMark.children]) { exitMark.remove(c); if (c.geometry) c.geometry.dispose(); }
+  const E = M.exit, w = E.x1 - E.x0, d = E.z1 - E.z0;
+  for (const [x, z, sx, sz] of [[0, -d / 2, w, 0.08], [0, d / 2, w, 0.08], [-w / 2, 0, 0.08, d], [w / 2, 0, 0.08, d]]) { const b = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.01, sz), exitMat); b.position.set(x, 0.035, z); exitMark.add(b); }
+  exitTag.scale.set(1.6, 0.2, 1); exitTag.position.set(0, 2.2, M.id === 'mansion' ? -d / 2 + 0.3 : 0); exitMark.add(exitTag); exitMark.position.set((E.x0 + E.x1) / 2, E.y || 0, (E.z0 + E.z1) / 2);
+}
+function placeMapProps() { breaker.g.position.set(M.breaker.x, M.breaker.y, M.breaker.z); buildExitMark(); }
+function cycleMap() { const id = MAP_IDS[(MAP_IDS.indexOf(M.id) + 1) % MAP_IDS.length]; sfx.click(); net.send({ t: 'map', m: id }); if (!net.ws && !net.host) { loadMap(id); showLobbyPanel(); } }
+placeMapProps(); ready = true;
 let exitT = 0, exitShown = -1;
 function exitPrompt(dt) {
   exitMark.visible = S.phase === 'active';
-  const inZone = S.phase === 'active' && head.pos.x > EXIT.x0 && head.pos.x < EXIT.x1 && head.pos.z > EXIT.z0 && head.pos.z < EXIT.z1, n = S.extract || 0;
+  const E = M.exit, inZone = S.phase === 'active' && head.pos.x > E.x0 && head.pos.x < E.x1 && head.pos.z > E.z0 && head.pos.z < E.z1, n = S.extract || 0;
   if ((exitT -= dt) > 0 || !inZone) return; exitT = 1;
   const text = n > 0 ? 'LEAVING IN ' + n : S.everInside ? 'WAITING FOR SQUAD' : null; if (!text) return;
   sayAt(head.pos.x + head.fwd.x * 1.4, head.pos.y + 0.1, head.pos.z + head.fwd.z * 1.4, text, n > 0 ? '#7dffa0' : '#ffd060'); if (n > 0 && n !== exitShown) sfx.beep(null, 900); exitShown = n;
@@ -595,14 +616,14 @@ function frame(t) {
   else if (S.mode === 'desktop') {
     moveDesktop(dt); collide(); camera.updateMatrixWorld(true);
     const h = hands[1]; h.pos.copy(S.ads ? v1.set(0, -guns[h.item || 'rifle'].ud.sightY, -0.3) : v1.set(0.16, -0.17, -0.34)).applyMatrix4(camera.matrixWorld); h.quat.copy(head.quat);
-  } else { const a = t * 0.00005; camera.position.set(12 + Math.sin(a) * 26, 9, 22 + Math.cos(a) * 14); camera.lookAt(12, 2, 8); headWorld(); }
+  } else { const a = t * 0.00005, Y = M.YARD, cx = (Y.x0 + Y.x1) / 2, cz = (Y.z0 + Y.z1) / 2, k = M.id === 'mansion' ? 1 : 2.6; camera.position.set(cx + Math.sin(a) * 26 * k, 9 * k, cz + 14 + Math.cos(a) * 14 * k); camera.lookAt(cx, 2, cz - 7); headWorld(); }
   for (const h of hands) { if (h.active) { v1.copy(h.pos).sub(h.last).multiplyScalar(1 / dt); if (v1.lengthSq() < 900) h.vel.lerp(v1, 0.45); h.last.copy(h.pos); } }
   placeGuns(dt);
   for (const h of hands) h.pose = handPose(h, hands[1 - h.i]);
   myBody.g.visible = !!S.mode; if (S.mode) myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY);
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
-  if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (!(P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.disarm ? 'disarm' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
+  if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (!(P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
   vestHints(); doorCam(dt); smokeDraw();
   if (smokeFog > 0.01 || smokeFogCur > 0.01) { smokeFogCur += (smokeFog - smokeFogCur) * Math.min(1, dt * 4); applyLook(); if (smokeFogCur > 0.01) { scene.fog.density += smokeFogCur * 0.6; scene.fog.color.lerp(smokeCol.setRGB(S.nvg ? 0.2 : 0.5, S.nvg ? 0.5 : 0.51, S.nvg ? 0.25 : 0.53), smokeFogCur * 0.8); scene.background.copy(scene.fog.color); } }
   // a door lever lights up when an empty hand can work it
@@ -616,7 +637,7 @@ function frame(t) {
   // world animation
   for (const a of S.actors.values()) a.update(dt);
   breaker.cur += ((S.night ? 1 : 0) - breaker.cur) * Math.min(1, dt * 14); breaker.lever.rotation.x = breaker.cur * 2.2; breaker.led.material.color.setHex(S.night ? 0x401010 : 0x30ff60);
-  world.doors.forEach((d, i) => { d.cur += ((S.doorOpen[i] ? 1.65 : 0) - d.cur) * Math.min(1, dt * 7); d.g.visible = true; d.g.rotation.y = d.base + d.cur; });
+  world.doors.forEach((d, i) => { d.cur += ((S.doorOpen[i] ? 1.65 : 0) - d.cur) * Math.min(1, dt * 7); d.g.visible = true; d.g.rotation.y = d.base + d.swing * d.cur; if (d.g2) d.g2.rotation.y = d.base + Math.PI - d.swing * d.cur; if (d.lock) d.lock.visible = !!S.doorLocked[i] && !S.doorOpen[i]; });
   for (const l of tracers) if (l.visible && (l.userData.t -= dt) <= 0) l.visible = false;
   for (const m of puffs) if (m.visible) { m.userData.t -= dt; m.material.opacity = Math.max(0, m.userData.t / 0.3); m.scale.setScalar(1 + (0.3 - m.userData.t) * 4); if (m.userData.t <= 0) m.visible = false; }
   for (let i = says.length - 1; i >= 0; i--) { const s = says[i]; s.t -= dt; s.s.position.y += dt * 0.1; if (s.t <= 0) { scene.remove(s.s); s.s.material.map.dispose(); s.s.material.dispose(); says.splice(i, 1); } }
@@ -631,7 +652,7 @@ function frame(t) {
   S.figT = Math.max(0, S.figT - dt); fig.mesh.visible = S.figT > 0 && !!S.mode; fig.mesh.material.opacity = Math.min(1, S.figT);
   weather.update(dt, head.pos, () => sfx.thunder());
   setAmbience(S.wx === 'storm' ? 1 : S.wx === 'rain' ? 0.7 : 0, weather.state.inside);
-  setListener(head.pos, head.fwd, inFoot(head.pos.x, head.pos.z) && head.pos.y < 2 * STOREY);
+  setListener(head.pos, head.fwd, level.inside(head.pos.x, head.pos.z, head.pos.y));
   footsteps(dt); exitPrompt(dt);
   if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(head.pos, head.quat), l: hands[0].active ? arr7(hands[0].pos, hands[0].quat) : null, r: hands[1].active ? arr7(hands[1].pos, hands[1].quat) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.visible ? 1 : 0 }); }
   renderer.render(scene, camera);
@@ -670,7 +691,7 @@ function initTouch() {
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
   bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
-  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick }); S.tmenu = false; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
+  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, map: M.id }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
   const sEnd = e => { if (e.pointerId !== sid) return; sid = null; S.tmove.x = S.tmove.y = 0; knob.style.transform = ''; };
@@ -687,5 +708,5 @@ $('tplay').onclick = () => { initAudio(); connect($('solo').checked); begin('des
 let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('install').style.display = 'inline-block'; });
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.__bl = { dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, world, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }
