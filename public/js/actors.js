@@ -1,6 +1,7 @@
 // Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
 import { loadM4 } from './m4.js';
+import { CHARS_ON, SUSPECT_MODELS, loadChar, Skin, mirror, align2 } from './chars.js';
 const HQ = typeof location === 'undefined' || !new URLSearchParams(location.search).get('lite') || !!new URLSearchParams(location.search).get('m4');   // ?lite=1 (tests) keeps the built-in rifle unless &m4=1
 import { sheen, vertexSheen } from './mats.js';
 import { SOFT } from './gfx.js';
@@ -132,6 +133,40 @@ export class Human {
     this.kind = kind; this.st = ''; this.first = true; this.flashT = 0; this.flinch = 0; this.phase = Math.random() * 6; this.idle = Math.random() * 9; this.speed = 0;
     this.p0 = new THREE.Vector3(); this.p1 = new THREE.Vector3(); this.y0 = 0; this.y1 = 0; this.it = 0; this.dur = 0.07; this.lastT = 0;
     this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST); this.blob = makeBlob(0.5); g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
+    // suspects wear one of the downloaded rigged models (HVT keeps his suit); the stick rig above keeps animating, invisibly, and drives its bones
+    if (s && v !== 4 && CHARS_ON) loadChar(SUSPECT_MODELS[v % SUSPECT_MODELS.length]).then(t => this.attachSkin(t)).catch(e => console.warn('suspect model not loaded', e));
+  }
+  attachSkin(tpl) {
+    const g = this.g, keepQ = g.quaternion.clone(), keepP = g.position.clone(); g.position.set(0, 0, 0); g.quaternion.identity(); g.updateMatrixWorld(true);
+    const sk = this.skin = new Skin(tpl, g), r = sk.role, gun = this.gun;
+    g.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) { let p = o, inGun = false; while (p) { if (p === gun) inGun = true; p = p.parent; } if (!inGun) o.visible = false; } });
+    this.W = new Map(); this.D = { b: new THREE.Quaternion(), u: new THREE.Quaternion(), sh: [new THREE.Quaternion(), new THREE.Quaternion()], el: [new THREE.Quaternion(), new THREE.Quaternion()], hp: [new THREE.Quaternion(), new THREE.Quaternion()], kn: [new THREE.Quaternion(), new THREE.Quaternion()] };
+    this.Wq = sk.bones.map(() => new THREE.Quaternion()); this.Iq = new THREE.Quaternion();
+    this.poseSkin(true);
+    if (gun) {   // the rifle moves from the stick arm into the model's right hand, keeping its angle to the forearm
+      const hi = r.hand.R, Hq = sk.gq[hi], Hp = sk.gp[hi], s = sk.sc[hi];
+      const gq = mirror(new THREE.Quaternion().setFromEuler(new THREE.Euler(-HP, 0, Math.PI))), gp = new THREE.Vector3(-0.275, 0.8, 0.03).add(new THREE.Vector3(-0.275, 0.81, 0).negate().add(Hp));
+      gp.add(new THREE.Vector3(0, 0, 0.04));
+      const iq = Hq.clone().invert(); gun.parent.remove(gun); sk.bones[hi].add(gun);
+      gun.position.copy(gp.sub(Hp).applyQuaternion(iq).multiplyScalar(1 / s)); gun.quaternion.copy(iq.multiply(gq)); gun.scale.setScalar(1 / s);
+    }
+    g.position.copy(keepP); g.quaternion.copy(keepQ);
+  }
+  // copy the stick rig's joints onto the model's bones (mirrored, so the rifle sits in the right hand)
+  poseSkin(rest) {
+    const sk = this.skin, r = sk.role, D = this.D, W = this.W, I = this.Iq, q = this.Wq;
+    if (rest) { for (const k of ['b', 'u']) D[k].identity(); for (const k of ['sh', 'el', 'hp', 'kn']) D[k].forEach(x => x.identity()); sk.hipsOff.set(0, 0, 0); }
+    else {
+      mirror(this.body.quaternion, D.b); const ug = _q1.copy(this.body.quaternion).multiply(this.upper.quaternion); mirror(ug, D.u);
+      for (let k = 0; k < 2; k++) { const a = this.arms[k], l = this.legs[k], sh = _q2.copy(ug).multiply(a.sh.quaternion); mirror(sh, D.sh[k]); mirror(sh.multiply(a.el.quaternion), D.el[k]);
+        const hp = _q2.copy(this.body.quaternion).multiply(l.hip.quaternion); mirror(hp, D.hp[k]); mirror(hp.multiply(l.knee.quaternion), D.kn[k]); }
+      sk.hipsOff.set(0, this.body.position.y, 0);
+    }
+    W.clear(); let n = 0; const put = (i, Dq) => { if (i >= 0) W.set(i, sk.rig(i, Dq, q[n++])); };
+    put(r.hips, D.b); r.spine.forEach((i, k) => put(i, _q3.copy(D.b).slerp(D.u, (k + 1) / r.spine.length))); put(r.neck, D.u); put(r.head, D.u);
+    // model right (-x) <- rig +x side (index 1); model left <- rig index 0
+    for (const [S, k] of [['R', 1], ['L', 0]]) { put(r.up[S], D.sh[k]); put(r.fore[S], D.el[k]); put(r.hand[S], D.el[k]); put(r.thigh[S], D.hp[k]); put(r.shin[S], D.kn[k]); put(r.foot[S], D.kn[k]); }
+    sk.solve(W);
   }
   // A new server position arrives ~15 times a second: glide to it at constant speed over one interval instead of chasing it.
   target(x, y, z, yaw, st, armed) {
@@ -164,6 +199,7 @@ export class Human {
     this.g.rotation.x = c.lie; p.y = baseY + c.yOff; const lying = Math.abs(c.lie) / HP, off = -0.8 * lying * Math.sign(c.lie || 1);   // a fallen body's shadow lies under the body, not at its feet
     this.blob.position.set(p.x + Math.sin(this.g.rotation.y) * off, baseY + 0.024, p.z + Math.cos(this.g.rotation.y) * off); this.blob.scale.set(1 + lying * 0.3, 1, 1 + lying * 0.9); this.blob.rotation.y = this.g.rotation.y;
     if (this.gun) { if (this.flashT > 0) this.flashT -= dt; this.gun.userData.flash.visible = this.flashT > 0; }
+    if (this.skin) this.poseSkin(false);
   }
   muzzle(out) { return out.set(this.g.position.x + Math.sin(this.g.rotation.y) * 0.6, this.g.position.y + 1.35, this.g.position.z + Math.cos(this.g.rotation.y) * 0.6); }
 }
@@ -181,8 +217,10 @@ const POSE = {
 // ---------- officer body: vest, belt, holders, legs, and arms that reach to the hands ----------
 // Offsets are from the head, with -z forward. These are also the grab zones used by the game.
 export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.03, -0.42, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qPi = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), _eul = new THREE.Euler(), _ax = new THREE.Vector3(1, 0, 0), _kneeFwd = new THREE.Vector3(0, 0, 1), GRIP = { i: 0.7, g: 0.8, t: 0.5 };
 const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
-let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null;
+let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null, TORSO = null, gearParts = null, gearG = null;
+const gearGeo = () => gearG || (gearG = merge(gearParts.map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);   // pouches, radio, holster, grenades on the squad model's vest
 // ---------- articulated glove: palm plus four fingers of three joints and a thumb, curled by a pose { i: index, g: other fingers, t: thumb } ----------
 // Local frame matches the controller grip: back of the hand up (+y), fingers forward (-z), thumb on the left for a right hand (mirrored for the left).
 const FINGERS = [[-0.027, [0.04, 0.024, 0.02], 0.0085, 0.06], [-0.009, [0.044, 0.027, 0.021], 0.0088, 0.01], [0.009, [0.041, 0.025, 0.02], 0.0082, -0.04], [0.026, [0.032, 0.019, 0.017], 0.0073, -0.11]];
@@ -208,7 +246,7 @@ export class Body {
   constructor(detailed = false) {
     const NAVY = 0x1b2230, VEST = 0x15181d, WEB = 0x23272e;
     if (!torsoGeo) {
-      torsoGeo = merge([
+      torsoGeo = merge(TORSO = [
         [BOX(0.4, 0.56, 0.2), NAVY, 0, -0.52, 0.08], [BOX(0.35, 0.42, 0.25), VEST, 0, -0.47, 0.08], [BOX(0.07, 0.08, 0.22), VEST, -0.13, -0.25, 0.08], [BOX(0.07, 0.08, 0.22), VEST, 0.13, -0.25, 0.08],
         [BOX(0.2, 0.05, 0.006), 0xc9ccd2, 0, -0.34, -0.047], [BOX(0.2, 0.05, 0.006), 0xc9ccd2, 0, -0.34, 0.207], [BOX(0.11, 0.1, 0.11), NAVY, -0.24, -0.27, 0.08], [BOX(0.11, 0.1, 0.11), NAVY, 0.24, -0.27, 0.08],
         [BOX(0.43, 0.06, 0.27), WEB, 0, -0.76, 0.08],
@@ -221,6 +259,7 @@ export class Body {
       legGeo = merge([[CAP(0.085, 0.72), NAVY, -0.1, -1.2, 0.08], [CAP(0.085, 0.72), NAVY, 0.1, -1.2, 0.08], [BOX(0.11, 0.1, 0.28), 0x0e0f11, -0.1, -1.62, 0.04], [BOX(0.11, 0.1, 0.28), 0x0e0f11, 0.1, -1.62, 0.04]], 'cloth').geometry;
       gloveGeo = merge([[BOX(0.085, 0.034, 0.105), 0x121315, 0, -0.012, 0.035], [BOX(0.08, 0.028, 0.05), 0x1c1e22, 0, -0.012, -0.035], [BOX(0.028, 0.028, 0.06), 0x121315, 0, 0.005, 0.0, 0, 0.7], [BOX(0.075, 0.04, 0.05), 0x1b2230, 0, -0.012, 0.11]], 'plastic').geometry;
       limbGeo = new THREE.CylinderGeometry(0.036, 0.045, 1, 8);
+      gearParts = TORSO.slice(9);
     }
     const g = this.g = new THREE.Group(), cloth = vertexSheen('cloth');
     this.torso = new THREE.Mesh(torsoGeo, cloth); this.legs = new THREE.Mesh(legGeo, cloth); g.add(this.torso, this.legs);
@@ -229,13 +268,74 @@ export class Body {
     this.arms = [-1, 1].map(sx => { const up = new THREE.Mesh(limbGeo, sleeve), fore = new THREE.Mesh(limbGeo, sleeve), glove = detailed ? makeHand(sx) : new THREE.Mesh(gloveGeo, vertexSheen('plastic')); if (!detailed) glove.scale.x = sx; g.add(up, fore, glove); return { sx, up, fore, glove }; });
     this.detailed = detailed; this.lastT = performance.now();
     this.blob = makeBlob(0.42); g.add(this.blob); this.torso.receiveShadow = this.legs.receiveShadow = true;
+    if (CHARS_ON) loadChar('swat').then(t => this.attachSkin(t)).catch(e => console.warn('officer model not loaded', e));
+  }
+  // The squad model: placed under the headset, arms solved to the controllers, legs bent when you crouch. Only the vest gear stays from the built-in body.
+  attachSkin(tpl) {
+    const holder = this.holder = new THREE.Group(); holder.rotation.order = 'YXZ'; this.g.add(holder); holder.updateMatrixWorld(true);
+    const sk = this.skin = new Skin(tpl, holder), r = sk.role, P = sk.restP;
+    this.torso.geometry = gearGeo(); this.legs.visible = false; for (const a of this.arms) { a.up.visible = a.fore.visible = a.glove.visible = false; a.off = true; }
+    const hp = P[r.head]; this.eye = new THREE.Vector3(hp.x, hp.y + 0.1, hp.z + 0.1);
+    if (this.detailed) { sk.bones[r.neck].scale.setScalar(0.001); sk.wrap.traverse(o => { if (o.isMesh && /glass/.test(o.material.name)) o.visible = false; }); }   // your own head and goggles would fill the view
+    this.W = new Map(); this.H = {};
+    for (const S of ['L', 'R']) {   // hand frame at rest: knuckle direction and back of the hand
+      const h = P[r.hand[S]], f = r.fingers ? P[r.fingers[S][1][0]].clone().sub(h) : P[r.hand[S]].clone().sub(P[r.fore[S]]), t = r.thumb ? P[r.thumb[S][0]].clone().sub(h) : new THREE.Vector3(0, 0, 1);
+      const b = S === 'R' ? new THREE.Vector3().crossVectors(f, t) : new THREE.Vector3().crossVectors(t, f); b.normalize(); const palm = f.length(); f.normalize();
+      const curlAxis = new THREE.Vector3().crossVectors(b, f).normalize();
+      const fingers = r.fingers ? r.fingers[S].map(ch => ch.map(i => ({ i, ax: curlAxis.clone().applyQuaternion(sk.restQ[i].clone().invert()) }))) : [];
+      const thumb = r.thumb ? r.thumb[S].map(i => ({ i, ax: curlAxis.clone().applyQuaternion(sk.restQ[i].clone().invert()) })) : [];
+      const [L1, L2] = sk.len(S), up = P[r.fore[S]].clone().sub(P[r.up[S]]).normalize(), fo = P[r.hand[S]].clone().sub(P[r.fore[S]]).normalize();
+      this.H[S] = { f0: f, b0: b, palm, fingers, thumb, L1, L2, up0: up, fo0: fo, pole0: new THREE.Vector3(0, 0, -1), cur: { i: 0.6, g: 0.7, t: 0.5 }, wq: new THREE.Quaternion(), wp: new THREE.Vector3(), el: new THREE.Vector3(), pole: new THREE.Vector3(), on: false };
+    }
+    for (const S of ['L', 'R']) { const th = P[r.thigh[S]], sh = P[r.shin[S]], ft = P[r.foot[S]]; this.H['leg' + S] = { L1: th.distanceTo(sh), L2: sh.distanceTo(ft), d0: sh.clone().sub(th).normalize(), s0: ft.clone().sub(sh).normalize(), foot: ft.clone(), knee: new THREE.Vector3() }; }
+    this.q = [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()];
+    this.fns = {}; const IKq = new THREE.Quaternion(), tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+    // two-bone solve: elbow (or knee) position from the root, the target and a bend direction
+    const elbowAt = (root, tgt, L1, L2, pole, out) => { const d = tmpA.copy(tgt).sub(root), len = Math.max(0.02, d.length()); d.multiplyScalar(1 / len); const dd = Math.min(len, L1 + L2 - 0.002), along = (L1 * L1 - L2 * L2 + dd * dd) / (2 * dd), h = Math.sqrt(Math.max(0, L1 * L1 - along * along)); tmpB.copy(pole).addScaledVector(d, -pole.dot(d)).normalize(); return out.copy(root).addScaledVector(d, along).addScaledVector(tmpB, h); };
+    for (const S of ['L', 'R']) {
+      const H = this.H[S], out = S === 'R' ? -1 : 1, Lg = this.H['leg' + S];
+      this.fns['up' + S] = (gp) => { if (!H.on) return null; H.pole.set(out * 0.5, -0.75, -0.45); elbowAt(gp, H.wp, H.L1, H.L2, H.pole, H.el); return align2(H.up0, H.pole0, tmpA.copy(H.el).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.up[S]]).clone(); };
+      this.fns['fo' + S] = (gp) => { if (!H.on) return null; return align2(H.fo0, H.pole0, tmpA.copy(H.wp).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.fore[S]]).clone(); };
+      this.fns['th' + S] = (gp) => { elbowAt(gp, Lg.foot, Lg.L1, Lg.L2, _kneeFwd, Lg.knee); return align2(Lg.d0, _kneeFwd, tmpA.copy(Lg.knee).sub(gp), _kneeFwd, IKq).multiply(sk.restQ[r.thigh[S]]).clone(); };
+      this.fns['sh' + S] = (gp) => align2(Lg.s0, _kneeFwd, tmpA.copy(Lg.foot).sub(gp), _kneeFwd, IKq).multiply(sk.restQ[r.shin[S]]).clone();
+    }
+  }
+  poseSkin(headPos, yaw, hands, feetY, headQ, dt) {
+    const sk = this.skin, r = sk.role, hd = this.holder, W = this.W, down = feetY > 50;
+    hd.rotation.set(down ? -HP : 0, yaw + Math.PI, 0); hd.updateMatrix(); const hq = hd.quaternion, ihq = _q1.copy(hq).invert();
+    const e = this.eye, fwd = a1.set(0, 0, 1).applyQuaternion(hq);
+    if (down) hd.position.copy(headPos).addScaledVector(fwd, -e.y).setY(headPos.y - 0.12);
+    else { const off = a2.set(e.x, 0, e.z).applyQuaternion(hq); hd.position.set(headPos.x - off.x, feetY, headPos.z - off.z); }
+    hd.updateMatrixWorld(true);
+    const drop = down ? 0 : Math.max(0, Math.min(0.85, e.y - (headPos.y - feetY))); sk.hipsOff.set(0, -drop, 0);
+    // head: the headset's rotation in the model's frame; chest and spine take part of the pitch, and lean in a crouch
+    const Dh = _q2.copy(ihq).multiply(headQ || _q3.setFromAxisAngle(UPY, yaw)).multiply(_qPi);
+    _eul.setFromQuaternion(Dh, 'YXZ'); const pitch = down ? 0 : _eul.x, lean = drop * 0.55;
+    W.clear(); let n = 0; const Q = this.q;
+    const sp = Q[n++].setFromAxisAngle(_ax, pitch * 0.3 + lean); r.spine.forEach((i, k) => W.set(i, sk.rig(i, _q3.identity().slerp(sp, (k + 1) / r.spine.length), Q[3 + Math.min(2, k)])));
+    W.set(r.neck, sk.rig(r.neck, _q3.copy(sp).slerp(Dh, 0.5), Q[n++])); W.set(r.head, sk.rig(r.head, Dh, Q[n++]));
+    for (const [S, k] of [['L', 0], ['R', 1]]) {
+      const H = this.H[S], h = hands[k]; H.on = !!h && !down;
+      if (H.on) {
+        H.wq.copy(ihq).multiply(h.quat); const f1 = a3.set(0, -0.25, -1).normalize().applyQuaternion(H.wq), b1 = a4.set(0, 1, -0.25).normalize().applyQuaternion(H.wq);
+        const knuckle = hd.worldToLocal(a2.set(0, -0.015, -0.005).applyQuaternion(h.quat).add(h.pos)); H.wp.copy(knuckle).addScaledVector(f1, -H.palm);
+        W.set(r.hand[S], align2(H.f0, H.b0, f1, b1, new THREE.Quaternion()).multiply(sk.restQ[r.hand[S]]));
+        W.set(r.up[S], this.fns['up' + S]); W.set(r.fore[S], this.fns['fo' + S]);
+        const want = h.pose || GRIP, c = H.cur, kk = Math.min(1, dt * 22); c.i += (want.i - c.i) * kk; c.g += (want.g - c.g) * kk; c.t += (want.t - c.t) * kk;
+        H.fingers.forEach((ch, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; ch.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, v * a[s]))); });
+        H.thumb.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, c.t * [0.3, 0.5, 0.4][s])));
+      } else { for (const i of [r.up[S], r.fore[S], r.hand[S]]) W.set(i, sk.rig(i, _q3.identity(), new THREE.Quaternion())); }
+      W.set(r.thigh[S], this.fns['th' + S]); W.set(r.shin[S], this.fns['sh' + S]);
+    }
+    sk.solve(W);
   }
   // hands: [left, right], each { pos, quat, pose? } or null
-  update(headPos, yaw, hands, feetY) {
+  update(headPos, yaw, hands, feetY, headQ) {
     const s = Math.sin(yaw), c = Math.cos(yaw), now = performance.now(), dt = Math.min(0.1, (now - this.lastT) / 1000); this.lastT = now;
-    this.torso.position.set(headPos.x + s * 0.05, headPos.y, headPos.z + c * 0.05); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;
+    if (this.skin) this.poseSkin(headPos, yaw, hands, feetY, headQ, dt);
+    this.torso.position.set(headPos.x + s * 0.05, headPos.y, headPos.z + c * 0.05); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;
     this.arms.forEach((a, i) => {
-      const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
+      if (a.off) return; const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
       const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat); if (this.detailed && h.pose) poseHand(a.glove, h.pose, dt);
       const wrist = a2.set(0, -0.012, 0.13).applyQuaternion(h.quat).add(h.pos), dir = a3.copy(wrist).sub(sh), d = Math.max(0.05, dir.length()); dir.multiplyScalar(1 / d);
       const L1 = 0.3, L2 = 0.29, dd = Math.min(d, L1 + L2 - 0.005), along = (L1 * L1 - L2 * L2 + dd * dd) / (2 * dd), out = Math.sqrt(Math.max(0, L1 * L1 - along * along));
@@ -259,7 +359,8 @@ export class Officer {   // another player
   set(h, l, r, items, down) {
     if (!h) return; this.head.position.set(h[0], h[1], h[2]); this.q.set(h[3], h[4], h[5], h[6]); this.head.quaternion.slerp(this.q, 0.6); this.e.setFromQuaternion(this.q);
     const hands = [l, r].map((a, i) => { const g = this.items[i]; g.visible = !!a; if (!a) return null; const o = this.hp[i]; o.pos.set(a[0], a[1], a[2]); o.quat.set(a[3], a[4], a[5], a[6]); g.position.copy(o.pos); g.quaternion.copy(o.quat); g.userData.items.forEach((m, k) => { if (m) m.visible = k === (items ? items[i] : 0); }); return o; });
-    this.body.update(this.head.position, this.e.y, hands, down ? 99 : h[1] - 1.7);
+    this.body.update(this.head.position, this.e.y, hands, down ? 99 : h[1] - 1.7, this.head.quaternion);
+    if (this.body.skin && !this.hid) { this.hid = true; this.head.material = new THREE.MeshBasicMaterial({ visible: false }); }
   }
 }
 

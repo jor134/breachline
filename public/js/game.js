@@ -621,7 +621,7 @@ function frame(t) {
   for (const h of hands) { if (h.active) { v1.copy(h.pos).sub(h.last).multiplyScalar(1 / dt); if (v1.lengthSq() < 900) h.vel.lerp(v1, 0.45); h.last.copy(h.pos); } }
   placeGuns(dt);
   for (const h of hands) h.pose = handPose(h, hands[1 - h.i]);
-  myBody.g.visible = !!S.mode; if (S.mode) myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY);
+  myBody.g.visible = !!S.mode; if (S.mode) myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY, head.quat);
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
   if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (!(P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
@@ -709,5 +709,5 @@ $('tplay').onclick = () => { initAudio(); connect($('solo').checked); begin('des
 let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('install').style.display = 'inline-block'; });
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.__bl = { loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }
