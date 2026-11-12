@@ -5,7 +5,8 @@ import { sheen, tex, grid, rnd, setGlossLevel } from './mats.js';
 import { buildLevel } from './core/level.js';
 import mansionGfx from './maps/mansion-gfx.js';
 import terminalGfx from './maps/terminal-gfx.js';
-const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx };
+import trainingGfx from './maps/training-gfx.js';
+const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx };
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
 export function initMats() {
@@ -96,6 +97,8 @@ function furnish(b, w) {
     case 'binnacle': P('fascia', len * 0.3, len * 0.7, dep * 0.3, dep * 0.7, 0, h - 0.2); P('steel', 0, len, 0, dep, h - 0.2, h); break;
     case 'booth': P('lacquer', 0, len, 0, dep, 0, h); break;
     case 'guard': P('lacquer', 0, len, 0, dep, 0, h - 0.1); P('fascia', -0.1, len + 0.1, -0.1, dep + 0.1, h - 0.1, h); P('glass', 0.05, len - 0.05, -0.002, dep + 0.002, 1.0, 2.1, 'xXzZ'); break;
+    case 'baffle': P('steelplate', 0, len, 0, dep, 0, h); break;
+    case 'berm': P('rubber', 0, len, 0, dep, 0, h, ALL, 0.5); for (let u = 0.5; u < len; u += 1) P('steelplate', u, u + 0.05, dep, dep + 0.01, 0, h, 'Z'); break;
     case 'pot': P('top', 0.02, len - 0.02, 0.02, dep - 0.02, 0, h - 0.04, 'xXzZ'); P('top', 0, len, 0, dep, h - 0.08, h, 'xXzZyY'); P('walnut', 0.03, len - 0.03, 0.03, dep - 0.03, h - 0.03, h - 0.02, 'Y'); break;
     default: P('stone', 0, len, 0, dep, 0, h);
   }

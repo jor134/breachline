@@ -6,7 +6,7 @@ import { loadCar } from './car.js';
 import { initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
-import { resolveCircle, rayStatic, MAP_IDS, MAPS } from './core/level.js';
+import { resolveCircle, rayStatic, MAP_IDS, MAPS, MISSION_IDS } from './core/level.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 
@@ -28,10 +28,39 @@ camera.rotation.order = 'YXZ'; rig.add(camera); scene.add(rig);
 addEventListener('resize', () => { if (renderer.xr.isPresenting) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 // The world is rebuilt when the squad picks another map in the lobby: geometry, doors, lights, the breaker, the exit, plants and cars.
 let world = null, level = null, M = null, extras = [], mapGen = 0, ready = false;
+
+// ---------- training targets: plywood cut-outs on a hinge; red = armed, blue = no-shoot ----------
+let targets = [];
+const tgTex = (() => { const mk = hostile => { const c = document.createElement('canvas'); c.width = 128; c.height = 256; const g = c.getContext('2d');
+  g.fillStyle = '#c9a26a'; g.fillRect(0, 0, 128, 256); g.fillStyle = hostile ? '#a8231e' : '#2858a8';
+  g.beginPath(); g.arc(64, 46, 26, 0, 7); g.fill(); g.beginPath(); g.moveTo(18, 250); g.lineTo(22, 110); g.quadraticCurveTo(26, 80, 64, 78); g.quadraticCurveTo(102, 80, 106, 110); g.lineTo(110, 250); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.75)'; g.lineWidth = 3; for (const r of [14, 30]) { g.beginPath(); g.ellipse(64, 150, r * 1.2, r * 1.6, 0, 0, 7); g.stroke(); }
+  g.fillStyle = '#111'; if (hostile) { g.fillRect(84, 128, 40, 12); g.fillRect(104, 136, 10, 22); } else { g.fillRect(8, 40, 12, 60); g.fillRect(108, 40, 12, 60); g.fillStyle = '#fff'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; g.fillText('NO', 64, 210); g.fillText('SHOOT', 64, 234); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshLambertMaterial({ map: t, side: THREE.DoubleSide }); };
+  return { h: mk(true), n: mk(false), post: new THREE.MeshLambertMaterial({ color: 0x3a3d42 }) }; })();
+function buildTargets() {
+  for (const t of targets) { scene.remove(t.g); t.board.geometry.dispose(); } targets = [];
+  if (!M.training) return;
+  for (const d of M.targets) {
+    const g = new THREE.Group(), hinge = new THREE.Group(), board = new THREE.Mesh(new THREE.PlaneGeometry(d.w, d.h), tgTex.h); board.position.y = d.h / 2; board.castShadow = true;
+    hinge.add(board); g.add(hinge); g.position.set(d.x, d.y, d.z); g.rotation.y = d.face || 0;
+    if (d.y > 0.1) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, d.y, 0.05), tgTex.post); post.position.y = -d.y / 2; g.add(post); }
+    scene.add(g); targets.push({ d, g, hinge, board, up: d.kind === 'static' || d.kind === 'move' ? 1 : 0, cur: 0, x: d.x, tx: d.x, hostile: 1 });
+  }
+}
+function updateTargets(dt) {
+  for (const t of targets) { const want = t.up ? 0 : -Math.PI / 2; t.cur += (want - t.cur) * Math.min(1, dt * 10); t.hinge.rotation.x = t.cur;
+    if (t.d.kind === 'move') { t.x += (t.tx - t.x) * Math.min(1, dt * 8); t.g.position.x = t.x; } }
+}
+function trainLine() {
+  const mine = (S.tstats || []).find(r => r[0] === S.me.id) || [0, 0, 0, 0], H = S.house || [0, 0, 0, 0, 0];
+  return { hits: mine[1], shots: mine[2], ns: mine[3], acc: mine[2] ? Math.round(100 * mine[1] / mine[2]) : 0, run: H[0] ? H[1].toFixed(1) + 's' : H[3] ? 'last ' + H[3] + 's' : '-', best: H[2] ? H[2] + 's' : '-', on: !!H[0] };
+}
 function loadMap(id) {
   if (world && world.level.id === id) return;
   if (world) world.dispose(); for (const o of extras) { scene.remove(o); o.geometry && o.geometry.dispose(); } extras = []; const gen = ++mapGen;
   world = buildWorld(scene, id); level = world.level; M = level.map;
+  buildTargets();
   if (ready) { S.doorTrap = level.doors.map(() => 0); S.doorOpen = level.doors.map(() => false); S.doorLocked = level.doors.map(() => false); S.deskCam = null; S.deskPick = null; for (const h of hands) h.hold = null; placeMapProps(); applyLook(); }
   renderer.shadowMap.needsUpdate = true;
   if (!Q.get('lite')) {   // ?lite=1 skips the heavy models (used by the automated tests)
@@ -40,10 +69,11 @@ function loadMap(id) {
     for (const c of M.cars || []) loadCar(scene, c.x, 0, c.z, Math.PI, c.length).then(keep).catch(e => console.warn('car not loaded', e));
   }
 }
-loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : localStorage.getItem('bl_map') && MAP_IDS.includes(localStorage.getItem('bl_map')) ? localStorage.getItem('bl_map') : 'mansion');
+loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : 'training');   // everyone arrives at the training facility; the mission board sends the squad out
 
 const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
   net: 'offline', room: '', report: null, doorLocked: level.doors.map(() => false), bodyYaw: 0, panel: 'lobby', menu: false, deskPick: null, night: false, nvg: false, tool: 'hands', hintT: 0, wx: 'clear', wxPick: 'random', squad: [], secured: 0, civs: 5, defused: 0, light: true, now: 0, eye: 1.66, crouch: false, yaw: 0, pitch: 0, ads: false, reloading: false, tilt: +(localStorage.getItem('bl_tilt') || 0) };
+S.nextMap = MISSION_IDS[0];
 const head = { pos: V(), quat: new THREE.Quaternion(), fwd: V(), yaw: 0 };
 const status = t => { $('status').textContent = t; };
 
@@ -112,7 +142,7 @@ const nvgMask = (() => { const c = document.createElement('canvas'); c.width = c
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, depthWrite: false, fog: false })); m.position.z = -0.32; m.renderOrder = 996; m.visible = false; camera.add(m); return m; })();
 const irLamp = new THREE.PointLight(0x58ff68, 0, 34, 1.1); camera.add(irLamp);   // the goggles' own illuminator: nearby surfaces read brighter, which gives depth
 const weather = makeWeather(scene, () => level), WXS = ['random', 'clear', 'rain', 'fog', 'storm'];
-const cycleWx = () => { S.wxPick = WXS[(WXS.indexOf(S.wxPick) + 1) % WXS.length]; sfx.click(); };
+const cycleWx = () => { S.wxPick = WXS[(WXS.indexOf(S.wxPick) + 1) % WXS.length]; sfx.click(); if (M.training) net.send({ t: 'choose', wx: S.wxPick }); };
 // main breaker in the plant room: throw the lever to cut every light in the house
 const breaker = (() => { const g = new THREE.Group(); const box = (w, h, d, c, x, y, z, basic) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), basic ? new THREE.MeshBasicMaterial({ color: c }) : new THREE.MeshLambertMaterial({ color: c })); m.position.set(x, y, z); return m; };
   const lever = new THREE.Group(); lever.position.set(0.08, 0, 0.07); lever.add(box(0.05, 0.2, 0.04, 0xc02020, 0, 0.09, 0.03)); const led = box(0.035, 0.035, 0.01, 0x30ff60, -0.1, 0.2, 0.062, true);
@@ -179,27 +209,36 @@ class Panel {
 }
 const panel = new Panel();
 function showLobbyPanel() {
-  if (S.menu) return; S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
+  if (S.menu) return; if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
   panel.draw('BREACHLINE', M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
     ['Squad: ' + (S.squad.join(', ') || '-'), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, B/Y = SHOUT. Helmet = NVG.',
       'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['START MISSION', 'start']]);
 }
+function showBoard() {   // the mission board in the training lobby: pick where the squad goes next, see how the range went
+  S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); const T = trainLine(), nx = MAPS[S.nextMap] || MAPS[MISSION_IDS[0]];
+  panel.draw('MISSION BOARD', 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo (not connected)' : 'connecting'),
+    ['Squad: ' + (S.squad.join(', ') || '-'), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
+      'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', 'Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
+      'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'],
+    [['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['START MISSION', 'start']]);
+}
 function showEndPanel() {
   const R = S.report; if (!R || S.menu) return; S.panel = 'end'; panel.mesh.visible = true; frontOfHead(1.9);
-  panel.draw(R.result, 'Grade ' + R.grade + '   Score ' + R.total + '/100   Time ' + Math.floor(R.time / 60) + ':' + String(R.time % 60).padStart(2, '0'), R.lines, [['RESTART', 'start']]);
+  panel.draw(R.result, 'Grade ' + R.grade + '   Score ' + R.total + '/100   Time ' + Math.floor(R.time / 60) + ':' + String(R.time % 60).padStart(2, '0'), R.lines, [['RESTART', 'start'], ['TRAINING', 'train']]);
 }
 function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z); }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
   if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ['RESTART MISSION', 'start'], ['CLOSE', 'close']]); }
-  else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby') showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
+  else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
   const act = panel.probe(o, d, false); if (!act) return act === '';   // a pull on the panel background is swallowed, not fired
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
   if (act === 'map') { cycleMap(); return true; }
   if (act === 'end') { net.send({ t: 'end' }); toggleMenu(false); return true; }
-  if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick, map: M.id }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
+  if (act === 'train') { net.send({ t: 'restart', wx: S.wxPick, map: 'training' }); sfx.beep(null, 900); return true; }
+  if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick, map: nextMission() }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
   return true;
 }
 
@@ -209,6 +248,7 @@ const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0625), new THREE.Mes
 let hudT = 0;
 function hudText() {
   const t = Math.max(0, S.timer), mm = Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+  if (M.training) { const T = trainLine(); return { mm: 'RANGE', hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'HITS ' + T.hits + '/' + T.shots + '  NO-SHOOT ' + T.ns + '  HOUSE ' + T.run + ' (best ' + T.best + ')', mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() }; }
   return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
 }
 function drawHud() {
@@ -220,7 +260,7 @@ function drawHud() {
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
-    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu ? 'flex' : 'none'; $('bEnd').style.display = S.phase === 'active' ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); $('bMap').textContent = 'MAP: ' + M.name; $('bMap').style.display = S.phase !== 'active' ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
+    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase();  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
   }
 }
 
@@ -233,8 +273,8 @@ function applyInit(init) {
   for (const [x, y, z, wires, order, yaw] of init.bombs) { const b = new Bomb(x, y, z, wires, order, yaw); b.order = order; b.n = 0; scene.add(b.g); S.bombs.push(b); }
 }
 function onMsg(m) {
-  if (m.t === 'welcome') { const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && m.ph !== 'active' && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
-  else if (m.t === 'init') { applyInit(m.init); if (S.phase !== 'active') showLobbyPanel(); }
+  if (m.t === 'welcome') { const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && (m.ph !== 'active' || m.init.map === 'training') && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
+  else if (m.t === 'init') { applyInit(m.init); if (S.phase !== 'active' || M.training) showLobbyPanel(); }
   else if (m.t === 'full') status('That room is full (4 officers). Try another code.');
   else if (m.t === 's') applySnap(m);
 }
@@ -255,14 +295,18 @@ function applySnap(m) {
   }
   for (const [id, o] of S.officers) if (!seen.has(id)) { scene.remove(o.g); S.officers.delete(id); }
   if (m.R) S.report = m.R;
+  if (m.TG) { m.TG.forEach((r, i) => { const t = targets[i]; if (!t) return; t.up = r[0]; t.tx = r[1]; if (t.hostile !== r[2]) { t.hostile = r[2]; t.board.material = r[2] ? tgTex.h : tgTex.n; } }); S.house = m.HS; S.tstats = m.TS; if (m.NM) S.nextMap = m.NM; if (m.WP && S.net !== 'offline') S.wxPick = m.WP; }
   for (const e of m.E) onEvent(e);
-  if (S.phase !== prev) { S.menu = false; if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'active') { panel.mesh.visible = false; S.panel = null; } else showLobbyPanel(); }
+  if (S.phase !== prev) { S.menu = false; if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'active' && !M.training) { panel.mesh.visible = false; S.panel = null; } else showLobbyPanel(); }
 }
 const LINES = { surrender: ["DON'T SHOOT!", '#ffe080', "Don't shoot! I give up!"], defy: ['NO!', '#ff7070', 'No way!'], comply: ['OK! OK!', '#a0e0ff', 'Okay, okay!'], plead: ['PLEASE!', '#a0e0ff', 'Please help us!'], threat: ['BACK OFF OR THEY DIE!', '#ff3030', 'Back off or the hostage dies!'], fake: ['(draws weapon)', '#ff4040', ''] };
 function onEvent(e) {
   const a = e.n != null ? S.actors.get(e.n) : null;
   switch (e.e) {
-    case 'start': resetLoadout(); placeAtSpawn(); S.report = null; S.menu = false; S.panel = null; panel.mesh.visible = false; sfx.ok(); break;
+    case 'start': resetLoadout(); placeAtSpawn(); S.report = null; S.menu = false; S.panel = null; panel.mesh.visible = false; if (M.training) showLobbyPanel(); sfx.ok(); break;
+    case 'th': { const t = targets[e.t]; if (t) { const p = t.g.position; if (e.ns) sayAt(p.x, p.y + t.d.h + 0.4, p.z, 'NO-SHOOT!', '#6fa8ff'); if (e.p === S.me.id) sfx.beep(p, e.ns ? 300 : 1400); } break; }
+    case 'house': sfx.ok(); sayAt(head.pos.x, head.pos.y + 0.5, head.pos.z - 1.5, 'HOUSE CLEAR ' + e.time + 's' + (e.ns ? '  (' + e.ns + ' no-shoot)' : '') + (e.time <= e.best ? '  BEST' : ''), '#80ff9a'); break;
+    case 'bombreset': { const o = S.bombs[e.b]; if (o) { const b = new Bomb(o.g.position.x, o.g.position.y, o.g.position.z, e.wires, e.order, o.g.rotation.y); b.order = e.order; b.n = 0; scene.remove(o.g); scene.add(b.g); S.bombs[e.b] = b; sayAt(b.g.position.x, b.g.position.y + 0.5, b.g.position.z, 'BOMB RESET', '#ffb060'); } break; }
     case 'ps': { v1.set(e.o[0], e.o[1], e.o[2]); v2.set(e.h[0], e.h[1], e.h[2]); if (e.p !== S.me.id) { sfx.shot(v1, e.w); tracer(v1, v2); } puff(e.h, e.k === 'w' ? 0xcfcfcf : 0xa01010); if (e.k === 'w') sfx.impact(v2); break; }
     case 'ns': if (a) { a.muzzle(v1); v2.set(e.to[0], e.to[1], e.to[2]); tracer(v1, v2); sfx.shot(v1, 'rifle'); a.flashT = 0.05; } break;
     case 'hurt': if (e.p === S.me.id) { hudT = 0; hurtT = 1; sfx.hurt(); for (const h of hands) buzz(h, 1, 150); S.lastPart = e.part; S.figT = 4; } break;
@@ -284,7 +328,7 @@ function onEvent(e) {
     case 'clink': sfx.clink(v1.set(e.x, e.y, e.z)); break;
     case 'trap': { const d = level.doors[e.d]; sfx.boom(v1.set(d.cx, d.y + 1, d.cz)); puff([d.cx, d.y + 0.4, d.cz], 0xffc070); if (Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) < 6) flashWhite = Math.max(flashWhite, 0.7); sayAt(d.cx, d.y + 1.5, d.cz, 'TRIPWIRE!', '#ff5050'); break; }
     case 'disarm': { const d = level.doors[e.d]; sfx.cut(v1.set(d.cx, d.y + 0.3, d.cz), true); sayAt(d.cx, d.y + 1.2, d.cz, 'WIRE CUT', '#80ff9a'); break; }
-    case 'cut': { const b = S.bombs[e.b]; if (b) sfx.cut(b.g.position, e.ok); if (e.defused) sfx.ok(); break; }
+    case 'cut': { const b = S.bombs[e.b]; if (b) { sfx.cut(b.g.position, e.ok); if (M.training && !e.ok) sayAt(b.g.position.x, b.g.position.y + 0.5, b.g.position.z, 'WRONG WIRE - BOOM', '#ff5050'); } if (e.defused) sfx.ok(); break; }
     case 'end': if (e.result === 'DETONATION') { sfx.boom(); flashWhite = 1; } else if (e.result === 'MISSION COMPLETE') sfx.ok(); break;
   }
 }
@@ -299,9 +343,9 @@ addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => { if (S.mode === 'desktop' && document.pointerLockElement === renderer.domElement) { S.yaw -= e.movementX * 0.0022; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch - e.movementY * 0.0022)); } });
 function deskKey(code) {
   const G = gunIn(hands[1]);
-  if (code === 'Enter' && S.phase !== 'active') net.send({ t: 'restart', wx: S.wxPick, map: M.id });
+  if (code === 'Enter' && (S.phase !== 'active' || M.training)) net.send({ t: 'restart', wx: S.wxPick, map: nextMission() });
   if (code === 'KeyO') cycleWx();
-  if (code === 'KeyP' && S.phase !== 'active') cycleMap();
+  if (code === 'KeyP' && (S.phase !== 'active' || M.training)) cycleMap();
   if (code === 'KeyM') return toggleMenu();
   if (S.me.down) return;
   if (code === 'KeyF') doShout();
@@ -600,11 +644,14 @@ function buildExitMark() {   // a marked rectangle on the ground at the map's wa
   exitTag.scale.set(1.6, 0.2, 1); exitTag.position.set(0, 2.2, M.id === 'mansion' ? -d / 2 + 0.3 : 0); exitMark.add(exitTag); exitMark.position.set((E.x0 + E.x1) / 2, E.y || 0, (E.z0 + E.z1) / 2);
 }
 function placeMapProps() { breaker.g.position.set(M.breaker.x, M.breaker.y, M.breaker.z); buildExitMark(); }
-function cycleMap() { const id = MAP_IDS[(MAP_IDS.indexOf(M.id) + 1) % MAP_IDS.length]; sfx.click(); net.send({ t: 'map', m: id }); if (!net.ws && !net.host) { loadMap(id); showLobbyPanel(); } }
+function nextMission() { return M.training ? (MISSION_IDS.includes(S.nextMap) ? S.nextMap : MISSION_IDS[0]) : M.id; }
+function cycleMap() {
+  if (M.training) { S.nextMap = MISSION_IDS[(MISSION_IDS.indexOf(S.nextMap) + 1) % MISSION_IDS.length]; sfx.click(); net.send({ t: 'choose', m: S.nextMap }); showLobbyPanel(); return; }
+  const id = MAP_IDS[(MAP_IDS.indexOf(M.id) + 1) % MAP_IDS.length]; sfx.click(); net.send({ t: 'map', m: id }); if (!net.ws && !net.host) { loadMap(id); showLobbyPanel(); } }
 placeMapProps(); ready = true;
 let exitT = 0, exitShown = -1;
 function exitPrompt(dt) {
-  exitMark.visible = S.phase === 'active';
+  exitMark.visible = S.phase === 'active' && !M.training;
   const E = M.exit, inZone = S.phase === 'active' && head.pos.x > E.x0 && head.pos.x < E.x1 && head.pos.z > E.z0 && head.pos.z < E.z1, n = S.extract || 0;
   if ((exitT -= dt) > 0 || !inZone) return; exitT = 1;
   const text = n > 0 ? 'LEAVING IN ' + n : S.everInside ? 'WAITING FOR SQUAD' : null; if (!text) return;
@@ -639,7 +686,8 @@ function frame(t) {
   // panel cursor
   panel.cursor.visible = false;
   if (panel.mesh.visible && S.mode) for (const h of hands) { if (!h.active) continue; const G = gunIn(h); if (G) { G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set(0, 0, -1).applyQuaternion(G.mesh.quaternion); } else { v1.copy(h.pos); v2.set(0, 0, -1).applyQuaternion(h.quat); } if (panel.probe(v1, v2, true) !== null) break; }
-  if (S.phase === 'lobby' && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
+  if ((S.phase === 'lobby' || M.training && S.phase === 'active') && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
+  updateTargets(dt);
   // world animation
   for (const a of S.actors.values()) a.update(dt);
   breaker.cur += ((S.night ? 1 : 0) - breaker.cur) * Math.min(1, dt * 14); breaker.lever.rotation.x = breaker.cur * 2.2; breaker.led.material.color.setHex(S.night ? 0x401010 : 0x30ff60);
@@ -697,7 +745,7 @@ function initTouch() {
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
   bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
-  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, map: M.id }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
+  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, map: nextMission() }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
   const sEnd = e => { if (e.pointerId !== sid) return; sid = null; S.tmove.x = S.tmove.y = 0; knob.style.transform = ''; };

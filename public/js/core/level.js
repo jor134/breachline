@@ -2,8 +2,10 @@
 // Pure logic (no DOM, no three). Runs in the Durable Object and in the browser.
 import mansion from './maps/mansion.js';
 import terminal from './maps/terminal.js';
-export const MAPS = { mansion, terminal };
+import training from './maps/training.js';
+export const MAPS = { training, mansion, terminal };
 export const MAP_IDS = Object.keys(MAPS);
+export const MISSION_IDS = MAP_IDS.filter(k => !MAPS[k].training);
 export const U = 0.5, T = 0.2;
 const GRID = 4;   // spatial index bucket size (m)
 

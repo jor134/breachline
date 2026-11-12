@@ -2,7 +2,7 @@
 import { Sim, MAP_IDS } from './sim.js';
 export const TICK = 1 / 15;
 export class RoomHost {
-  constructor(send) { this.send = send; this.sim = new Sim(); }   // send(idOrNull, object)
+  constructor(send) { this.send = send; this.sim = new Sim('training'); }   // send(idOrNull, object)
   get count() { return this.sim.players.size; }
   join(id, name) {
     if (this.count >= 4) { this.send(id, { t: 'full' }); return false; }
@@ -29,9 +29,10 @@ export class RoomHost {
       case 'kick': s.kick(id, m.d); break;
       case 'cut': s.cut(id, m.b, m.w); break;
       case 'snip': s.snip(id, m.d); break;
-      case 'map': if (s.phase !== 'active' && MAP_IDS.includes(m.m) && m.m !== s.mapId) { s.setMap(m.m); s.reset(s.seed); this.send(null, { t: 'init', init: s.init() }); } break;   // lobby only: everyone loads the same map
+      case 'choose': s.choose(m); break;
+      case 'map': if ((s.phase !== 'active' || s.M.training) && MAP_IDS.includes(m.m) && m.m !== s.mapId) { s.setMap(m.m); s.reset(s.seed); this.send(null, { t: 'init', init: s.init() }); } break;   // lobby only: everyone loads the same map
       case 'restart':
-      case 'start': if (m.t === 'restart' || s.phase !== 'active') { s.start((Date.now() ^ (Math.random() * 1e9)) >>> 0, false, m.wx, MAP_IDS.includes(m.map) ? m.map : s.mapId); this.send(null, { t: 'init', init: s.init() }); } break;
+      case 'start': if (m.t === 'restart' || s.phase !== 'active' || s.M.training) { s.start((Date.now() ^ (Math.random() * 1e9)) >>> 0, false, m.wx, MAP_IDS.includes(m.map) ? m.map : s.M.training ? s.nextMap : s.mapId); this.send(null, { t: 'init', init: s.init() }); } break;
     }
   }
   tick(dt = TICK) { this.sim.tick(dt); this.send(null, this.sim.snapshot()); }

@@ -318,4 +318,35 @@ await t('bombs sit at the edge of their table or crate, wires toward a spot an o
     }
   }
 });
+
+await t('defenders: about half the suspects stay in their room and take cover when they hear shooting; the rest come to look', () => {
+  let def = 0, all = 0, stayed = 0, came = 0, roam = 0;
+  for (let seed = 1; seed <= 6; seed++) {
+    const s = new Sim('mansion'); s.addPlayer(1, 'A'); s.start(seed, false, 'clear', 'mansion'); const p = s.players.get(1); p.hp = 1e9;
+    s.pose(1, { h: [12, 1.65, 26, 0, 0, 0, 1] }); for (let i = 0; i < 3; i++) { s.t += 1; s.shot(1, { o: [12, 1.5, 25.6], d: [0, 0, -1], w: 'rifle' }); }
+    const d0 = new Map(s.npcs.map(n => [n.id, [n.x, n.z]]));
+    for (let i = 0; i < 15 * 20; i++) { s.pose(1, { h: [12, 1.65, 26, 0, 0, 0, 1] }); s.tick(1 / 15); }
+    for (const n of s.npcs) { if (n.kind !== 's' || n.st === 'd' || n.st === 'i') continue; all++; const moved = Math.hypot(n.x - n.post[0], n.z - n.post[1]);
+      if (n.defend) { def++; if (moved < 6 || n.st === 'c') stayed++; } else { roam++; if (moved > 4) came++; } }
+  }
+  assert.ok(def > all * 0.35 && def < all * 0.8, `defenders ${def}/${all}`); assert.ok(stayed >= def * 0.9, `defenders stayed in their rooms ${stayed}/${def}`); assert.ok(came >= 1, 'some roamers came to look');
+});
+await t('training: arrive in the range, targets drop when hit, house runs time, start launches the chosen mission', () => {
+  const h = new RoomHost(() => { }); h.join(1, 'A'); const s = h.sim; assert.equal(s.mapId, 'training'); assert.equal(s.phase, 'active');
+  const p = s.players.get(1); const pose = (x, z) => s.pose(1, { h: [x, 1.65, z, 0, 0, 0, 1] }); pose(10, 15.5);
+  const t0 = s.targets[2]; assert.equal(t0.kind, 'static'); s.t = 5; s.shot(1, { o: [10, 1.5, 15.5], d: [0, 0.97 - 1.5, 7 - 15.5], w: 'rifle' });
+  assert.equal(t0.up, 0, 'static target knocked down'); assert.equal(p.tr.hits, 1); assert.equal(p.tr.shots, 1);
+  for (let i = 0; i < 30; i++) s.tick(1 / 15); assert.equal(t0.up, 1, 'and it stands back up');
+  const mv = s.targets.find(t => t.kind === 'move'), x0 = mv.x; for (let i = 0; i < 15; i++) s.tick(1 / 15); assert.ok(Math.abs(mv.x - x0) > 1, 'moving target slides');
+  // wrong wire on the dummy bomb hurts nobody and re-arms
+  const b = s.bombs[0]; const wrong = [0, 1, 2, 3].find(k => !b.order.includes(k)); pose(b.x, b.z + 0.6); s.cut(1, 0, wrong); assert.ok(b.failed, 'wrong wire'); 
+  for (let i = 0; i < 90; i++) s.tick(1 / 15); assert.ok(!b.failed && !b.defused, 'dummy bomb re-arms'); assert.equal(p.hp, 100); assert.equal(s.phase, 'active');
+  // kill house: walk through every room, shoot only the armed cut-outs
+  for (const [k, [x0, z0, x1, z1]] of s.M.houseRooms.entries()) { pose((x0 + x1) / 2, (z0 + z1) / 2); s.tick(1 / 15);
+    for (const t of s.targets.filter(t => t.kind === 'house' && t.room === k && t.hostile)) { t.hit = true; t.up = 0; } }
+  s.tick(1 / 15); assert.ok(s.house.best > 0 && !s.house.on, 'house run timed');
+  const snap = s.snapshot(); assert.ok(snap.TG && snap.HS && snap.TS, 'training state in the snapshot');
+  h.message(1, { t: 'choose', m: 'terminal', wx: 'fog' }); h.message(1, { t: 'start' }); assert.equal(s.mapId, 'terminal'); assert.equal(s.weather, 'fog'); assert.ok(!s.targets);
+  h.message(1, { t: 'restart', map: 'training' }); assert.equal(s.mapId, 'training'); assert.ok(s.targets && s.phase === 'active');
+});
 console.log(n + ' tests passed');

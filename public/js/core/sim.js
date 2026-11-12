@@ -1,6 +1,6 @@
 // BREACHLINE mission simulation: suspects, civilians, bombs, rules of engagement, scoring. Pure logic.
-import { buildLevel, rayStatic, raySphere, findPath, solidAt, circleHits, U, MAPS } from './level.js';
-export { MAP_IDS } from './level.js';
+import { buildLevel, rayStatic, raySphere, findPath, solidAt, circleHits, U, MAPS, MISSION_IDS } from './level.js';
+export { MAP_IDS, MISSION_IDS } from './level.js';
 
 export function rng32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const DMG = { rifle: { head: 200, torso: 60, legs: 30 }, pistol: { head: 200, torso: 40, legs: 20 } };
@@ -26,7 +26,8 @@ export class Sim {
     }
     return best ? best.slice(1) : [x, z, 0];
   }
-  setMap(id) { this.level = buildLevel(MAPS[id] ? id : 'mansion'); this.M = this.level.map; this.mapId = this.level.id; }
+  choose(m) { if (this.M.training && MISSION_IDS.includes(m.m)) this.nextMap = m.m; if (m.wx === 'random' || WEATHER.includes(m.wx)) this.wxPick = m.wx; }
+  setMap(id) { this.level = buildLevel(MAPS[id] ? id : 'mansion'); this.M = this.level.map; this.mapId = this.level.id; this.targets = null; }
   reset(seed) {
     this.seed = seed >>> 0; this.rnd = rng32(this.seed); const rnd = this.rnd;
     { const r = rng32(this.seed ^ 0x9e3779b9)(); this.weather = WEATHER.includes(this.wxPick) ? this.wxPick : r < 0.35 ? 'clear' : r < 0.6 ? 'rain' : r < 0.8 ? 'fog' : 'storm'; }
@@ -48,6 +49,8 @@ export class Sim {
     pick(M.spots.c, C.c - padCivs).concat(pads.slice(C.b, C.b + padCivs).map(i => [M.pads[i].f, ...M.pads[i].hostage])).forEach(([f, x, z], i) => this.npcs.push({ id: 101 + i, kind: 'c', v: Math.floor(rnd() * 4), x, z, y: f * H, yaw: rnd() * 6.28, hp: 100, st: 'w', stubborn: rnd() < 0.25, flagged: false }));
     // Most suspects will turn on a hostage once a firefight has gone on for a few rounds. Drawn from their own stream so the rest of the layout per seed is unchanged.
     { const rr = rng32(this.seed ^ 0x51ed27); for (const n of this.npcs) if (n.kind === 's') { n.ruthless = rr() < 0.75; n.fired = 0; n.execAfter = 3 + Math.floor(rr() * 5); n.exec = null; } }
+    // about half the suspects defend the room they are in: they take cover there when they hear trouble and wait for you to come through the door
+    { const rd = rng32(this.seed ^ 0x2d0f3a); for (const n of this.npcs) if (n.kind === 's') { n.defend = n.hvt || n.guard || rd() < 0.55; if (n.defend) n.patrol = null; } }
     this.doorOpen = this.level.doors.map(d => !d.exterior && rnd() < 0.3);
     this.gren = []; this.smokes = [];
     this.doorLocked = this.level.doors.map((d, i) => d.pad !== undefined ? true : d.hidden ? false : d.exterior ? rnd() < 0.6 : !this.doorOpen[i] && rnd() < 0.3);   // containers are all padlocked
@@ -59,6 +62,7 @@ export class Sim {
       const [bx, bz, yaw] = this.edgeSpot(x, z, f * H + h, f * H);
       return { x: bx, z: bz, y: f * H + h, yaw, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
+    if (M.training) this.setupTraining();
     for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; }
   }
   start(seed, night = false, wx = this.wxPick, map = this.mapId) { this.night = !!night; if (map !== this.mapId && MAPS[map]) this.setMap(map);   // every mission starts with the power on; night falls when someone throws the breaker
@@ -68,6 +72,7 @@ export class Sim {
     const used = new Set([...this.players.values()].map(p => p.slot)); let slot = 0; while (used.has(slot)) slot++;
     const [x, z] = this.M.spawn[slot % 4];
     const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: false, w: 0, med: false, fl: 2, sm: 1 };
+    if (this.M.training) p.tr = { hits: 0, shots: 0, ns: 0 };
     this.players.set(id, p); return p;
   }
   removePlayer(id) { this.players.delete(id); }
@@ -89,12 +94,14 @@ export class Sim {
     const w = m.w === 'pistol' ? 'pistol' : 'rifle'; if (this.t - p.lastShot < 0.06) return; p.lastShot = this.t;
     let [ox, oy, oz] = m.o, [dx, dy, dz] = m.d; const dl = Math.hypot(dx, dy, dz); if (!(dl > 0) || !this.near(p, ox, p.y, oz, 1.6)) return; dx /= dl; dy /= dl; dz /= dl;
     let best = rayStatic(this.level, this.doorOpen, ox, oy, oz, dx, dy, dz, 80), kind = 'w', tn = null, part = null, tp = null;
+    let tg = null; if (this.targets) { if (p.tr) p.tr.shots++; for (const t of this.targets) { if (!t.up) continue; const h = this.rayTarget(t, ox, oy, oz, dx, dy, dz, best); if (h >= 0 && h < best) { best = h; kind = 't'; tg = t; } } }
     for (const n of this.npcs) { if (n.st === 'd') continue; for (const [sx, sy, sz, sr, pt] of this.spheres(n)) { const t = raySphere(ox, oy, oz, dx, dy, dz, sx, sy, sz, sr); if (t >= 0 && t < best) { best = t; kind = 'n'; tn = n; part = pt; } } }
     for (const q of this.players.values()) { if (q === p || q.down || !q.has) continue; for (const [oy2, sr] of [[0, 0.14], [-0.32, 0.21], [-0.62, 0.2]]) { const t = raySphere(ox, oy, oz, dx, dy, dz, q.hx, q.hy + oy2, q.hz, sr); if (t >= 0 && t < best) { best = t; kind = 'p'; tp = q; tn = null; } } }
     this.ev({ e: 'ps', p: id, w, o: [r2(ox), r2(oy), r2(oz)], h: [r2(ox + dx * best), r2(oy + dy * best), r2(oz + dz * best)], k: kind });
-    this.noise(ox, oz, 45, p);
+    if (kind === 't') { const ns = !tg.hostile; if (p.tr) { if (ns) p.tr.ns++; else p.tr.hits++; } if (ns && tg.kind === 'house') this.house.ns++; tg.hit = true; if (tg.kind !== 'move') { tg.up = 0; tg.tt = tg.kind === 'static' ? 1.2 : 1 + this.rnd() * 2; } this.ev({ e: 'th', t: tg.i, ns, p: id }); return; }
+    if (!this.M.training) this.noise(ox, oz, 45, p);
     if (kind === 'n') this.hitNpc(tn, DMG[w][part], p, part);
-    else if (kind === 'p') { this.log.ff++; this.hurt(tp, DMG[w].torso * 0.6); }
+    else if (kind === 'p' && !this.M.training) { this.log.ff++; this.hurt(tp, DMG[w].torso * 0.6); }
   }
   spheres(n) { if (n.st === 'i' || n.st === 'j') return [[n.x, n.y + 0.2, n.z, 0.28, 'torso']]; const k = KNEEL[n.st] || n.crouch ? 0.62 : 1; return [[n.x, n.y + 1.62 * k, n.z, 0.13, 'head'], [n.x, n.y + 1.32 * k, n.z, 0.2, 'torso'], [n.x, n.y + 1.02 * k, n.z, 0.2, 'torso'], [n.x, n.y + 0.55 * k, n.z, 0.18, 'legs']]; }
   hitNpc(n, dmg, p, part) {
@@ -114,6 +121,7 @@ export class Sim {
     radius *= HEAR[this.weather];
     for (const n of this.npcs) if (n.kind === 's' && n.st === 'g' && Math.hypot(n.x - x, n.z - z) < radius) {
       n.st = 'a'; n.tA = 0; n.lk = [src.hx, src.hz, src.y]; n.hold = this.rnd() < 0.45; n.path = null;
+      if (n.defend) { n.hold = true; n.ambush = true; }
     }
   }
   shout(id) {
@@ -131,7 +139,7 @@ export class Sim {
   }
   surrender(n) { n.exec = null; n.cov = null; n.crouch = false; n.stun = 0; n.st = 's'; n.tS = 0; n.path = null; n.armed = false; n.fake = n.fakeChance; n.fakeChance = false; n.fakeAt = 3.5 + this.rnd() * 4; this.ev({ e: 'say', n: n.id, k: 'surrender' }); }
   engage(n, p, react) { if ((n.hvt || n.guard) && !n.rally) { n.rally = true; for (const q of this.npcs) if ((q.hvt || q.guard) && q !== n && (q.st === 'g' || q.st === 'a')) this.engage(q, p, react + 0.3); n.rally = false; }   // the boss and his guards fight together
-    n.wantCover = !n.cov && this.rnd() < 0.85; n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
+    n.wantCover = !n.cov && (this.rnd() < 0.85 || n.defend); n.crouch = false; n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
   cuff(id, nid) {
     const p = this.players.get(id), n = this.npcs.find(q => q.id === nid); if (!p || p.down || !n || this.phase !== 'active') return;
     if ((n.st === 's' || n.st === 'k' || n.st === 'y' || n.st === 'i') && this.near(p, n.x, n.y, n.z, 1.9)) { n.st = n.st === 'i' ? 'j' : 'u'; n.fake = false; this.ev({ e: 'cuff', n: n.id, p: id }); }
@@ -155,7 +163,7 @@ export class Sim {
   // A rigged door goes off when it is opened: hurts anyone close and wakes the house. Cut the wire first (cutters).
   trip(did, p) {
     const d = this.level.doors[did]; this.doorTrap[did] = 0; this.ev({ e: 'trap', d: did });
-    for (const q of this.players.values()) if (!q.down && this.near(q, d.cx, d.y, d.cz, 3.5)) this.hurt(q, 28 + this.rnd() * 18, this.rnd() < 0.5 ? 'legL' : this.rnd() < 0.5 ? 'legR' : 'torso');
+    if (!this.M.training) for (const q of this.players.values()) if (!q.down && this.near(q, d.cx, d.y, d.cz, 3.5)) this.hurt(q, 28 + this.rnd() * 18, this.rnd() < 0.5 ? 'legL' : this.rnd() < 0.5 ? 'legR' : 'torso');
     if (this.phase === 'active') this.noise(d.cx, d.cz, 38, p);
   }
   disarm(id, did) {
@@ -197,12 +205,13 @@ export class Sim {
   }
   // ---- cover ----
   // Look nearby for somewhere a crouched body is hidden from this officer: behind furniture (stand up to shoot) or round a corner (step out to shoot).
-  findCover(n, p) {
+  findCover(n, p, leash = n.defend ? (Math.hypot(n.x - n.post[0], n.z - n.post[1]) < 6 && Math.abs(n.y - n.post[2]) < 0.5 ? n.post : [n.x, n.z, n.y]) : null) {   // leash: a defender only uses cover in his own room, near his post
     const L = this.level, { NX, NZ, YARD } = L, N = NX * NZ, li = L.layerOf(n.x, n.z, n.y), ci = Math.floor((n.x - YARD.x0) / U), cj = Math.floor((n.z - YARD.z0) / U); let best = null, bs = 1e9;
     const ok = (i, j) => { if (i < 0 || j < 0 || i >= NX || j >= NZ) return NaN; const id = li * N + j * NX + i; return L.walk[id] && Math.abs(L.cy[id] - n.y) < 0.3 ? L.cy[id] : NaN; };
     for (let dj = -11; dj <= 11; dj++) for (let di = -11; di <= 11; di++) {
       const i = ci + di, j = cj + dj, y = ok(i, j); if (Number.isNaN(y)) continue; const x = YARD.x0 + (i + 0.5) * U, z = YARD.z0 + (j + 0.5) * U; if (L.onStairs(x, z)) continue;
       const d = Math.hypot(x - n.x, z - n.z), dp = Math.hypot(x - p.hx, z - p.hz); if (d > 5.5 || dp < 3.5) continue;
+      if (leash) { const dl = Math.hypot(x - leash[0], z - leash[1]); if (dl > 5 || Math.abs(y - leash[2]) > 0.5 || (dl > 2.5 && !this.clear(x, y + 1.2, z, leash[0], leash[2] + 1.2, leash[1]))) continue; }
       if (this.clear(x, y + 0.5, z, p.hx, p.hy, p.hz) || this.clear(x, y + 0.9, z, p.hx, p.hy, p.hz)) continue;
       let fx = x, fz = z; const low = this.clear(x, y + 1.5, z, p.hx, p.hy, p.hz);
       if (!low) { let found = false; for (const [a, b] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 0], [-2, 0], [0, 2], [0, -2]]) { if (Number.isNaN(ok(i + a, j + b)) || Number.isNaN(ok(i + Math.sign(a), j + Math.sign(b)))) continue; const x2 = x + a * U, z2 = z + b * U; if (this.clear(x2, y + 1.5, z2, p.hx, p.hy, p.hz)) { fx = x2; fz = z2; found = true; break; } } if (!found) continue; }
@@ -241,10 +250,46 @@ export class Sim {
     this.ev({ e: 'kick', d: did, ok }); if (this.phase === 'active') this.noise(d.cx, d.cz, 16, p);
   }
   cut(id, bi, wi) {
-    const p = this.players.get(id), b = this.bombs[bi]; if (!p || p.down || !b || b.defused || this.phase !== 'active' || !(wi >= 0 && wi < 4) || b.cut[wi] || !this.near(p, b.x, b.y - 0.8, b.z, 2)) return;
+    const p = this.players.get(id), b = this.bombs[bi]; if (!p || p.down || !b || b.defused || b.failed || this.phase !== 'active' || !(wi >= 0 && wi < 4) || b.cut[wi] || !this.near(p, b.x, b.y - 0.8, b.z, 2)) return;
     b.cut[wi] = true; const ok = wi === b.order[b.n];
-    if (ok) { b.n++; if (b.n >= b.order.length) b.defused = true; } else { this.timer = Math.max(5, this.timer - 45); this.log.wrongWire++; }
+    if (ok) { b.n++; if (b.n >= b.order.length) b.defused = true; } else if (this.M.training) b.failed = true; else { this.timer = Math.max(5, this.timer - 45); this.log.wrongWire++; }
     this.ev({ e: 'cut', b: bi, w: wi, ok, defused: b.defused });
+  }
+
+
+  // ---- training facility: targets, kill-house runs, practice doors and a dummy bomb that re-arm themselves; nobody gets hurt ----
+  setupTraining() {
+    const M = this.M, D = M.doorsOf, rnd = this.rnd;
+    this.doorOpen = this.level.doors.map(() => false); this.doorLocked = this.level.doors.map((d, i) => i === D.pick || i === D.kick); this.doorTrap = this.level.doors.map((d, i) => i === D.trap ? 1 : 0);
+    this.targets = M.targets.map((t, i) => ({ ...t, i, up: t.kind === 'static' || t.kind === 'move' ? 1 : 0, tt: 1 + rnd() * 3, hostile: true, hit: false }));
+    this.house = { on: false, t: 0, best: this.house ? this.house.best : 0, last: this.house ? this.house.last : 0, rooms: [], ns: 0, away: 0 };
+    this.rearm = {}; this.nextMap = this.nextMap && MISSION_IDS.includes(this.nextMap) ? this.nextMap : MISSION_IDS[0];
+    this.phase = 'active'; this.timer = 0; for (const p of this.players.values()) p.tr = { hits: 0, shots: 0, ns: 0 };
+  }
+  tickTraining(dt) {
+    const rnd = this.rnd, H = this.house, D = this.M.doorsOf, ps = [...this.players.values()].filter(p => p.has);
+    for (const t of this.targets) {
+      if (t.kind === 'pop') { if ((t.tt -= dt) <= 0) { t.up = t.up ? 0 : 1; t.tt = t.up ? 2.2 + rnd() * 1.8 : 1 + rnd() * 2.5; } }
+      else if (t.kind === 'move') { t.x += t.v * dt; if (t.x > t.x1 || t.x < t.x0) { t.v = -t.v; t.x = Math.max(t.x0, Math.min(t.x1, t.x)); } if (!t.up && (t.tt -= dt) <= 0) t.up = 1; }
+      else if (t.kind === 'static' && !t.up && (t.tt -= dt) <= 0) t.up = 1;
+    }
+    // kill house: each room's two cut-outs stand up when the first officer steps in; the run ends when every armed one is down
+    const roomOf = p => this.M.houseRooms.findIndex(([x0, z0, x1, z1]) => p.hx > x0 && p.hx < x1 && p.hz > z0 && p.hz < z1), inHouse = ps.map(roomOf).filter(k => k >= 0);
+    if (inHouse.length) {
+      H.away = 0; if (!H.on) { H.on = true; H.t = 0; H.rooms = []; H.ns = 0; for (const t of this.targets) if (t.kind === 'house') { t.up = 0; t.hit = false; } }
+      for (const k of inHouse) if (!H.rooms.includes(k)) { H.rooms.push(k); const ts = this.targets.filter(t => t.kind === 'house' && t.room === k), arm = rnd() < 0.25 ? -1 : Math.floor(rnd() * ts.length); ts.forEach((t, n) => { t.up = 1; t.hit = false; t.hostile = arm < 0 || n === arm; }); }
+    } else if (H.on && (H.away += dt) > 3) { H.on = false; for (const t of this.targets) if (t.kind === 'house') t.up = 0; }
+    if (H.on) { H.t += dt; const hs = this.targets.filter(t => t.kind === 'house');
+      if (H.rooms.length === this.M.houseRooms.length && hs.every(t => !t.hostile || t.hit)) { const time = Math.round((H.t + H.ns * 5) * 10) / 10; H.last = time; if (!H.best || time < H.best) H.best = time; H.on = false; this.ev({ e: 'house', time, best: H.best, ns: H.ns }); for (const t of hs) t.up = 0; } }
+    // practice doors lock again and the trip wire is re-rigged once they have been shut for a few seconds; the dummy bomb re-arms
+    for (const [k, lock] of [[D.pick, true], [D.kick, true], [D.trap, false]]) { if (this.doorOpen[k]) { this.rearm[k] = 0; continue; } this.rearm[k] = (this.rearm[k] || 0) + dt; if (this.rearm[k] > 4) { if (lock) this.doorLocked[k] = true; else this.doorTrap[k] = 1; } }
+    for (const b of this.bombs) if (b.defused || b.failed) { b.wait = (b.wait || 0) + dt; if (b.wait > 5) { Object.assign(b, { wires: [0, 1, 2, 3].sort(() => rnd() - 0.5), order: [0, 1, 2, 3].sort(() => rnd() - 0.5).slice(0, 2), n: 0, cut: [false, false, false, false], defused: false, failed: false, wait: 0 }); this.ev({ e: 'bombreset', b: this.bombs.indexOf(b), wires: b.wires, order: b.order }); } }
+  }
+  // a ray against a cut-out: a thin board turned to face its own way
+  rayTarget(t, ox, oy, oz, dx, dy, dz, max) {
+    const f = t.face || 0, c = Math.cos(-f), sn = Math.sin(-f), lx = ox - t.x, lz = oz - t.z, px = lx * c + lz * sn, pz = -lx * sn + lz * c, qx = dx * c + dz * sn, qz = -dx * sn + dz * c;
+    if (Math.abs(qz) < 1e-6) return -1; const tt = -pz / qz; if (tt < 0 || tt > max) return -1;
+    const hx = px + qx * tt, hy = oy + dy * tt; return Math.abs(hx) <= t.w / 2 && hy >= t.y && hy <= t.y + t.h ? tt : -1;
   }
 
   // ---- simulation ----
@@ -298,10 +343,14 @@ export class Sim {
       if (n.fix && !this.night) n.fix = false;
       const B = this.M.breaker;
       if (n.fix && Math.hypot(n.x - B.x, n.z - B.z) < 1.5 && Math.abs(n.y - Math.floor(B.y / this.M.H) * this.M.H) < 0.5) { n.path = null; this.face(n, B.x, B.z, dt, 5); if ((n.fixT += dt) > 2) { this.night = false; n.fix = false; n.hold = true; this.ev({ e: 'power', on: true, by: n.id }); } }
+      else if (n.ambush) {   // get behind something between the post and where the trouble came from, crouch, and watch that way
+        n.ambush = false; const c = this.findCover(n, { hx: n.lk[0], hz: n.lk[1], hy: n.lk[2] + 1.6 }); if (c && this.goto(n, c.hx, c.hz, n.y)) n.waitLow = c.low;
+      }
+      else if (n.path) { this.walk(n, dt, 2.4); if (!n.path) n.crouch = !!n.waitLow; }
       else if (n.hold) this.face(n, n.lk[0], n.lk[1], dt, 3);
       else if (!n.path) { if (Math.hypot(n.lk[0] - n.x, n.lk[1] - n.z) > (n.fix ? 0.6 : 3)) this.goto(n, n.lk[0], n.lk[1], n.lk[2]); else n.hold = true; }
       else this.walk(n, dt, 2.2);
-      if (n.tA > (n.fix ? 90 : 25)) { n.fix = false; n.st = 'g'; n.hold = false; this.goto(n, n.post[0], n.post[1], n.post[2]); }
+      if (n.tA > (n.fix ? 90 : n.defend ? 60 : 25)) { n.fix = false; n.st = 'g'; n.hold = false; n.crouch = false; this.goto(n, n.post[0], n.post[1], n.post[2]); }
     } else if (n.st === 'c') {
       if (n.exec) return this.tickExec(n, dt);
       if (n.ruthless && n.fired >= n.execAfter) { const c = this.hostageNear(n); if (c) { n.exec = { id: c.id, t: 1.4 + this.rnd() * 0.8 }; n.cov = null; n.crouch = false; n.path = null; n.strafe = false; n.spd = 0; this.ev({ e: 'say', n: n.id, k: 'threat' }); this.ev({ e: 'say', n: c.id, k: 'plead' }); return; } }
@@ -313,7 +362,8 @@ export class Sim {
         else { n.path = null; n.spd = 0; if (n.react <= 0) { n.cool -= dt; if (n.cool <= 0) { this.npcFire(n, seen, best); n.burst--; if (n.burst > 0) n.cool = 0.16; else { n.burst = 2 + Math.floor(this.rnd() * 3); n.cool = 0.7 + this.rnd() * 0.7; if (this.rnd() < 0.4) this.sidestep(n, seen); } } } }
       } else {
         n.lost += dt; if (n.strafe) { n.strafe = false; n.path = null; }
-        if (n.lost > 1.2) { if (!n.path && Math.hypot(n.lk[0] - n.x, n.lk[1] - n.z) > 1.5) this.goto(n, n.lk[0], n.lk[1], n.lk[2]); this.walk(n, dt, 2.6); }
+        if (n.lost > 1.2 && n.defend) { if (!n.path && Math.hypot(n.post[0] - n.x, n.post[1] - n.z) > 5) this.goto(n, n.post[0], n.post[1], n.post[2]); if (n.path) this.walk(n, dt, 2.2); else { n.crouch = true; this.face(n, n.lk[0], n.lk[1], dt, 3); } }   // a defender falls back to his room and waits
+        else if (n.lost > 1.2) { if (!n.path && Math.hypot(n.lk[0] - n.x, n.lk[1] - n.z) > 1.5) this.goto(n, n.lk[0], n.lk[1], n.lk[2]); this.walk(n, dt, 2.6); }
         if (n.lost > 12) { n.st = 'a'; n.tA = 0; n.hold = true; n.path = null; }
       }
     }
@@ -336,7 +386,7 @@ export class Sim {
   }
   // Anyone may call it: the mission ends now and is scored on what has been done. Complete only if every bomb is safe and every hostage is accounted for.
   endMission(id, how = 'radio') {
-    if (this.phase !== 'active' || !this.players.has(id)) return;
+    if (this.phase !== 'active' || !this.players.has(id) || this.M.training) return;
     const civ = this.npcs.filter(n => n.kind === 'c'), done = this.bombs.every(b => b.defused) && civ.every(n => n.st === 'u' || n.st === 'd');
     this.left = how; this.phase = 'ended'; this.report = this.score(done ? 'MISSION COMPLETE' : 'MISSION INCOMPLETE'); this.ev({ e: 'end', result: this.report.result });
   }
@@ -351,6 +401,7 @@ export class Sim {
   tick(dt) {
     this.t += dt;
     if (this.phase !== 'active') return;
+    if (this.M.training) { if (this.gren.length || this.smokes.length) this.tickGrenades(dt); return this.tickTraining(dt); }
     this.timer -= dt; if (this.gren.length || this.smokes.length) this.tickGrenades(dt);
     for (const n of this.npcs) if (n.kind === 's') this.tickSuspect(n, dt);
     const sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c'), ps = [...this.players.values()];
@@ -395,6 +446,7 @@ export class Sim {
     const E = this.events; this.events = [];
     const s = { t: 's', X: this.extractT > 0 ? Math.ceil(5 - this.extractT) : 0, ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };
     if (this.report) s.R = this.report;
+    if (this.targets && this.M.training) { s.TG = this.targets.map(t => [t.up, r2(t.x), t.hostile ? 1 : 0]); const H = this.house; s.HS = [H.on ? 1 : 0, Math.round(H.t * 10) / 10, H.best, H.last, H.ns]; s.TS = [...this.players.values()].map(p => [p.id, p.tr ? p.tr.hits : 0, p.tr ? p.tr.shots : 0, p.tr ? p.tr.ns : 0]); s.NM = this.nextMap; s.WP = this.wxPick; }
     return s;
   }
 }

@@ -37,10 +37,13 @@ body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:c
 .tb{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(20,30,44,.55);border:2px solid rgba(160,190,225,.55);color:#e8eef5;font:700 11px system-ui,sans-serif;width:56px;height:56px}
 .tb.on{background:rgba(31,122,61,.85)}
 .tr{position:absolute;display:flex;gap:7px}.tr .tb{position:static;width:50px;height:38px;border-radius:9px;font-size:10px}
-#bFire{right:max(22px,env(safe-area-inset-right));bottom:34px;width:88px;height:88px;font-size:15px;background:rgba(150,30,30,.55);border-color:rgba(255,150,150,.7)}
-#bAim{right:122px;bottom:26px}#bReload{right:118px;bottom:96px}#bUse{right:40px;bottom:134px;width:64px;height:64px;font-size:13px}#bShout{right:186px;bottom:54px}
+#touch{--sr:max(18px,env(safe-area-inset-right));--sb:max(18px,env(safe-area-inset-bottom))}
+/* the right-hand cluster is laid out from one corner, so a phone's notch or rounded corner moves all of it together and nothing overlaps */
+#bFire{right:var(--sr);bottom:calc(var(--sb) + 12px);width:88px;height:88px;font-size:15px;background:rgba(150,30,30,.55);border-color:rgba(255,150,150,.7)}
+#bAim{right:calc(var(--sr) + 102px);bottom:var(--sb)}#bReload{right:calc(var(--sr) + 100px);bottom:calc(var(--sb) + 72px)}#bUse{right:calc(var(--sr) + 12px);bottom:calc(var(--sb) + 116px);width:64px;height:64px;font-size:13px}#bShout{right:calc(var(--sr) + 166px);bottom:calc(var(--sb) + 30px)}
+@media (max-height:380px){#bUse{right:calc(var(--sr) + 172px);bottom:calc(var(--sb) + 96px);width:56px;height:56px}#bShout{right:calc(var(--sr) + 166px);bottom:calc(var(--sb) + 22px)}}
 #trTop{top:22px;right:max(10px,env(safe-area-inset-right))}#trLeft{top:22px;left:max(10px,env(safe-area-inset-left))}
-#tstart{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:none;gap:14px}#tstart .tb{position:static;width:150px;height:54px;border-radius:10px;font-size:14px;background:rgba(31,122,61,.85)}
+#tstart{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:none;gap:14px}#tstart .tb{position:static;width:150px;height:54px;border-radius:10px;font-size:14px;background:rgba(31,122,61,.85)}#tstart.tr{top:calc(max(10px,env(safe-area-inset-top)) + 76px);transform:translate(-50%,0);gap:8px}#tstart.tr .tb{width:128px;height:38px;font-size:12px}
 #tplay{display:none;width:100%;background:#3a6ea5;color:#fff}
 #hud{display:none;position:fixed;left:0;right:0;bottom:0;padding:8px 12px;font:14px monospace;background:rgba(0,0,0,.55);z-index:4;white-space:pre}
 </style>

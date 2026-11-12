@@ -1,6 +1,6 @@
 # BREACHLINE
 
-Co-op tactical entry game for Quest (WebXR), phones, tablets and desktop, up to 4 officers. Two maps, picked with the MAP button in the lobby (the whole room loads the same one); suspects, hostages and bombs are reshuffled every mission. Dusk, with a breaker that cuts the lights, and night vision.
+Co-op tactical entry game for Quest (WebXR), phones, tablets and desktop, up to 4 officers. Everyone arrives at a training facility (shooting range with static, pop-up and moving targets, a timed shoot / no-shoot kill house, and practice doors and a dummy bomb that reset themselves); the mission board there picks one of two maps and the weather, and START sends the whole room in together. After a mission, TRAINING on the debrief returns to the range; suspects, hostages and bombs are reshuffled every mission. Dusk, with a breaker that cuts the lights, and night vision.
 - **Mansion** (Operation GILDED CAGE): a three-storey modern house, walk-out basement and pool terrace above the ocean. 9 suspects, 5 hostages, 2 bombs, 12:00.
 - **Terminal** (Operation IRON TIDE): a container port about 120 x 110 m. Container yard, ship-to-shore and yard cranes, trucks, an operations building (breaker), and a moored container ship: board by a gangway, cross the stacked deck, clear the bridge tower. 14 suspects, 8 hostages, 3 bombs in padlocked containers (cut the lock with the cutters, open the doors, defuse inside), 15:00. A high-value target with two bodyguards holds the bridge: arrest him for full marks.
 
