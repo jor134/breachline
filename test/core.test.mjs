@@ -307,4 +307,15 @@ await t('terminal: the HVT and two guards hold the bridge, he rarely gives up, a
   assert.ok(s2.report.lines.some(l => /High-value target killed/.test(l[0]) && l[1] < 0));
   const p = s2.players.get(1); const g = new Sim('terminal'); g.addPlayer(1, 'A'); g.start(5, false, 'clear', 'terminal'); const G1 = g.npcs.find(n => n.guard), B = g.npcs.find(n => n.hvt); g.engage(G1, g.players.get(1), 0.3); assert.equal(B.st, 'c', 'the boss joins when a guard is engaged');
 });
+
+await t('bombs sit at the edge of their table or crate, wires toward a spot an officer can stand on', () => {
+  for (const id of ['mansion', 'terminal']) for (let seed = 1; seed <= 6; seed++) {
+    const s = new Sim(id); s.addPlayer(1, 'A'); s.start(seed, false, 'clear', id); const L = s.level;
+    for (const b of s.bombs) {
+      const top = L.boxes.find(o => o.kind === 'furn' && b.x > o.x0 && b.x < o.x1 && b.z > o.z0 && b.z < o.z1 && Math.abs(o.y1 - b.y) < 0.25); assert.ok(top, `${id} bomb not on furniture`);
+      const edge = Math.min(b.x - top.x0, top.x1 - b.x, b.z - top.z0, top.z1 - b.z); assert.ok(edge < 0.16, `${id} bomb ${edge.toFixed(2)} m from the edge`);
+      const sx = b.x + Math.sin(b.yaw) * 0.58, sz = b.z + Math.cos(b.yaw) * 0.58, fy = Math.floor((b.y + 0.01) / L.H) * L.H; assert.ok(!circleHits(L, null, sx, sz, 0.25, fy), `${id} nowhere to stand in front of the bomb`);
+    }
+  }
+});
 console.log(n + ' tests passed');

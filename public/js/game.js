@@ -62,11 +62,11 @@ const net = {
 
 // ---------- hands & guns ----------
 const mkIn = () => ({ trig: 0, grip: 0, a: 0, b: 0, stick: 0, sx: 0, sy: 0, thumb: 0, trigT: 0 });
-const hands = [0, 1].map(i => { const h = { i, pos: V(), quat: new THREE.Quaternion(), active: false, item: null, magKind: null, support: false, rackG: null, rackStart: V(), rackDone: false, hold: null, aT: 0, vel: V(), last: V(), zone: null, in: mkIn(), prev: mkIn(), pad: null, xr: null, mags: { rifle: makeMag('rifle'), pistol: makeMag('pistol') }, tools: { pick: makeTool('pick'), cutters: makeTool('cutters'), cam: makeTool('cam') }, nades: { flash: makeNade('flash'), smoke: makeNade('smoke') } }; for (const m of [...Object.values(h.mags), ...Object.values(h.tools), ...Object.values(h.nades)]) { m.visible = false; scene.add(m); } return h; });
+const hands = [0, 1].map(i => { const h = { i, pos: V(), quat: new THREE.Quaternion(), active: false, item: null, magKind: null, support: false, rackG: null, rackStart: V(), rackDone: false, hold: null, aT: 0, vel: V(), last: V(), zone: null, in: mkIn(), prev: mkIn(), pad: null, xr: null, mags: { rifle: makeMag('rifle', true), pistol: makeMag('pistol') }, tools: { pick: makeTool('pick'), cutters: makeTool('cutters'), cam: makeTool('cam') }, nades: { flash: makeNade('flash'), smoke: makeNade('smoke') } }; for (const m of [...Object.values(h.mags), ...Object.values(h.tools), ...Object.values(h.nades)]) { m.visible = false; scene.add(m); } return h; });
 const press = (h, k) => h.in[k] > 0.5 && !(h.prev[k] > 0.5), released = (h, k) => !(h.in[k] > 0.5) && h.prev[k] > 0.5;
 const buzz = (h, s, ms) => { try { h.pad && h.pad.hapticActuators && h.pad.hapticActuators[0] && h.pad.hapticActuators[0].pulse(s, ms); } catch { } };
 const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(kind), mesh, ud: mesh.userData, where: 'holster', mags: GUNS[kind].mags, kick: 0, flashT: 0 }; };
-const guns = { rifle: mkGun('rifle', makeRifle(true)), pistol: mkGun('pistol', makePistol()) };
+const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol()) };
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
 const HOLSTER = RIG;   // grab zones sit exactly where the holders are drawn on the vest and belt
 const bodyPt = (off, out) => out.set(off[0], 0, off[2]).applyAxisAngle(UP, S.bodyYaw).add(head.pos).setY(head.pos.y + off[1]);
@@ -225,7 +225,7 @@ function applyInit(init) {
   for (const a of S.actors.values()) scene.remove(a.g, a.blob); S.actors.clear(); for (const b of S.bombs) scene.remove(b.g); S.bombs = []; S.hvtId = 0;
   for (const [id, kind, v, hvt] of init.npcs) { const a = new Human(kind, v); scene.add(a.g, a.blob); S.actors.set(id, a); if (hvt) S.hvtId = id; }
   S.civs = init.npcs.filter(n => n[1] === 'c').length; if (S.night !== !!init.night || S.wx !== init.weather) { S.night = !!init.night; S.wx = init.weather || 'clear'; applyLook(); }
-  for (const [x, y, z, wires, order] of init.bombs) { const b = new Bomb(x, y, z, wires, order); b.order = order; b.n = 0; scene.add(b.g); S.bombs.push(b); }
+  for (const [x, y, z, wires, order, yaw] of init.bombs) { const b = new Bomb(x, y, z, wires, order, yaw); b.order = order; b.n = 0; scene.add(b.g); S.bombs.push(b); }
 }
 function onMsg(m) {
   if (m.t === 'welcome') { const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && m.ph !== 'active' && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
@@ -461,7 +461,8 @@ function handVR(h, o, dt) {
   else {
     if (press(h, 'trig')) {
       let cut = null, cd = 0.07;   // nearest wire to the hand, so neighbouring wires are not cut by mistake
-      if (!S.me.down) for (let i = 0; i < S.bombs.length; i++) { const b = S.bombs[i]; if (b.defused) continue; for (let w = 0; w < 4; w++) if (b.wires[w].visible) { const d = b.wirePos(w, v1).distanceTo(h.pos); if (d < cd) { cd = d; cut = { t: 'cut', b: i, w }; } } }
+      const tip = v2.set(0, 0, -0.09).applyQuaternion(h.quat).add(h.pos);   // the cutter jaws reach past the hand
+      if (!S.me.down) for (let i = 0; i < S.bombs.length; i++) { const b = S.bombs[i]; if (b.defused) continue; for (let w = 0; w < 4; w++) if (b.wires[w].visible) { b.wirePos(w, v1); const d = Math.min(v1.distanceTo(h.pos), v1.distanceTo(tip)); if (d < cd) { cd = d; cut = { t: 'cut', b: i, w }; } } }
       if (cut) { if (S.tool === 'cutters') { net.send(cut); buzz(h, 0.8, 40); } else { const p = S.bombs[cut.b].g.position; hint(p.x, p.y + 0.4, p.z, 'SELECT CUTTERS'); } }
       else { v2.set(0, 0, -1).applyQuaternion(h.quat); if (!tryPanel(h.pos, v2) && !h.item && !h.hold) useWorld(h); }
     }

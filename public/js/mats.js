@@ -21,7 +21,8 @@ export function sheen(params, gloss = 'satin') {
 }
 const all = [];
 // Reflections picture a lit dusk scene, so they are turned down when the lights go out.
-export function setGlossLevel(k) { for (const m of all) { m.reflectivity = m.userData.refl * k; m.specular.setScalar(m.userData.spec * (0.35 + 0.65 * k)); } }
+export const pbrMats = [];   // downloaded models keep their PBR materials; their reflections dim with the lights too
+export function setGlossLevel(k) { for (const m of pbrMats) m.envMapIntensity = m.userData.env * k; for (const m of all) { m.reflectivity = m.userData.refl * k; m.specular.setScalar(m.userData.spec * (0.35 + 0.65 * k)); } }
 const vc = new Map();
 export const vertexSheen = gloss => vc.get(gloss) || vc.set(gloss, sheen({ vertexColors: true }, gloss)).get(gloss);
 let seed = 7; export const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };

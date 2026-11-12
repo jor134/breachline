@@ -1,5 +1,7 @@
 // Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
+import { loadM4 } from './m4.js';
+const HQ = typeof location === 'undefined' || !new URLSearchParams(location.search).get('lite') || !!new URLSearchParams(location.search).get('m4');   // ?lite=1 (tests) keeps the built-in rifle unless &m4=1
 import { sheen, vertexSheen } from './mats.js';
 import { SOFT } from './gfx.js';
 let blobGeo = null; const makeBlob = r => { if (!blobGeo) { blobGeo = new THREE.PlaneGeometry(1, 1); blobGeo.rotateX(-Math.PI / 2); } const m = new THREE.Mesh(blobGeo, SOFT.blob); m.scale.set(r * 2, 1, r * 2); m.renderOrder = 3; return m; };   // soft round shadow on the floor
@@ -28,7 +30,7 @@ const basic = c => new THREE.MeshBasicMaterial({ color: c });
 
 // ---------- weapons ----------
 let rifleGeo = null, rifleMagGeo = null;
-export function makeRifle(holo = false) {   // original M4-pattern carbine: flat-top, railed handguard, holographic sight, light, suppressor
+export function makeRifle(holo = false, hq = false) {   // built-in M4-pattern carbine (suspects; officers until the model below loads). hq: swap in the downloaded M4A1 (m4.js)
   const K = 0x17181a, TAN = 0x6f6352, GR = 0x2a2c2f, g = new THREE.Group();
   if (!rifleGeo) {
     rifleGeo = merge([
@@ -58,9 +60,17 @@ export function makeRifle(holo = false) {   // original M4-pattern carbine: flat
       vertexShader: 'varying vec2 vUv; varying vec3 vW; void main(){ vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
       fragmentShader: 'uniform sampler2D map; uniform mat4 uInv; uniform vec4 uWin; uniform float uZ; varying vec2 vUv; varying vec3 vW; void main(){ vec3 e = (uInv * vec4(cameraPosition, 1.0)).xyz; vec3 f = (uInv * vec4(vW, 1.0)).xyz; if (e.z <= uZ + 0.01) discard; vec3 p = e + (f - e) * ((uZ - e.z) / (f.z - e.z)); if (abs(p.x - uWin.x) > uWin.z || abs(p.y - uWin.y) > uWin.w) discard; vec4 c = texture2D(map, vUv); if (c.a < 0.05) discard; gl_FragColor = vec4(c.rgb * 2.2, c.a); }' }));
     ret.position.set(0, 0.126, -60); ret.renderOrder = 20; ret.frustumCulled = false; ret.visible = false; ret.onBeforeRender = () => { inv.copy(g.matrixWorld).invert(); }; g.add(ret);
-    const lens = new THREE.Mesh(new THREE.PlaneGeometry(0.036, 0.028), new THREE.MeshBasicMaterial({ color: 0x40708a, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide })); lens.position.set(0, 0.126, -0.07); g.add(lens);
+    const lens = new THREE.Mesh(new THREE.PlaneGeometry(0.036, 0.028), new THREE.MeshBasicMaterial({ color: 0x40708a, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide })); lens.position.set(0, 0.126, -0.07); lens.userData.lens = true; g.add(lens);
   }
   g.userData = { kind: 'rifle', mag, bolt, flash, ret, muzzle: new THREE.Vector3(0, 0.05, -0.65), light: new THREE.Vector3(0.04, 0.05, -0.45), magwell: new THREE.Vector3(0, -0.05, -0.1), rack: new THREE.Vector3(0, 0.078, 0.075), fore: new THREE.Vector3(0, -0.01, -0.3), sightY: 0.126 };
+  if (hq && HQ) loadM4().then(({ body, magGeo, magMat }) => {   // swap in the model; every handling point moves to where it is on the real rifle
+    g.children[0].visible = false; g.add(body.clone());
+    if (magGeo) { mag.geometry = magGeo; mag.material = magMat; }
+    const light = merge([[CYL(0.013, 0.1), 0x17181a, 0, 0, 0, HP], [CYL(0.016, 0.028), 0x17181a, 0, 0, -0.06, HP], [CYL(0.011, 0.004), 0xfff4d0, 0, 0, -0.075, HP], [BOX(0.012, 0.02, 0.03), 0x17181a, -0.012, 0.004, 0.0]], 'metal'); light.position.set(0.036, 0.064, -0.46); g.add(light);   // weapon light on the right rail
+    const U = g.userData, Y = 0.151; U.muzzle.set(0, 0.064, -0.665); U.light.set(0.036, 0.064, -0.54); U.magwell.set(0, -0.02, -0.14); U.rack.set(0, 0.09, 0.03); U.fore.set(0, -0.03, -0.31); U.sightY = Y;
+    bolt.position.set(0.022, 0.07, -0.11); flash.position.set(0, 0.064, -0.7);
+    if (ret) { ret.position.y = Y; ret.material.uniforms.uWin.value.set(0, Y, 0.0185, 0.0142); ret.material.uniforms.uZ.value = -0.054; g.children.forEach(c => { if (c.userData.lens) c.visible = false; }); }
+  }).catch(e => console.warn('rifle model not loaded', e));
   return g;
 }
 let pistolGeo = null;
@@ -74,7 +84,8 @@ export function makePistol() {
   g.userData = { kind: 'pistol', mag, slide, slideZ: -0.05, flash, muzzle: new THREE.Vector3(0, 0.045, -0.15), light: new THREE.Vector3(0, 0.02, -0.15), magwell: new THREE.Vector3(0, -0.09, 0.03), rack: new THREE.Vector3(0, 0.05, 0.03), sightY: 0.074 };
   return g;
 }
-export const makeMag = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
+export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = r.magMat; } }).catch(() => { }); return m; };
+const makeMag0 = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
 
 export const makeNade = kind => kind === 'flash' ? merge([[CYL(0.022, 0.09), 0x5a6048, 0, 0, 0], [CYL(0.018, 0.02), 0x9aa0a8, 0, 0.055, 0], [BOX(0.008, 0.07, 0.02), 0x9aa0a8, 0.024, 0.02, 0]], 'metal') : merge([[CYL(0.027, 0.1), 0x6a6e72, 0, 0, 0], [CYL(0.027, 0.016), 0xd8d8d8, 0, 0.03, 0], [CYL(0.016, 0.02), 0x30343a, 0, 0.06, 0]], 'metal');
 export function makeTool(kind) {
@@ -241,7 +252,7 @@ export class Officer {   // another player
     this.g = new THREE.Group();
     this.head = merge([[SPH(0.125), 0x20242a, 0, 0.01, 0], [BOX(0.2, 0.06, 0.03), 0x0a0a0a, 0, 0.0, -0.11], [BOX(0.15, 0.09, 0.02), 0xc79a7b, 0, -0.06, -0.1], [BOX(0.27, 0.06, 0.1), 0x15181d, 0, 0.0, 0]], 'plastic');
     this.body = new Body();
-    this.items = [0, 1].map(() => { const g = new THREE.Group(), r = makeRifle(), p = makePistol(), m = makeMag('rifle'); r.visible = p.visible = m.visible = false; g.add(r, p, m); g.userData = { items: [null, r, p, m] }; return g; });
+    this.items = [0, 1].map(() => { const g = new THREE.Group(), r = makeRifle(false, true), p = makePistol(), m = makeMag('rifle', true); r.visible = p.visible = m.visible = false; g.add(r, p, m); g.userData = { items: [null, r, p, m] }; return g; });
     this.tag = tag; tag.position.y = 0.3; this.head.add(tag);
     this.g.add(this.head, this.body.g, ...this.items); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ'); this.hp = [{ pos: new THREE.Vector3(), quat: new THREE.Quaternion() }, { pos: new THREE.Vector3(), quat: new THREE.Quaternion() }];
   }
@@ -253,8 +264,8 @@ export class Officer {   // another player
 }
 
 export class Bomb {
-  constructor(x, y, z, wires, order) {
-    const g = this.g = new THREE.Group(); g.position.set(x, y, z);
+  constructor(x, y, z, wires, order, yaw = 0) {
+    const g = this.g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = yaw;   // wires face the open side
     g.add(merge([[BOX(0.34, 0.1, 0.22), 0x2b2b2b, 0, 0.05, 0], [BOX(0.3, 0.02, 0.02), 0x8a1c1c, 0, 0.11, 0.1], [BOX(0.3, 0.02, 0.02), 0x8a1c1c, 0, 0.11, 0]], 'plastic'));
     this.wires = wires.map((c, i) => { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.1, 6), sheen({ color: WIRE_HEX[c] }, 'plastic')); w.rotation.x = HP; w.position.set(-0.105 + i * 0.07, 0.125, 0.05); g.add(w); return w; });
     const c = document.createElement('canvas'); c.width = 256; c.height = 96; const k = c.getContext('2d'); k.fillStyle = '#111'; k.fillRect(0, 0, 256, 96); k.fillStyle = '#fff'; k.font = 'bold 30px sans-serif'; k.fillText('CUT', 10, 58);

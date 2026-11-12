@@ -1,5 +1,5 @@
 // BREACHLINE mission simulation: suspects, civilians, bombs, rules of engagement, scoring. Pure logic.
-import { buildLevel, rayStatic, raySphere, findPath, solidAt, U, MAPS } from './level.js';
+import { buildLevel, rayStatic, raySphere, findPath, solidAt, circleHits, U, MAPS } from './level.js';
 export { MAP_IDS } from './level.js';
 
 export function rng32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -14,6 +14,18 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI;
 
 export class Sim {
   constructor(mapId = 'mansion') { this.setMap(mapId); this.players = new Map(); this.events = []; this.night = false; this.wxPick = 'random'; this.weather = 'clear'; this.reset(1); }
+  // Put a bomb at the edge of whatever it sits on, on the side an officer can stand at, wires toward him, so it is in arm's reach.
+  edgeSpot(x, z, top, floorY) {
+    const L = this.level, b = L.boxes.find(o => o.kind === 'furn' && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1 && Math.abs(o.y1 - top) < 0.25);
+    if (!b) return [x, z, 0];
+    let best = null;
+    for (const [nx, nz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const ex = nx < 0 ? b.x0 : nx > 0 ? b.x1 : Math.max(b.x0 + 0.2, Math.min(b.x1 - 0.2, x)), ez = nz < 0 ? b.z0 : nz > 0 ? b.z1 : Math.max(b.z0 + 0.2, Math.min(b.z1 - 0.2, z));
+      if (circleHits(L, null, ex + nx * 0.45, ez + nz * 0.45, 0.25, floorY)) continue;   // nowhere to stand on this side
+      const cost = Math.hypot(ex - x, ez - z); if (!best || cost < best[0]) best = [cost, ex - nx * 0.13, ez - nz * 0.13, Math.atan2(nx, nz)];
+    }
+    return best ? best.slice(1) : [x, z, 0];
+  }
   setMap(id) { this.level = buildLevel(MAPS[id] ? id : 'mansion'); this.M = this.level.map; this.mapId = this.level.id; }
   reset(seed) {
     this.seed = seed >>> 0; this.rnd = rng32(this.seed); const rnd = this.rnd;
@@ -44,7 +56,8 @@ export class Sim {
     const bombAt = M.pads ? pads.slice(0, C.b).map(i => [M.pads[i].f, ...M.pads[i].bomb, 0.85]) : pick(M.spots.b, C.b);
     this.bombs = bombAt.map(([f, x, z, h]) => {
       const wires = pick([0, 1, 2, 3], 4), order = pick([0, 1, 2, 3], 2);
-      return { x, z, y: f * H + h, wires, order, n: 0, cut: [false, false, false, false], defused: false };
+      const [bx, bz, yaw] = this.edgeSpot(x, z, f * H + h, f * H);
+      return { x: bx, z: bz, y: f * H + h, yaw, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
     for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; }
   }
@@ -59,7 +72,7 @@ export class Sim {
   }
   removePlayer(id) { this.players.delete(id); }
   init() {
-    return { seed: this.seed, map: this.mapId, night: this.night, weather: this.weather, npcs: this.npcs.map(n => [n.id, n.kind, n.v, n.hvt ? 1 : 0]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order]), time: this.M.time };
+    return { seed: this.seed, map: this.mapId, night: this.night, weather: this.weather, npcs: this.npcs.map(n => [n.id, n.kind, n.v, n.hvt ? 1 : 0]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order, b.yaw]), time: this.M.time };
   }
   pose(id, m) {
     const p = this.players.get(id); if (!p || !Array.isArray(m.h) || m.h.length < 7 || !m.h.every(Number.isFinite)) return;

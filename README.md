@@ -18,7 +18,7 @@ Co-op tactical entry game for Quest (WebXR), phones, tablets and desktop, up to 
 - `test/` `node test/core.test.mjs`, `node test/worker.test.mjs`; `vr.py` + `xrmock.js` drive the VR path in headless Chromium with a fake headset.
 
 ## Art and sound
-People, weapons, furniture and the house are built in code. Downloaded models: plants (`public/models/nature`, CC0) and the parked car (`public/models/car`, CC-BY 4.0, Car Concept by Eric Chadwick / Darmstadt Graphics Group, simplified); see the LICENSE.md in each folder. Materials come from `public/js/mats.js` (Phong shine plus a tiny reflection map, same approach as Kerbside).
+People, weapons, furniture and the house are built in code. Downloaded models: the officers' rifle (`public/models/m4`, CC-BY 4.0, "Assault rifle M4A1" by bobeer on Sketchfab, textures re-encoded), plants (`public/models/nature`, CC0) and the parked car (`public/models/car`, CC-BY 4.0, Car Concept by Eric Chadwick / Darmstadt Graphics Group, simplified); see the LICENSE.md in each folder. Materials come from `public/js/mats.js` (Phong shine plus a tiny reflection map, same approach as Kerbside).
 Sound effects are recorded CC0 libraries from GitHub (Free Firearm Sound Library and Kenney packs), built by `tools/build_sfx.py`; credits in `public/sfx/CREDITS.md`.
 
 ## Not in yet
