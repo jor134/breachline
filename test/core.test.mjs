@@ -349,4 +349,16 @@ await t('training: arrive in the range, targets drop when hit, house runs time, 
   h.message(1, { t: 'choose', m: 'terminal', wx: 'fog' }); h.message(1, { t: 'start' }); assert.equal(s.mapId, 'terminal'); assert.equal(s.weather, 'fog'); assert.ok(!s.targets);
   h.message(1, { t: 'restart', map: 'training' }); assert.equal(s.mapId, 'training'); assert.ok(s.targets && s.phase === 'active');
 });
+await t('grand prix: cars lap the straight, anyone on the tarmac when one passes is knocked down, the pit lane is safe', async () => {
+  const { carsAt, TRACK } = await import('../public/js/core/maps/circuit.js');
+  const s = new Sim('grandprix'); s.start(3, false, 'clear', 'grandprix', 'night'); s.addPlayer(1, 'A'); s.addPlayer(2, 'B');
+  assert.equal(s.tod, 'night'); assert.equal(s.init().tod, 'night');
+  for (const n of s.npcs) n.st = 'u';   // keep the suspects out of it
+  const p = s.players.get(1), q = s.players.get(2); s.pose(1, { h: [20, 1.65, TRACK.zc, 0, 0, 0, 1] }); s.pose(2, { h: [20, 1.65, -10, 0, 0, 0, 1] });
+  let hit = false; for (let i = 0; i < 15 * 40 && !hit; i++) { s.tick(1 / 15); hit = p.down; }
+  assert.ok(hit, 'a car came through within 40 s and knocked the officer on the track down'); assert.ok(!q.down, 'the one in the pit lane is fine');
+  assert.ok(s.snapshot().RT > 0, 'race clock goes to clients');
+  const a = carsAt(12.5).map(c => c[0]), b = carsAt(12.5).map(c => c[0]); assert.deepEqual(a, b);
+  const s2 = new Sim('grandprix'); const tods = new Set(); for (let k = 1; k < 12; k++) { s2.start(k, false, 'clear', 'grandprix', 'random'); tods.add(s2.tod); } assert.equal(tods.size, 2, 'random picks both day and night');
+});
 console.log(n + ' tests passed');

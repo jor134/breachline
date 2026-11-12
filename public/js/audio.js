@@ -113,3 +113,20 @@ export const sfx = {
   nvg(on) { tone(null, on ? 500 : 2600, on ? 2800 : 400, on ? 0.5 : 0.25, 0.12, 'sine'); burst(null, 0.03, 4000, 0.3, 'highpass'); },
   say(text, pitch = 1) { try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(text); u.rate = 1.25; u.pitch = pitch; u.volume = 0.9; speechSynthesis.speak(u); } } catch { } },
 };
+
+// A race-car engine: two detuned saws through a low-pass, panned in 3D. The caller moves it, sets its pitch (doppler
+// included) and loudness every frame. Returns null until the audio is running.
+export function engineVoice() {
+  if (!ctx) return null;
+  const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), p = ctx.createPanner();
+  o1.type = 'sawtooth'; o2.type = 'square'; f.type = 'lowpass'; f.Q.value = 2; g.gain.value = 0;
+  p.panningModel = 'equalpower'; p.distanceModel = 'linear'; p.refDistance = 1; p.maxDistance = 1e4; p.rolloffFactor = 0;   // loudness is set by hand
+  o1.connect(f); o2.connect(f); f.connect(g); g.connect(p); p.connect(dry); o1.start(); o2.start();
+  return {
+    set(x, y, z, hz, gain, muffle) {
+      const t = ctx.currentTime; if (p.positionX) { p.positionX.setTargetAtTime(x, t, 0.02); p.positionY.value = y; p.positionZ.setTargetAtTime(z, t, 0.02); } else p.setPosition(x, y, z);
+      o1.frequency.setTargetAtTime(hz, t, 0.03); o2.frequency.setTargetAtTime(hz * 0.502, t, 0.03); f.frequency.setTargetAtTime(muffle ? 700 : 2600, t, 0.1); g.gain.setTargetAtTime(gain, t, 0.04);
+    },
+    stop() { try { o1.stop(); o2.stop(); g.disconnect(); p.disconnect(); } catch (e) { } },
+  };
+}

@@ -6,7 +6,8 @@ import { buildLevel } from './core/level.js';
 import mansionGfx from './maps/mansion-gfx.js';
 import terminalGfx from './maps/terminal-gfx.js';
 import trainingGfx from './maps/training-gfx.js';
-const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx };
+import grandprixGfx from './maps/grandprix-gfx.js';
+const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx };
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
 export function initMats() {
@@ -99,14 +100,16 @@ function furnish(b, w) {
     case 'guard': P('lacquer', 0, len, 0, dep, 0, h - 0.1); P('fascia', -0.1, len + 0.1, -0.1, dep + 0.1, h - 0.1, h); P('glass', 0.05, len - 0.05, -0.002, dep + 0.002, 1.0, 2.1, 'xXzZ'); break;
     case 'baffle': P('steelplate', 0, len, 0, dep, 0, h); break;
     case 'berm': P('rubber', 0, len, 0, dep, 0, h, ALL, 0.5); for (let u = 0.5; u < len; u += 1) P('steelplate', u, u + 0.05, dep, dep + 0.01, 0, h, 'Z'); break;
+    case 'racecar': break;   // drawn as a car model by the map's scenery
+    case 'tyres': { const n = Math.max(1, Math.round(h / 0.34)); for (let k = 0; k < n; k++) { P('tyreM', 0.04, len - 0.04, 0.04, dep - 0.04, k * h / n, (k + 1) * h / n - 0.03); P('dark', 0.2, len - 0.2, 0.2, dep - 0.2, (k + 1) * h / n - 0.031, (k + 1) * h / n - 0.029, 'Y'); } break; }
     case 'pot': P('top', 0.02, len - 0.02, 0.02, dep - 0.02, 0, h - 0.04, 'xXzZ'); P('top', 0, len, 0, dep, h - 0.08, h, 'xXzZyY'); P('walnut', 0.03, len - 0.03, 0.03, dep - 0.03, h - 0.03, h - 0.02, 'Y'); break;
     default: P('stone', 0, len, 0, dep, 0, h);
   }
 }
 
-export function buildWorld(scene, id = 'mansion') {
+export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   initMats();
-  const level = buildLevel(id), map = level.map, H = map.H, YARD = map.YARD, G = MAPGFX[level.id], env = G.env, root = new THREE.Group(), B = {}; root.name = 'world'; scene.add(root);
+  const level = buildLevel(id), map = level.map, H = map.H, YARD = map.YARD, G = MAPGFX[level.id]; if (G.setTod) G.setTod(tod); const env = G.env, root = new THREE.Group(), B = {}; root.name = 'world'; scene.add(root);
   if (G.mats) G.mats(MATS);
   const b = k => B[k] || (B[k] = new Builder()), cx = (YARD.x0 + YARD.x1) / 2, cz = (YARD.z0 + YARD.z1) / 2;
   // sky dome (gradient), stars, moon, far silhouettes
@@ -212,7 +215,7 @@ export function buildWorld(scene, id = 'mansion') {
     if (G.look) G.look(night, nvg, wx);
   };
   const dispose = () => { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skyT.dispose(); };
-  return { root, level, map, doors, look, dispose, sun };
+  return { root, level, map, doors, look, dispose, sun, tod };
 }
 
 export function label(text, color = '#fff', w = 256, h = 64) {

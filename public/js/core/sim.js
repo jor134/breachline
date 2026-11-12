@@ -1,4 +1,5 @@
 // BREACHLINE mission simulation: suspects, civilians, bombs, rules of engagement, scoring. Pure logic.
+import { carsAt, onTrack } from './maps/circuit.js';
 import { buildLevel, rayStatic, raySphere, findPath, solidAt, circleHits, U, MAPS, MISSION_IDS } from './level.js';
 export { MAP_IDS, MISSION_IDS } from './level.js';
 
@@ -13,7 +14,7 @@ const KNEEL = { k: 1, y: 1, u: 1, w: 1, h: 1 }, DONE = { d: 1, u: 1, i: 1, j: 1 
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
 export class Sim {
-  constructor(mapId = 'mansion') { this.setMap(mapId); this.players = new Map(); this.events = []; this.night = false; this.wxPick = 'random'; this.weather = 'clear'; this.reset(1); }
+  constructor(mapId = 'mansion') { this.setMap(mapId); this.players = new Map(); this.events = []; this.night = false; this.wxPick = 'random'; this.todPick = 'random'; this.raceT = 0; this.weather = 'clear'; this.reset(1); }
   // Put a bomb at the edge of whatever it sits on, on the side an officer can stand at, wires toward him, so it is in arm's reach.
   edgeSpot(x, z, top, floorY) {
     const L = this.level, b = L.boxes.find(o => o.kind === 'furn' && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1 && Math.abs(o.y1 - top) < 0.25);
@@ -26,11 +27,12 @@ export class Sim {
     }
     return best ? best.slice(1) : [x, z, 0];
   }
-  choose(m) { if (this.M.training && MISSION_IDS.includes(m.m)) this.nextMap = m.m; if (m.wx === 'random' || WEATHER.includes(m.wx)) this.wxPick = m.wx; }
+  choose(m) { if (this.M.training && MISSION_IDS.includes(m.m)) this.nextMap = m.m; if (m.wx === 'random' || WEATHER.includes(m.wx)) this.wxPick = m.wx; if (m.tod === 'random' || m.tod === 'day' || m.tod === 'night') this.todPick = m.tod; }
   setMap(id) { this.level = buildLevel(MAPS[id] ? id : 'mansion'); this.M = this.level.map; this.mapId = this.level.id; this.targets = null; }
   reset(seed) {
     this.seed = seed >>> 0; this.rnd = rng32(this.seed); const rnd = this.rnd;
     { const r = rng32(this.seed ^ 0x9e3779b9)(); this.weather = WEATHER.includes(this.wxPick) ? this.wxPick : r < 0.35 ? 'clear' : r < 0.6 ? 'rain' : r < 0.8 ? 'fog' : 'storm'; }
+    { const T = this.M.tods; this.tod = !T ? 'dusk' : T.includes(this.todPick) ? this.todPick : T[rng32(this.seed ^ 0x51ed)() < 0.5 ? 0 : 1]; }
     const M = this.M, H = M.H, C = M.counts, NS = C.s - (M.hvt ? 3 : 0);
     this.phase = 'lobby'; this.timer = M.time; this.t = 0; this.report = null;
     this.log = { unauth: 0, execution: 0, civHit: 0, civKilled: 0, civExecuted: 0, ff: 0, downs: 0, wrongWire: 0 }; this.extractT = 0; this.left = null;
@@ -65,7 +67,7 @@ export class Sim {
     if (M.training) this.setupTraining();
     for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; }
   }
-  start(seed, night = false, wx = this.wxPick, map = this.mapId) { this.night = !!night; if (map !== this.mapId && MAPS[map]) this.setMap(map);   // every mission starts with the power on; night falls when someone throws the breaker
+  start(seed, night = false, wx = this.wxPick, map = this.mapId, tod) { this.night = !!night; if (tod === 'random' || tod === 'day' || tod === 'night') this.todPick = tod; if (map !== this.mapId && MAPS[map]) this.setMap(map);   // every mission starts with the power on; night falls when someone throws the breaker
     this.wxPick = wx === 'random' || WEATHER.includes(wx) ? wx : this.wxPick; this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
   ev(o) { this.events.push(o); }
   addPlayer(id, name) {
@@ -77,7 +79,7 @@ export class Sim {
   }
   removePlayer(id) { this.players.delete(id); }
   init() {
-    return { seed: this.seed, map: this.mapId, night: this.night, weather: this.weather, npcs: this.npcs.map(n => [n.id, n.kind, n.v, n.hvt ? 1 : 0]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order, b.yaw]), time: this.M.time };
+    return { seed: this.seed, map: this.mapId, night: this.night, weather: this.weather, tod: this.tod, rt: this.raceT, npcs: this.npcs.map(n => [n.id, n.kind, n.v, n.hvt ? 1 : 0]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order, b.yaw]), time: this.M.time };
   }
   pose(id, m) {
     const p = this.players.get(id); if (!p || !Array.isArray(m.h) || m.h.length < 7 || !m.h.every(Number.isFinite)) return;
@@ -292,6 +294,18 @@ export class Sim {
     const hx = px + qx * tt, hy = oy + dy * tt; return Math.abs(hx) <= t.w / 2 && hy >= t.y && hy <= t.y + t.h ? tt : -1;
   }
 
+  // the race keeps running: anyone standing on the tarmac when a car comes through is knocked down
+  tickRace() {
+    const cars = carsAt(this.raceT, this._cars || (this._cars = []));
+    for (const p of this.players.values()) {
+      if (!p.has || p.down || !onTrack(p.hx, p.hz)) continue;
+      for (const [x, z, v] of cars) if (Math.abs(p.hx - x) < 2.9 && Math.abs(p.hz - z) < 1.15) { this.hurt(p, 200, 'torso'); this.ev({ e: 'carhit', p: p.id, x, z, v }); this.log.carHits = (this.log.carHits || 0) + 1; break; }
+    }
+    for (const n of this.npcs) {
+      if (n.st === 'd' || !onTrack(n.x, n.z)) continue;
+      for (const [x, z] of cars) if (Math.abs(n.x - x) < 2.9 && Math.abs(n.z - z) < 1.15) { n.hp = 0; n.st = 'd'; this.ev({ e: 'carhit', n: n.id, x, z }); break; }
+    }
+  }
   // ---- simulation ----
   sees(n, p, d) {
     const lit = this.night && p.light;                 // in the dark a flashlight gives you away at any range, even through glass
@@ -399,10 +413,11 @@ export class Sim {
       this.hurt(p, part === 'head' ? 26 + this.rnd() * 8 : part === 'torso' ? 18 + this.rnd() * 10 : 12 + this.rnd() * 6, part); }
   }
   tick(dt) {
-    this.t += dt;
+    this.t += dt; if (this.M.race) this.raceT += dt;
     if (this.phase !== 'active') return;
     if (this.M.training) { if (this.gren.length || this.smokes.length) this.tickGrenades(dt); return this.tickTraining(dt); }
     this.timer -= dt; if (this.gren.length || this.smokes.length) this.tickGrenades(dt);
+    if (this.M.race) this.tickRace();
     for (const n of this.npcs) if (n.kind === 's') this.tickSuspect(n, dt);
     const sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c'), ps = [...this.players.values()];
     let result = null;
@@ -446,6 +461,8 @@ export class Sim {
     const E = this.events; this.events = [];
     const s = { t: 's', X: this.extractT > 0 ? Math.ceil(5 - this.extractT) : 0, ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };
     if (this.report) s.R = this.report;
+    if (this.M.race) s.RT = Math.round(this.raceT * 100) / 100;
+    if (this.M.training) s.TP = this.todPick;
     if (this.targets && this.M.training) { s.TG = this.targets.map(t => [t.up, r2(t.x), t.hostile ? 1 : 0]); const H = this.house; s.HS = [H.on ? 1 : 0, Math.round(H.t * 10) / 10, H.best, H.last, H.ns]; s.TS = [...this.players.values()].map(p => [p.id, p.tr ? p.tr.hits : 0, p.tr ? p.tr.shots : 0, p.tr ? p.tr.ns : 0]); s.NM = this.nextMap; s.WP = this.wxPick; }
     return s;
   }

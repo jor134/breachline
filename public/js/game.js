@@ -7,6 +7,7 @@ import { initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.j
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
 import { resolveCircle, rayStatic, MAP_IDS, MAPS, MISSION_IDS } from './core/level.js';
+import { createRace } from './race.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 
@@ -56,10 +57,12 @@ function trainLine() {
   const mine = (S.tstats || []).find(r => r[0] === S.me.id) || [0, 0, 0, 0], H = S.house || [0, 0, 0, 0, 0];
   return { hits: mine[1], shots: mine[2], ns: mine[3], acc: mine[2] ? Math.round(100 * mine[1] / mine[2]) : 0, run: H[0] ? H[1].toFixed(1) + 's' : H[3] ? 'last ' + H[3] + 's' : '-', best: H[2] ? H[2] + 's' : '-', on: !!H[0] };
 }
-function loadMap(id) {
-  if (world && world.level.id === id) return;
-  if (world) world.dispose(); for (const o of extras) { scene.remove(o); o.geometry && o.geometry.dispose(); } extras = []; const gen = ++mapGen;
-  world = buildWorld(scene, id); level = world.level; M = level.map;
+let race = null;
+function loadMap(id, tod) {
+  const T = MAPS[id] && MAPS[id].tods ? (MAPS[id].tods.includes(tod) ? tod : (world && world.level.id === id ? world.tod : MAPS[id].tods[0])) : 'dusk';
+  if (world && world.level.id === id && world.tod === T) return;
+  if (world) world.dispose(); if (race) { race.dispose(); race = null; } for (const o of extras) { scene.remove(o); o.geometry && o.geometry.dispose(); } extras = []; const gen = ++mapGen;
+  world = buildWorld(scene, id, T); level = world.level; M = level.map; if (M.race) race = createRace(scene);
   buildTargets();
   if (ready) { S.doorTrap = level.doors.map(() => 0); S.doorOpen = level.doors.map(() => false); S.doorLocked = level.doors.map(() => false); S.deskCam = null; S.deskPick = null; for (const h of hands) h.hold = null; placeMapProps(); applyLook(); }
   renderer.shadowMap.needsUpdate = true;
@@ -73,7 +76,7 @@ loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : 'training');   // everyo
 
 const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
   net: 'offline', room: '', report: null, doorLocked: level.doors.map(() => false), bodyYaw: 0, panel: 'lobby', menu: false, deskPick: null, night: false, nvg: false, tool: 'hands', hintT: 0, wx: 'clear', wxPick: 'random', squad: [], secured: 0, civs: 5, defused: 0, light: true, now: 0, eye: 1.66, crouch: false, yaw: 0, pitch: 0, ads: false, reloading: false, tilt: +(localStorage.getItem('bl_tilt') || 0) };
-S.nextMap = MISSION_IDS[0];
+S.nextMap = MISSION_IDS[0]; S.todPick = 'random'; S.raceT = 0;
 const head = { pos: V(), quat: new THREE.Quaternion(), fwd: V(), yaw: 0 };
 const status = t => { $('status').textContent = t; };
 
@@ -142,6 +145,7 @@ const nvgMask = (() => { const c = document.createElement('canvas'); c.width = c
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, depthWrite: false, fog: false })); m.position.z = -0.32; m.renderOrder = 996; m.visible = false; camera.add(m); return m; })();
 const irLamp = new THREE.PointLight(0x58ff68, 0, 34, 1.1); camera.add(irLamp);   // the goggles' own illuminator: nearby surfaces read brighter, which gives depth
 const weather = makeWeather(scene, () => level), WXS = ['random', 'clear', 'rain', 'fog', 'storm'];
+const TODS = ['random', 'day', 'night'], cycleTod = () => { S.todPick = TODS[(TODS.indexOf(S.todPick) + 1) % TODS.length]; sfx.click(); if (M.training) net.send({ t: 'choose', tod: S.todPick }); };
 const cycleWx = () => { S.wxPick = WXS[(WXS.indexOf(S.wxPick) + 1) % WXS.length]; sfx.click(); if (M.training) net.send({ t: 'choose', wx: S.wxPick }); };
 // main breaker in the plant room: throw the lever to cut every light in the house
 const breaker = (() => { const g = new THREE.Group(); const box = (w, h, d, c, x, y, z, basic) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), basic ? new THREE.MeshBasicMaterial({ color: c }) : new THREE.MeshLambertMaterial({ color: c })); m.position.set(x, y, z); return m; };
@@ -212,7 +216,7 @@ function showLobbyPanel() {
   if (S.menu) return; if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
   panel.draw('BREACHLINE', M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
     ['Squad: ' + (S.squad.join(', ') || '-'), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, B/Y = SHOUT. Helmet = NVG.',
-      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['START MISSION', 'start']]);
+      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), ['START MISSION', 'start']]);
 }
 function showBoard() {   // the mission board in the training lobby: pick where the squad goes next, see how the range went
   S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); const T = trainLine(), nx = MAPS[S.nextMap] || MAPS[MISSION_IDS[0]];
@@ -220,7 +224,7 @@ function showBoard() {   // the mission board in the training lobby: pick where 
     ['Squad: ' + (S.squad.join(', ') || '-'), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
       'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', 'Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
       'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'],
-    [['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['START MISSION', 'start']]);
+    [['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), ['START MISSION', 'start']]);
 }
 function showEndPanel() {
   const R = S.report; if (!R || S.menu) return; S.panel = 'end'; panel.mesh.visible = true; frontOfHead(1.9);
@@ -235,10 +239,11 @@ function toggleMenu(open = !S.menu) {
 function tryPanel(o, d) {
   const act = panel.probe(o, d, false); if (!act) return act === '';   // a pull on the panel background is swallowed, not fired
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
+  if (act === 'tod') { cycleTod(); showLobbyPanel(); return true; }
   if (act === 'map') { cycleMap(); return true; }
   if (act === 'end') { net.send({ t: 'end' }); toggleMenu(false); return true; }
   if (act === 'train') { net.send({ t: 'restart', wx: S.wxPick, map: 'training' }); sfx.beep(null, 900); return true; }
-  if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick, map: nextMission() }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
+  if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
   return true;
 }
 
@@ -260,13 +265,14 @@ function drawHud() {
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
-    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase();  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
+    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); { const nx = M.training ? MAPS[S.nextMap] : M; $('bTod').style.display = $('tstart').style.display !== 'none' && nx && nx.tods ? 'flex' : 'none'; $('bTod').textContent = 'TIME: ' + S.todPick.toUpperCase(); }  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
   }
 }
 
 // ---------- server messages ----------
 function applyInit(init) {
-  if (init.map && init.map !== M.id) { loadMap(init.map); localStorage.setItem('bl_map', init.map); if (S.mode && S.phase !== 'active') placeAtSpawn(); }
+  if (init.rt != null) S.raceT = init.rt;
+  if (init.map && (init.map !== M.id || (init.tod && init.tod !== world.tod))) { loadMap(init.map, init.tod); localStorage.setItem('bl_map', init.map); if (S.mode && S.phase !== 'active') placeAtSpawn(); }
   for (const a of S.actors.values()) scene.remove(a.g, a.blob); S.actors.clear(); for (const b of S.bombs) scene.remove(b.g); S.bombs = []; S.hvtId = 0;
   for (const [id, kind, v, hvt] of init.npcs) { const a = new Human(kind, v, id); scene.add(a.g, a.blob); S.actors.set(id, a); if (hvt) S.hvtId = id; }
   S.civs = init.npcs.filter(n => n[1] === 'c').length; if (S.night !== !!init.night || S.wx !== init.weather) { S.night = !!init.night; S.wx = init.weather || 'clear'; applyLook(); }
@@ -295,6 +301,8 @@ function applySnap(m) {
   }
   for (const [id, o] of S.officers) if (!seen.has(id)) { scene.remove(o.g); S.officers.delete(id); }
   if (m.R) S.report = m.R;
+  if (m.RT != null) { const d = m.RT - S.raceT; S.raceT = Math.abs(d) > 0.6 ? m.RT : S.raceT + d * 0.25; }
+  if (m.TP && S.net !== 'offline') S.todPick = m.TP;
   if (m.TG) { m.TG.forEach((r, i) => { const t = targets[i]; if (!t) return; t.up = r[0]; t.tx = r[1]; if (t.hostile !== r[2]) { t.hostile = r[2]; t.board.material = r[2] ? tgTex.h : tgTex.n; } }); S.house = m.HS; S.tstats = m.TS; if (m.NM) S.nextMap = m.NM; if (m.WP && S.net !== 'offline') S.wxPick = m.WP; }
   for (const e of m.E) onEvent(e);
   if (S.phase !== prev) { S.menu = false; if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'active' && !M.training) { panel.mesh.visible = false; S.panel = null; } else showLobbyPanel(); }
@@ -312,6 +320,7 @@ function onEvent(e) {
     case 'hurt': if (e.p === S.me.id) { hudT = 0; hurtT = 1; sfx.hurt(); for (const h of hands) buzz(h, 1, 150); S.lastPart = e.part; S.figT = 4; } break;
     case 'heal': if (e.p === S.me.id) { sfx.ok(); S.lastPart = ''; S.figT = 2.5; } break;
     case 'down': if (e.p === S.me.id) sfx.hurt(); break;
+    case 'carhit': if (e.p != null) { sfx.boom({ x: e.x, y: 0.5, z: e.z }); if (e.p === S.me.id) sayAt(head.pos.x + head.fwd.x * 1.5, head.pos.y, head.pos.z + head.fwd.z * 1.5, 'HIT BY A RACE CAR', '#ff6060'); } break;
     case 'revive': if (e.p === S.me.id) sfx.ok(); break;
     case 'hit': if (a) a.flinch = 1; break;
     case 'power': sfx.power(v1.set(M.breaker.x, M.breaker.y, M.breaker.z), e.on); break;
@@ -343,7 +352,7 @@ addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => { if (S.mode === 'desktop' && document.pointerLockElement === renderer.domElement) { S.yaw -= e.movementX * 0.0022; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch - e.movementY * 0.0022)); } });
 function deskKey(code) {
   const G = gunIn(hands[1]);
-  if (code === 'Enter' && (S.phase !== 'active' || M.training)) net.send({ t: 'restart', wx: S.wxPick, map: nextMission() });
+  if (code === 'Enter' && (S.phase !== 'active' || M.training)) net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() });
   if (code === 'KeyO') cycleWx();
   if (code === 'KeyP' && (S.phase !== 'active' || M.training)) cycleMap();
   if (code === 'KeyM') return toggleMenu();
@@ -688,6 +697,7 @@ function frame(t) {
   if (panel.mesh.visible && S.mode) for (const h of hands) { if (!h.active) continue; const G = gunIn(h); if (G) { G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set(0, 0, -1).applyQuaternion(G.mesh.quaternion); } else { v1.copy(h.pos); v2.set(0, 0, -1).applyQuaternion(h.quat); } if (panel.probe(v1, v2, true) !== null) break; }
   if ((S.phase === 'lobby' || M.training && S.phase === 'active') && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
   updateTargets(dt);
+  if (race) { S.raceT += dt; race.update(S.raceT, head.pos, level.inside(head.pos.x, head.pos.z, head.pos.y)); }
   // world animation
   for (const a of S.actors.values()) a.update(dt);
   breaker.cur += ((S.night ? 1 : 0) - breaker.cur) * Math.min(1, dt * 14); breaker.lever.rotation.x = breaker.cur * 2.2; breaker.led.material.color.setHex(S.night ? 0x401010 : 0x30ff60);
@@ -745,7 +755,7 @@ function initTouch() {
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
   bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
-  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, map: nextMission() }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
+  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; }); bind('bTod', () => { cycleTod(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
   const sEnd = e => { if (e.pointerId !== sid) return; sid = null; S.tmove.x = S.tmove.y = 0; knob.style.transform = ''; };

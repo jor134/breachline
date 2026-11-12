@@ -3,7 +3,8 @@
 import mansion from './maps/mansion.js';
 import terminal from './maps/terminal.js';
 import training from './maps/training.js';
-export const MAPS = { training, mansion, terminal };
+import grandprix from './maps/grandprix.js';
+export const MAPS = { training, mansion, terminal, grandprix };
 export const MAP_IDS = Object.keys(MAPS);
 export const MISSION_IDS = MAP_IDS.filter(k => !MAPS[k].training);
 export const U = 0.5, T = 0.2;
