@@ -1,7 +1,7 @@
 // Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
 import { loadM4, loadFN509 } from './m4.js';
-import { CHARS_ON, SUSPECT_MODELS, loadChar, loadCivilians, Skin, mirror, align2 } from './chars.js';
+import { CHARS_ON, SUSPECT_MODELS, loadChar, loadCivilian, Skin, mirror, align2 } from './chars.js';
 const HQ = typeof location === 'undefined' || !new URLSearchParams(location.search).get('lite') || !!new URLSearchParams(location.search).get('m4');   // ?lite=1 (tests) keeps the built-in rifle unless &m4=1
 import { sheen, vertexSheen } from './mats.js';
 import { SOFT } from './gfx.js';
@@ -143,7 +143,7 @@ export class Human {
     this.p0 = new THREE.Vector3(); this.p1 = new THREE.Vector3(); this.y0 = 0; this.y1 = 0; this.it = 0; this.dur = 0.07; this.lastT = 0;
     this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST); this.blob = makeBlob(0.5); g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
     // everyone wears a downloaded model (suspects, the boss in his suit, civilians); the stick rig above keeps animating, invisibly, and drives its bones
-    if (CHARS_ON) (s ? loadChar(v === 4 ? 'boss' : SUSPECT_MODELS[v % SUSPECT_MODELS.length]) : loadCivilians().then(l => l[(id * 7 + v * 3) % l.length])).then(t => t && this.attachSkin(t)).catch(e => console.warn('character model not loaded', e));
+    if (CHARS_ON) (s ? loadChar(v === 4 ? 'boss' : SUSPECT_MODELS[v % SUSPECT_MODELS.length]) : loadCivilian(id * 7 + v * 3)).then(t => t && this.attachSkin(t)).catch(e => console.warn('character model not loaded', e));
   }
   attachSkin(tpl) {
     const g = this.g, keepQ = g.quaternion.clone(), keepP = g.position.clone(); g.position.set(0, 0, 0); g.quaternion.identity(); g.updateMatrixWorld(true);

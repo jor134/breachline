@@ -31,7 +31,7 @@ export const CHARS = {
   boss: { file: 'boss.glb', h: 1.8, hips: 'mixamorigHips_01', spine: ['mixamorigSpine_02', 'mixamorigSpine1_03', 'mixamorigSpine2_04'], neck: 'mixamorigNeck_05', head: 'mixamorigHead_06',
     thigh: side('mixamorigLeftUpLeg_056', 'mixamorigRightUpLeg_00'), shin: side('mixamorigLeftLeg_057', 'mixamorigRightLeg_061'), foot: side('mixamorigLeftFoot_058', 'mixamorigRightFoot_062'),
     up: side('mixamorigLeftArm_09', 'mixamorigRightArm_033'), fore: side('mixamorigLeftForeArm_010', 'mixamorigRightForeArm_034'), hand: side('mixamorigLeftHand_011', 'mixamorigRightHand_035') },
-  // "Citizen NPC Pack 1" by 00amza: civilians. They come unrigged; loadCivilians() builds a skeleton and weights for each.
+  // civilians (Michael Constantine's figures): They come unrigged; loadCivilians() builds a skeleton and weights for each.
   psx: { hips: 'hips', spine: ['spine', 'chest'], neck: 'neck', head: 'head', thigh: side('thighL', 'thighR'), shin: side('shinL', 'shinR'), foot: side('footL', 'footR'),
     up: side('upL', 'upR'), fore: side('foreL', 'foreR'), hand: side('handL', 'handR') },
 };
@@ -49,34 +49,41 @@ export function loadChar(id) {
 }
 export const charReady = id => ready[id] || null;
 
-// ---- civilians: "Citizen NPC Pack 1" (14 people, each a body and a head mesh, T-pose, no skeleton). Each gets a skeleton
-// fitted to its shape and rigid-ish weights (every vertex follows its nearest limb segment, blended a little where two meet).
-let civP = null;
-export function loadCivilians() {
-  return civP || (civP = new Promise((res, rej) => new GLTFLoader().load('models/chars/citizens.glb', g => {
-    g.scene.updateMatrixWorld(true); const people = [];
-    g.scene.traverse(o => { if (!o.isMesh && /^Citizen/.test(o.name) && o.children.some(c => c.isMesh)) { const parts = []; o.traverse(m => { if (m.isMesh) parts.push(m); }); if (parts.length) people.push([o.name, parts]); } });
-    res(people.map(([nm, parts], i) => { try { return rigCivilian(parts, i, nm); } catch (e) { console.warn('civilian rig failed', nm, e); return null; } }).filter(Boolean));
+// ---- civilians: Michael Constantine's civilian and police figures (public/models/civ, CC BY 4.0). They come without a
+// skeleton: each gets one fitted to its shape and rigid-ish weights (every vertex follows its nearest limb segment,
+// blended a little where two meet). One file per person, loaded the first time someone needs that person.
+export const CIV_FILES = ['male_civ_v1', 'female_civ_v1', 'male_civ_v2', 'female_civ_v4', 'male_civ_v5', 'male_pol_v1', 'female_pol_v2'];
+const civP = {};
+export function loadCivilian(k) {
+  const f = CIV_FILES[((k % CIV_FILES.length) + CIV_FILES.length) % CIV_FILES.length];
+  return civP[f] || (civP[f] = new Promise((res, rej) => new GLTFLoader().load('models/civ/' + f + '.glb', g => {
+    g.scene.updateMatrixWorld(true); const parts = []; g.scene.traverse(o => { if (o.isMesh) parts.push(o); });
+    try { res(rigCivilian(parts, CIV_FILES.indexOf(f), f)); } catch (e) { console.warn('civilian rig failed', f, e); rej(e); }
   }, undefined, rej)));
 }
+export const loadCivilians = () => Promise.all(CIV_FILES.map((f, k) => loadCivilian(k).catch(() => null))).then(l => l.filter(Boolean));
 function rigCivilian(parts, i, name) {
   // bake each part into metres, y-up, facing +z, then stand the person on the origin
   const geos = parts.map(m => { const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld); return g; }), bb = new THREE.Box3();
   for (const g of geos) { g.computeBoundingBox(); bb.union(g.boundingBox); }
+  if (bb.max.y - bb.min.y > 10) { for (const g of geos) { g.scale(0.01, 0.01, 0.01); g.computeBoundingBox(); } bb.min.multiplyScalar(0.01); bb.max.multiplyScalar(0.01); }   // centimetres
   for (const g of geos) { g.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2); g.computeBoundingBox(); }
   const pts = []; for (const g of geos) { const P = g.attributes.position; for (let k = 0; k < P.count; k++) pts.push(P.getX(k), P.getY(k), P.getZ(k)); }
   const n = pts.length / 3, X = k => pts[k * 3], Y = k => pts[k * 3 + 1], Z = k => pts[k * 3 + 2], H = bb.max.y - bb.min.y;
   const band = (y0, y1, side) => { let mx = 0, zs = 0, c = 0; for (let k = 0; k < n; k++) { const y = Y(k), x = X(k) * side; if (y < y0 * H || y > y1 * H || x < 0) continue; if (x > mx) mx = x; zs += Z(k); c++; } return [mx, c ? zs / c : 0]; };
   const mid = (y0, y1) => { let zs = 0, c = 0; for (let k = 0; k < n; k++) { const y = Y(k); if (y < y0 * H || y > y1 * H || Math.abs(X(k)) > 0.12) continue; zs += Z(k); c++; } return c ? zs / c : 0; };
-  // proportions come from the collar (where the separate head mesh starts) rather than the full height, which includes hair
-  let collar = H; geos.forEach((g, gi) => { if (!/BODY/i.test(parts[gi].name)) collar = Math.min(collar, g.boundingBox.min.y); }); if (collar >= H) collar = 0.82 * H;
-  const shY = collar - 0.07, hy = 0.69 * shY, ky = 0.355 * shY, J = {}, F = y => y / H;
+  // proportions come from the shoulder line rather than the full height, which includes hair. T-pose: the arms show where it is.
+  let tipY = 0; { let t = 0; for (let k = 1; k < n; k++) if (Math.abs(X(k)) > Math.abs(X(t))) t = k; tipY = Y(t); }
+  const tpose = tipY > 0.65 * H; let armY = 0.8 * H;
+  if (tpose) { let ys = 0, c = 0; for (let k = 0; k < n; k++) { const ax = Math.abs(X(k)); if (ax > 0.42 && ax < 0.58) { ys += Y(k); c++; } } if (c) armY = ys / c; }
+  const collar = tpose ? armY + 0.09 : 0.82 * H, shY = collar - 0.07, hy = 0.69 * shY, ky = 0.355 * shY, J = {}, F = y => y / H;
   J.hips = [0, hy, mid(F(hy) - 0.03, F(hy) + 0.03)]; J.chest = [0, shY - 0.12, mid(F(shY - 0.15), F(shY - 0.09))]; J.spine = [0, (hy + J.chest[1]) / 2, (J.hips[2] + J.chest[2]) / 2];
   J.neck = [0, collar + 0.01, mid(F(collar), F(collar + 0.04))]; J.head = [0, collar + 0.1, mid(F(collar + 0.08), F(collar + 0.14))]; J.top = [0, H, J.head[2]];
   const armLine = {};
   for (const [S, sd] of [['L', 1], ['R', -1]]) {
-    // A-pose: the shoulder joint sits just inside the widest point at shoulder height; the arm runs out to the outermost fingertip
-    const [dX] = band(F(shY - 0.03), F(shY + 0.03), sd); let tip = 0; for (let k = 1; k < n; k++) if (X(k) * sd > X(tip) * sd) tip = k;
+    // the shoulder joint: A-pose, just inside the widest point at shoulder height; T-pose, the chest's edge below the armpit.
+    // The arm runs out to the outermost fingertip.
+    const dX = tpose ? band(F(shY - 0.26), F(shY - 0.16), sd)[0] + 0.05 : band(F(shY - 0.03), F(shY + 0.03), sd)[0]; let tip = 0; for (let k = 1; k < n; k++) if (X(k) * sd > X(tip) * sd) tip = k;
     const tp = new THREE.Vector3(X(tip), Y(tip), Z(tip)), sh = new THREE.Vector3(sd * Math.max(0.1, dX - 0.07), shY, J.chest[2]), at = t => sh.clone().lerp(tp, t).toArray();
     J['up' + S] = sh.toArray(); J['fore' + S] = at(0.46); J['hand' + S] = at(0.84); J['tip' + S] = tp.toArray(); armLine[S] = new THREE.Line3(sh.clone(), tp.clone());
     const [lgX, lgZ] = band(F(ky - 0.05), F(ky + 0.05), sd); const lx = sd * Math.max(0.06, lgX - 0.06);
@@ -87,9 +94,9 @@ function rigCivilian(parts, i, name) {
   const SL = 0.03, edge = { L: [], R: [] };
   for (const [S, sd] of [['L', 1], ['R', -1]]) { const shx = Math.abs(J['up' + S][0]);
     for (let y = 0; y < shY + 0.1; y += SL) { const xs = []; for (let k = 0; k < n; k++) if (Y(k) >= y && Y(k) < y + SL && X(k) * sd > 0) xs.push(X(k) * sd); xs.sort((a, b) => a - b);
-      let e = y > shY - 0.06 ? shx : Infinity; for (let q = 1; q < xs.length; q++) if (xs[q - 1] > 0.08 && xs[q] - xs[q - 1] > 0.035) { e = Math.min(e, (xs[q] + xs[q - 1]) / 2); break; }
+      let e = y > shY - (tpose ? 0.16 : 0.06) ? shx : Infinity; for (let q = 1; q < xs.length; q++) if (xs[q - 1] > 0.08 && xs[q] - xs[q - 1] > 0.035) { e = Math.min(e, (xs[q] + xs[q - 1]) / 2); break; }
       edge[S].push(e); } }
-  const isArm = (x, y) => { const S = x > 0 ? 'L' : 'R', e = edge[S][Math.max(0, Math.min(edge[S].length - 1, Math.floor(y / SL)))]; const ax = Math.abs(x); return ax > e && y > J['tip' + S][1] - 0.12 || ax > Math.abs(J['up' + S][0]) + 0.12; };
+  const isArm = (x, y) => { const S = x > 0 ? 'L' : 'R', e = edge[S][Math.max(0, Math.min(edge[S].length - 1, Math.floor(y / SL)))]; const ax = Math.abs(x); if (tpose && y > armY + 0.09 && ax < Math.abs(J['up' + S][0]) + 0.15) return false; return ax > e && y > J['tip' + S][1] - 0.12 || ax > Math.abs(J['up' + S][0]) + 0.12; };
   const names = ['hips', 'spine', 'chest', 'neck', 'head', 'upL', 'foreL', 'handL', 'upR', 'foreR', 'handR', 'thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR'];
   const parent = { spine: 'hips', chest: 'spine', neck: 'chest', head: 'neck', upL: 'chest', foreL: 'upL', handL: 'foreL', upR: 'chest', foreR: 'upR', handR: 'foreR', thighL: 'hips', shinL: 'thighL', footL: 'shinL', thighR: 'hips', shinR: 'thighR', footR: 'shinR' };
   const end = { hips: 'spine', spine: 'chest', chest: 'neck', neck: 'head', head: 'top', upL: 'foreL', foreL: 'handL', handL: 'tipL', upR: 'foreR', foreR: 'handR', handR: 'tipR', thighL: 'shinL', shinL: 'footL', footL: 'toeL', thighR: 'shinR', shinR: 'footR', footR: 'toeR' };
@@ -100,22 +107,17 @@ function rigCivilian(parts, i, name) {
   const seg = names.map(nm => [W(nm), W(end[nm]), /^(hips|spine|chest)$/.test(nm) ? 0.8 : 1]), p = new THREE.Vector3(), c = new THREE.Vector3(), l3 = new THREE.Line3(), headOnly = [3, 4];
   const root = new THREE.Group(), skel = new THREE.Skeleton(bones); let first = null;
   geos.forEach((geo, gi) => {
-    const P = geo.attributes.position, m = P.count, si = new Uint16Array(m * 4), sw = new Float32Array(m * 4), isHead = !/BODY/i.test(parts[gi].name);
+    const P = geo.attributes.position, m = P.count, si = new Uint16Array(m * 4), sw = new Float32Array(m * 4)
     for (let k = 0; k < m; k++) {
       p.set(P.getX(k), P.getY(k), P.getZ(k)); let a = 0, da = Infinity, b = 0, db = Infinity;
       // only what lies along the arm, outside the shoulder joint, is arm; the jacket's sides and the armpit stay with the torso
-      const sideL = p.x > 0, armV = !isHead && isArm(p.x, p.y);
+      const isHead = p.y > collar - 0.01 && Math.abs(p.x) < 0.15, sideL = p.x > 0, armV = !isHead && isArm(p.x, p.y);
       seg.forEach(([s0, s1, f], q) => { if (isHead && !headOnly.includes(q)) return; const arm = q >= 5 && q <= 10; if (arm ? (!armV || (q <= 7) !== sideL) : armV) return; l3.set(s0, s1); l3.closestPointToPoint(p, true, c); const d = c.distanceTo(p) * f; if (d < da) { b = a; db = da; a = q; da = d; } else if (d < db) { b = q; db = d; } });
       let wa = 1, wb = 0; if (db < da * 1.35) { const ia = 1 / Math.pow(da + 1e-3, 4), ib = 1 / Math.pow(db + 1e-3, 4); wa = ia / (ia + ib); wb = 1 - wa; }
       si[k * 4] = a; si[k * 4 + 1] = b; sw[k * 4] = wa; sw[k * 4 + 1] = wb;
     }
     geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
-    // the low-poly bodies fuse some forearms to the jacket below the armpit with long triangles; those would stretch into slabs
-    if (geo.index) { const ix = geo.index.array, keep = [], arm = k => si[k * 4] >= 5 && si[k * 4] <= 10;
-      for (let f = 0; f < ix.length; f += 3) { const v = [ix[f], ix[f + 1], ix[f + 2]], na = v.filter(arm).length;
-        if (na && na < 3 && v.some(k => !arm(k) && P.getY(k) < shY - 0.2)) continue; keep.push(...v); }
-      geo.setIndex(keep); }
-    const mat = parts[gi].material; mat.envMap = envMap; mat.userData.env = mat.envMapIntensity = 0.2; mat.metalness = 0; if (!pbrMats.includes(mat)) pbrMats.push(mat);
+    const mat = parts[gi].material; mat.envMap = envMap; mat.userData.env = mat.envMapIntensity = 0.2; mat.metalness = 0; if (mat.transparent) { mat.transparent = false; mat.alphaTest = 0.5; mat.depthWrite = true; }   // hair cards and lashes: cut out, not blended (blending sorts badly) if (!pbrMats.includes(mat)) pbrMats.push(mat);
     const mesh = new THREE.SkinnedMesh(geo, mat); mesh.receiveShadow = true; if (!first) { first = mesh; mesh.add(B.hips); } root.add(mesh);
   });
   root.updateMatrixWorld(true); skel.calculateInverses(); for (const o of root.children) o.bind(skel, first.matrixWorld);
