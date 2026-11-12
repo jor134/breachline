@@ -1,8 +1,4 @@
-# Recorded sound effects
+# Sound effects
 
-Drop audio files (ogg, mp3 or wav) in this folder and list them in `manifest.json`. Any sound listed replaces the synthesised version; anything missing keeps the synthesised one.
-
-```json
-{ "rifle": "rifle.ogg", "pistol": "pistol.ogg", "click": "dryfire.ogg", "magout": "magout.ogg", "magin": "magin.ogg", "rack": "rack.ogg",
-  "door": "door.ogg", "locked": "locked.ogg", "unlock": "unlock.ogg", "kick": "kick.ogg", "breach": "breach.ogg", "cuff": "cuff.ogg", "impact": "impact.ogg", "boom": "explosion.ogg" }
-```
+Built by `tools/build_sfx.py` from free libraries on GitHub (see CREDITS.md). `manifest.json` maps each sound name to one file or a list of variants; the game picks a variant at random.
+To swap a sound, drop a file here and point its name at it in `manifest.json`. Any name that is missing falls back to the synthesised version in `public/js/audio.js`.

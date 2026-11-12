@@ -37,34 +37,37 @@ const GLASS = [
   [-1, 1, 0, 8.5, 0], [-1, 9.5, 0, 11.5, 0], [-1, 12.5, 0, 14.5, 0], [0, 2, 0, 7, 0], [1, 2, 0, 7, 0], [1, 16, 0, 23, 0],
 ];
 // [floor, x0, z0, x1, z1, height, kind]
-export const FURNITURE = [
-  [0, 2, 11, 5, 12, 0.8, 'sofa'], [0, 1, 13, 2, 15.5, 0.8, 'sofa'], [0, 3, 13, 4.5, 14, 0.45, 'table'], [0, 0.2, 8.3, 0.7, 10.5, 2, 'shelf'],
+export const FURNITURE = [   // [floor, x0, z0, x1, z1, height, kind, face]  face = the way the front points (seat, shelf opening, foot of bed)
+  // ground: living room seating faces the TV on the study wall
+  [0, 5, 12.6, 8.4, 13.5, 0.8, 'sofa', '-z'], [0, 2.4, 9.6, 3.3, 12.2, 0.8, 'sofa', '+x'], [0, 5.2, 10.2, 8, 11.2, 0.45, 'table'], [0, 5.6, 8.1, 8.4, 8.5, 0.45, 'cabinet'], [0, 0.3, 8.1, 3.6, 8.6, 2, 'shelf', '+z'],
   [0, 18, 11, 21.5, 12.5, 0.78, 'table'], [0, 23.2, 9, 23.8, 12, 0.9, 'cabinet'],
   [0, 18, 3, 21, 4.2, 0.92, 'counter'], [0, 23.2, 0.3, 23.8, 6, 0.92, 'counter'], [0, 15.3, 5, 15.9, 7.5, 0.92, 'counter'], [0, 16, 0.3, 19.5, 0.9, 0.92, 'counter'],
-  [0, 3, 3, 5, 4, 0.76, 'table'], [0, 0.2, 0.3, 0.7, 6, 2, 'shelf'], [0, 2, 0.2, 7, 0.7, 2, 'shelf'], [0, 6.5, 5, 7.5, 6, 0.8, 'sofa'],
-  [0, 9.3, 10, 9.8, 11.5, 0.85, 'cabinet'], [0, 9.3, 0.3, 9.8, 3, 1.8, 'shelf'], [0, 13.5, 0.3, 14.7, 1, 0.9, 'counter'],
+  [0, 3, 3, 5, 4, 0.76, 'table'], [0, 0.2, 0.3, 0.7, 6, 2, 'shelf', '+x'], [0, 2, 0.2, 7, 0.7, 2, 'shelf', '+z'], [0, 6.5, 5, 7.5, 6, 0.8, 'sofa', '-x'],
+  [0, 9.3, 10, 9.8, 11.5, 0.85, 'cabinet'], [0, 9.3, 0.3, 9.8, 3, 1.8, 'shelf', '+x'], [0, 13.5, 0.3, 14.7, 1, 0.9, 'counter'],
   [0, 2.5, 19.5, 10, 23.5, 0.55, 'pool'], [0, 14.5, 19.6, 20, 20, 0.9, 'wall'], [0, 20.75, 22, 23.25, 26.4, 1.2, 'car'], [0, -4, 18, -3.4, 24, 0.9, 'wall'],
-  [-1, 5, -13.5, 19, -7.5, 0.35, 'pool'], [-1, 15.5, -4.6, 18.5, -3.7, 0.8, 'sofa'], [-1, 21, -11, 22.4, -9.6, 0.5, 'wall'], [-1, 1, -6, 1.8, -4, 0.4, 'bed'], [-1, 2.6, -6, 3.4, -4, 0.4, 'bed'],
+  // basement and pool terrace: loungers and the outdoor sofa face the ocean, cinema seats face the screen on the west wall
+  [-1, 5, -13.5, 19, -7.5, 0.35, 'pool'], [-1, 15.5, -4.6, 18.5, -3.7, 0.8, 'sofa', '-z'], [-1, 21, -11, 22.4, -9.6, 0.5, 'wall'], [-1, 1, -6, 1.8, -4, 0.4, 'bed', '-z'], [-1, 2.6, -6, 3.4, -4, 0.4, 'bed', '-z'],
   [-1, 18.6, -1.6, 19.6, -0.5, 1.5, 'hedge'], [-1, 21.4, -1.6, 22.4, -0.5, 1.5, 'hedge'], [-1, 18.8, -3.3, 22.2, -2.8, 1.7, 'hedge'],
-  [-1, 3.2, 3, 5.6, 4.3, 0.8, 'table'], [-1, 0.3, 6.6, 4, 7.2, 1.05, 'counter'], [-1, 6, 1.5, 6.9, 4, 0.8, 'sofa'],
-  [-1, 2, 11, 6, 12, 0.8, 'sofa'], [-1, 2, 13.2, 6, 14.2, 0.8, 'sofa'], [-1, 8.2, 9, 8.7, 15, 0.5, 'cabinet'],
-  [-1, 17, 10, 18, 12, 0.5, 'cabinet'], [-1, 20, 10, 21, 12.5, 0.9, 'cabinet'], [-1, 23.2, 9, 23.8, 14, 1.8, 'shelf'],
-  [-1, 9.3, 4.3, 9.8, 8.5, 2, 'shelf'], [-1, 12.9, 5, 13.3, 8.5, 2, 'shelf'], [-1, 10.5, 1, 13, 1.9, 0.8, 'sofa'],
+  [-1, 3.2, 3, 5.6, 4.3, 0.8, 'table'], [-1, 0.3, 6.6, 4, 7.2, 1.05, 'counter'], [-1, 6.4, 1.6, 7.3, 4, 0.8, 'sofa', '-x'],
+  [-1, 3, 9.8, 4, 14.2, 0.8, 'sofa', '-x'], [-1, 5.4, 9.8, 6.4, 14.2, 0.8, 'sofa', '-x'], [-1, 8.2, 9, 8.7, 15, 0.5, 'cabinet'],
+  [-1, 17, 10, 18, 12, 0.5, 'cabinet'], [-1, 20, 10, 21, 12.5, 0.9, 'cabinet'], [-1, 23.2, 9, 23.8, 14, 1.8, 'shelf', '-x'],
+  [-1, 9.3, 4.3, 9.8, 8.5, 2, 'shelf', '+x'], [-1, 12.9, 5, 13.3, 8.5, 2, 'shelf', '-x'], [-1, 12.6, 3, 14.85, 3.9, 0.8, 'sofa', '-z'],
   [-1, 17, 1, 19, 2.5, 1.9, 'cabinet'], [-1, 21.5, 4, 23.5, 6.5, 1.6, 'cabinet'], [-1, 15.3, 5, 15.9, 7.5, 0.9, 'counter'],
-  [1, 3, 11, 5.2, 13.2, 0.6, 'bed'], [1, 0.2, 8.3, 0.8, 11, 2, 'shelf'], [1, 6, 15.2, 8, 15.8, 0.85, 'cabinet'],
-  [1, 2, 1, 4, 3, 0.6, 'bed'], [1, 6.5, 0.2, 8, 0.8, 0.76, 'table'], [1, 3, 5.5, 5, 6.5, 0.76, 'table'], [1, 0.2, 4.3, 0.7, 7, 1.6, 'shelf'],
-  [1, 10.5, 13, 13.5, 14, 0.8, 'sofa'], [1, 11, 11, 13, 12, 0.45, 'table'], [1, 19, 11, 21.2, 13.2, 0.6, 'bed'], [1, 23.2, 9, 23.8, 12, 2, 'shelf'],
-  [1, 19, 3, 21.2, 5.2, 0.6, 'bed'], [1, 16, 0.2, 18, 0.8, 0.76, 'table'], [1, 10, 0.2, 11.5, 0.7, 0.9, 'cabinet'],
+  // upper: every headboard against a solid wall
+  [1, 3.4, 8.1, 5.6, 10.3, 0.6, 'bed', '+z'], [1, 0.3, 8.1, 3, 8.6, 2, 'shelf', '+z'], [1, 6, 15.2, 8, 15.8, 0.85, 'cabinet'],
+  [1, 0.1, 1, 2.3, 3.2, 0.6, 'bed', '+x'], [1, 6.5, 0.2, 8, 0.8, 0.76, 'table'], [1, 3, 5.5, 5, 6.5, 0.76, 'table'], [1, 0.2, 4.3, 0.7, 7, 1.6, 'shelf', '+x'],
+  [1, 10.5, 11, 13.5, 11.9, 0.8, 'sofa', '+z'], [1, 11, 12.8, 13, 13.8, 0.45, 'table'], [1, 19, 8.1, 21.2, 10.3, 0.6, 'bed', '+z'], [1, 15.2, 9, 15.7, 11.5, 2, 'shelf', '+x'],
+  [1, 21.7, 3, 23.9, 5.2, 0.6, 'bed', '-x'], [1, 16, 0.2, 18, 0.8, 0.76, 'table'], [1, 10, 0.2, 11.5, 0.7, 0.9, 'cabinet'],
 ];
 // candidate positions [floor, x, z]
 export const SUSPECT_SPOTS = [
-  [0, 5, 14.5], [0, 7, 10], [0, 12, 11], [0, 20, 14], [0, 17, 10], [0, 17, 2], [0, 22, 6.8], [0, 5, 6], [0, 7.5, 2], [0, 11, 6.5], [0, 12, 2],
+  [0, 5, 14.5], [0, 1.2, 13.4], [0, 12, 11], [0, 20, 14], [0, 17, 10], [0, 17, 2], [0, 22, 6.8], [0, 5, 6], [0, 7.5, 2], [0, 11, 6.5], [0, 12, 2],
   [-1, 5, 6], [-1, 7, 12.6], [-1, 12, 11], [-1, 19, 14], [-1, 11.5, 6.5], [-1, 12, 3], [-1, 19.5, 5.5], [-1, 22, 1.5],
   [1, 12, 2], [1, 11, 6.5], [1, 6, 10], [1, 2, 14.5], [1, 6, 2.5], [1, 7, 6], [1, 12, 15], [1, 10, 10.5], [1, 17, 14], [1, 22, 14], [1, 17, 6], [1, 22, 2],
 ];
 export const CIV_SPOTS = [
   [-1, 1, 15], [-1, 22.5, 15], [-1, 8, 0.8], [-1, 23, 7.3],
-  [0, 7.5, 15], [0, 22, 15], [0, 21.5, 7], [0, 8, 7], [0, 14, 3], [1, 7.5, 14.5], [1, 1, 3.2], [1, 8, 5], [1, 16.5, 9.5], [1, 23, 7], [1, 14, 10],
+  [0, 7.5, 15], [0, 22, 15], [0, 21.5, 7], [0, 8, 7], [0, 14, 3], [1, 7.5, 14.5], [1, 3.4, 2.4], [1, 8, 5], [1, 16.5, 9.5], [1, 23, 7], [1, 14, 10],
 ];
 // [floor, x, z, surfaceHeight]
 export const BOMB_SPOTS = [
@@ -72,6 +75,15 @@ export const BOMB_SPOTS = [
   [0, 19.5, 12.25, 0.78], [0, 19.5, 3.95, 0.92], [0, 4, 3.75, 0.76], [1, 7, 15.4, 0.85], [1, 17, 0.6, 0.76], [0, 14.1, 0.75, 0.9], [1, 4, 6.25, 0.76],
 ];
 
+// What a footstep sounds like here: wood, carpet, concrete (tile, marble, paving) or gravel outside.
+const STEP = { wood: 'wood', carpet: 'carpet', tile: 'concrete', marble: 'concrete' };
+export function floorAt(x, z, y) {
+  if (inFoot(x, z)) { if (inStair(x, z)) return 'wood'; const f = Math.max(-1, Math.min(1, Math.round(y / H))); for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return STEP[r[6]] || 'concrete'; return 'concrete'; }
+  if ((z > 16 && z < 25 && x > -3 && x < 27) || (x > 9 && x < 15 && z >= 25) || (z < 0 && x > -3.6 && x < 27.6) || ((x < 0 && x > -3.6 || x > 24 && x < 27.6) && z > 4 && z < 12)) return 'concrete';
+  return 'snow';   // gravel: the crunchy snow recording is the closest match
+}
+// Walking out through the front gate ends the mission (see Sim.tick).
+export const EXIT = { x0: 8.6, x1: 15.4, z0: 25.6, z1: 30 };
 // Planting. Trees: [x, z, model, height, turn]. Shrubs: [x, z, model, height]. Pots (indoors): [floor, x, z, model, height].
 // Tree trunks and pots stop people and bullets; shrubs only hide things.
 export const VEG = (() => {
@@ -169,7 +181,7 @@ export function buildLevel() {
     }
   };
   merge(edges, 'wall', T); merge(gedges, 'glass', 0.06);
-  for (const [f, x0, z0, x1, z1, h, kind] of FURNITURE) boxes.push({ f, kind: 'furn', sub: kind, x0, x1, z0, z1, y0: f * H, y1: f * H + h });
+  for (const [f, x0, z0, x1, z1, h, kind, face] of FURNITURE) boxes.push({ f, kind: 'furn', sub: kind, face, x0, x1, z0, z1, y0: f * H, y1: f * H + h });
   for (const [x, z] of VEG.trees) { const y = terrainY(z); boxes.push({ f: y < -H / 2 ? -1 : 0, kind: 'trunk', x0: x - 0.17, x1: x + 0.17, z0: z - 0.17, z1: z + 0.17, y0: y, y1: y + 3.2 }); }
   for (const [f, x, z] of VEG.pots) boxes.push({ f, kind: 'furn', sub: 'pot', x0: x - 0.22, x1: x + 0.22, z0: z - 0.22, z1: z + 0.22, y0: f * H, y1: f * H + 0.5 });
   const level = { boxes, doors, walk: null };

@@ -129,7 +129,7 @@ export class Human {
   update(dt) {
     const p = this.g.position, px = p.x, pz = p.z; this.it += dt; const a = Math.min(1.25, this.it / this.dur);
     p.x = this.p0.x + (this.p1.x - this.p0.x) * a; p.z = this.p0.z + (this.p1.z - this.p0.z) * a; const baseY = this.p0.y + (this.p1.y - this.p0.y) * Math.min(1, a); this.g.rotation.y = this.y0 + (this.y1 - this.y0) * Math.min(1, a);
-    const moved = Math.hypot(p.x - px, p.z - pz); this.speed += (moved / Math.max(dt, 1e-3) - this.speed) * Math.min(1, dt * 8);
+    const moved = Math.hypot(p.x - px, p.z - pz); this.moved = moved; this.speed += (moved / Math.max(dt, 1e-3) - this.speed) * Math.min(1, dt * 8);
     // blend joints toward the pose for the current state (falling over is slower than raising a rifle)
     const c = this.cur, t = this.tgt, k = 1 - Math.exp(-9 * dt), kl = 1 - Math.exp(-5.5 * dt);
     for (const j in c) c[j] += (t[j] - c[j]) * (j === 'lie' || j === 'yOff' || j === 'drop' ? kl : k);
@@ -167,8 +167,29 @@ const POSE = {
 export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.03, -0.42, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
 const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
 let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null;
+// ---------- articulated glove: palm plus four fingers of three joints and a thumb, curled by a pose { i: index, g: other fingers, t: thumb } ----------
+// Local frame matches the controller grip: back of the hand up (+y), fingers forward (-z), thumb on the left for a right hand (mirrored for the left).
+const FINGERS = [[-0.027, [0.04, 0.024, 0.02], 0.0085, 0.06], [-0.009, [0.044, 0.027, 0.021], 0.0088, 0.01], [0.009, [0.041, 0.025, 0.02], 0.0082, -0.04], [0.026, [0.032, 0.019, 0.017], 0.0073, -0.11]];
+const CURL = [[1.25, 1.5, 0.95], [1.4, 1.65, 1.05]];
+function makeHand(sx) {
+  const GL = 0x17191c, mat = sheen({ color: GL }, 'cloth'), g = new THREE.Group(); g.scale.x = sx;   // matte glove fabric
+  g.add(new THREE.Mesh(merge([[BOX(0.08, 0.03, 0.086), GL, 0, -0.012, 0.031], [BOX(0.074, 0.04, 0.05), 0x1b2230, 0, -0.012, 0.1], [BOX(0.058, 0.006, 0.05), 0x2a2d33, 0, 0.0045, 0.028], [BOX(0.07, 0.012, 0.014), 0x24272c, 0, -0.002, -0.009]], 'cloth').geometry, vertexSheen('cloth')));
+  const seg = (parent, r, len, z) => { const j = new THREE.Group(); j.position.z = z; j.add(new THREE.Mesh(G(`f${r},${len}`, () => { const c = new THREE.CapsuleGeometry(r, Math.max(0.002, len - r * 1.4), 2, 7); c.rotateX(HP); c.translate(0, 0, -len / 2); return c; }), mat)); parent.add(j); return j; };
+  const chain = (base, lens, r) => { const js = []; let par = base; lens.forEach((len, k) => { par = seg(par, r, len, k ? -lens[k - 1] : 0); js.push(par); }); return js; };
+  const fingers = FINGERS.map(([x, lens, r, splay]) => { const b = new THREE.Group(); b.position.set(x, -0.013, -0.012); b.rotation.y = splay; g.add(b); return chain(b, lens, r); });
+  const tb = new THREE.Group(); tb.rotation.order = 'YXZ'; tb.position.set(-0.035, -0.024, 0.032); tb.rotation.set(-0.3, 0.8, 0.55); g.add(tb);
+  g.userData = { fingers, thumb: chain(tb, [0.032, 0.027, 0.022], 0.0095), tb, cur: { i: 0.2, g: 0.2, t: 0.1 } };
+  return g;
+}
+function poseHand(hand, want, dt) {
+  const u = hand.userData, c = u.cur, k = Math.min(1, dt * 22);
+  c.i += (want.i - c.i) * k; c.g += (want.g - c.g) * k; c.t += (want.t - c.t) * k;
+  u.fingers.forEach((js, f) => { const a = f ? CURL[1] : CURL[0], v = f ? c.g : c.i; for (let j = 0; j < 3; j++) js[j].rotation.x = -v * a[j]; });
+  u.tb.rotation.y = 0.8 - c.t * 0.35; u.thumb[0].rotation.x = -c.t * 0.35; u.thumb[1].rotation.x = -c.t * 0.75; u.thumb[2].rotation.x = -c.t * 0.65;
+}
+
 export class Body {
-  constructor() {
+  constructor(detailed = false) {
     const NAVY = 0x1b2230, VEST = 0x15181d, WEB = 0x23272e;
     if (!torsoGeo) {
       torsoGeo = merge([
@@ -188,16 +209,18 @@ export class Body {
     const g = this.g = new THREE.Group(), cloth = vertexSheen('cloth');
     this.torso = new THREE.Mesh(torsoGeo, cloth); this.legs = new THREE.Mesh(legGeo, cloth); g.add(this.torso, this.legs);
     const sleeve = sheen({ color: NAVY }, 'cloth');
-    this.arms = [-1, 1].map(sx => { const up = new THREE.Mesh(limbGeo, sleeve), fore = new THREE.Mesh(limbGeo, sleeve), glove = new THREE.Mesh(gloveGeo, vertexSheen('plastic')); glove.scale.x = sx; g.add(up, fore, glove); return { sx, up, fore, glove }; });
+    // your own hands get articulated fingers; teammates far away keep the cheap one-piece glove
+    this.arms = [-1, 1].map(sx => { const up = new THREE.Mesh(limbGeo, sleeve), fore = new THREE.Mesh(limbGeo, sleeve), glove = detailed ? makeHand(sx) : new THREE.Mesh(gloveGeo, vertexSheen('plastic')); if (!detailed) glove.scale.x = sx; g.add(up, fore, glove); return { sx, up, fore, glove }; });
+    this.detailed = detailed; this.lastT = performance.now();
     this.blob = makeBlob(0.42); g.add(this.blob); this.torso.receiveShadow = this.legs.receiveShadow = true;
   }
-  // hands: [left, right], each { pos, quat } or null
+  // hands: [left, right], each { pos, quat, pose? } or null
   update(headPos, yaw, hands, feetY) {
-    const s = Math.sin(yaw), c = Math.cos(yaw);
+    const s = Math.sin(yaw), c = Math.cos(yaw), now = performance.now(), dt = Math.min(0.1, (now - this.lastT) / 1000); this.lastT = now;
     this.torso.position.set(headPos.x + s * 0.05, headPos.y, headPos.z + c * 0.05); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;
     this.arms.forEach((a, i) => {
       const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
-      const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat);
+      const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat); if (this.detailed && h.pose) poseHand(a.glove, h.pose, dt);
       const wrist = a2.set(0, -0.012, 0.13).applyQuaternion(h.quat).add(h.pos), dir = a3.copy(wrist).sub(sh), d = Math.max(0.05, dir.length()); dir.multiplyScalar(1 / d);
       const L1 = 0.3, L2 = 0.29, dd = Math.min(d, L1 + L2 - 0.005), along = (L1 * L1 - L2 * L2 + dd * dd) / (2 * dd), out = Math.sqrt(Math.max(0, L1 * L1 - along * along));
       const pole = a4.set(a.sx * 0.55 * c + 0.35 * s, -0.8, -a.sx * 0.55 * s + 0.35 * c); pole.addScaledVector(dir, -pole.dot(dir)).normalize();

@@ -3,10 +3,10 @@ import * as THREE from '../vendor/three.module.min.js';
 import { buildWorld, label } from './gfx.js';
 import { Human, Officer, Bomb, Body, RIG, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
 import { loadCar } from './car.js';
-import { initAudio, setListener, setAmbience, sfx } from './audio.js';
+import { initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
-import { groundY, resolveCircle, rayStatic, SPAWN, BREAKER, CAR } from './core/level.js';
+import { groundY, resolveCircle, rayStatic, inFoot, floorAt, SPAWN, BREAKER, CAR, EXIT, H as STOREY } from './core/level.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 
@@ -52,7 +52,7 @@ const net = {
 };
 
 // ---------- hands & guns ----------
-const mkIn = () => ({ trig: 0, grip: 0, a: 0, b: 0, stick: 0, sx: 0, sy: 0 });
+const mkIn = () => ({ trig: 0, grip: 0, a: 0, b: 0, stick: 0, sx: 0, sy: 0, thumb: 0, trigT: 0 });
 const hands = [0, 1].map(i => { const h = { i, pos: V(), quat: new THREE.Quaternion(), active: false, item: null, magKind: null, support: false, rackG: null, rackStart: V(), rackDone: false, hold: null, aT: 0, vel: V(), last: V(), zone: null, in: mkIn(), prev: mkIn(), pad: null, xr: null, mags: { rifle: makeMag('rifle'), pistol: makeMag('pistol') }, tools: { pick: makeTool('pick'), cutters: makeTool('cutters'), cam: makeTool('cam') }, nades: { flash: makeNade('flash'), smoke: makeNade('smoke') } }; for (const m of [...Object.values(h.mags), ...Object.values(h.tools), ...Object.values(h.nades)]) { m.visible = false; scene.add(m); } return h; });
 const press = (h, k) => h.in[k] > 0.5 && !(h.prev[k] > 0.5), released = (h, k) => !(h.in[k] > 0.5) && h.prev[k] > 0.5;
 const buzz = (h, s, ms) => { try { h.pad && h.pad.hapticActuators && h.pad.hapticActuators[0] && h.pad.hapticActuators[0].pulse(s, ms); } catch { } };
@@ -61,7 +61,7 @@ const guns = { rifle: mkGun('rifle', makeRifle(true)), pistol: mkGun('pistol', m
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
 const HOLSTER = RIG;   // grab zones sit exactly where the holders are drawn on the vest and belt
 const bodyPt = (off, out) => out.set(off[0], 0, off[2]).applyAxisAngle(UP, S.bodyYaw).add(head.pos).setY(head.pos.y + off[1]);
-const myBody = new Body(); myBody.g.visible = false; scene.add(myBody.g);
+const myBody = new Body(true); myBody.g.visible = false; scene.add(myBody.g);
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 const torch = new THREE.SpotLight(0xfff2dd, 16, 30, 0.44, 0.8, 1.6); torch.visible = false; scene.add(torch, torch.target);
 const xrc = [0, 1].map(i => { const ray = renderer.xr.getController(i), grip = renderer.xr.getControllerGrip(i); rig.add(ray, grip); const o = { ray, grip, src: null }; ray.addEventListener('connected', e => { o.src = e.data; }); ray.addEventListener('disconnected', () => { o.src = null; }); return o; });
@@ -178,12 +178,13 @@ function showEndPanel() {
 function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z); }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase()], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['RESTART MISSION', 'start'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ['RESTART MISSION', 'start'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby') showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
   const act = panel.probe(o, d, false); if (!act) return act === '';   // a pull on the panel background is swallowed, not fired
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
+  if (act === 'end') { net.send({ t: 'end' }); toggleMenu(false); return true; }
   if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
   return true;
 }
@@ -205,7 +206,7 @@ function drawHud() {
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
-    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); $('bAim').classList.toggle('on', S.ads); }
+    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu ? 'flex' : 'none'; $('bEnd').style.display = S.phase === 'active' ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); $('bAim').classList.toggle('on', S.ads); }
   }
 }
 
@@ -223,7 +224,7 @@ function onMsg(m) {
   else if (m.t === 's') applySnap(m);
 }
 function applySnap(m) {
-  const prev = S.phase; S.phase = m.ph; S.timer = m.tm; let sec = 0;
+  const prev = S.phase; S.phase = m.ph; S.timer = m.tm; S.extract = m.X || 0; if (S.mode && inFoot(head.pos.x, head.pos.z)) S.everInside = true; if (m.ph !== 'active') S.everInside = false; let sec = 0;
   for (const [id, x, y, z, yaw, st, armed] of m.N) { const a = S.actors.get(id); if (a) a.target(x, y, z, yaw, st, armed); if (id > 100 && st === 'u') sec++; }
   for (const a of S.actors.values()) a.g.visible = a.blob.visible = m.ph !== 'lobby'; for (const b of S.bombs) b.g.visible = m.ph !== 'lobby';
   S.secured = sec; for (let i = 0; i < S.doorOpen.length; i++) { S.doorOpen[i] = m.D[i] === '1'; S.doorLocked[i] = m.L[i] === '1'; }
@@ -242,7 +243,7 @@ function applySnap(m) {
   for (const e of m.E) onEvent(e);
   if (S.phase !== prev) { S.menu = false; if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'active') { panel.mesh.visible = false; S.panel = null; } else showLobbyPanel(); }
 }
-const LINES = { surrender: ["DON'T SHOOT!", '#ffe080', "Don't shoot! I give up!"], defy: ['NO!', '#ff7070', 'No way!'], comply: ['OK! OK!', '#a0e0ff', 'Okay, okay!'], plead: ['PLEASE!', '#a0e0ff', 'Please help us!'], fake: ['(draws weapon)', '#ff4040', ''] };
+const LINES = { surrender: ["DON'T SHOOT!", '#ffe080', "Don't shoot! I give up!"], defy: ['NO!', '#ff7070', 'No way!'], comply: ['OK! OK!', '#a0e0ff', 'Okay, okay!'], plead: ['PLEASE!', '#a0e0ff', 'Please help us!'], threat: ['BACK OFF OR THEY DIE!', '#ff3030', 'Back off or the hostage dies!'], fake: ['(draws weapon)', '#ff4040', ''] };
 function onEvent(e) {
   const a = e.n != null ? S.actors.get(e.n) : null;
   switch (e.e) {
@@ -255,7 +256,7 @@ function onEvent(e) {
     case 'revive': if (e.p === S.me.id) sfx.ok(); break;
     case 'hit': if (a) a.flinch = 1; break;
     case 'power': sfx.power(v1.set(BREAKER.x, BREAKER.y, BREAKER.z), e.on); break;
-    case 'door': { const d = level.doors[e.d]; sfx.door(v1.set(d.cx, d.y + 1, d.cz)); break; }
+    case 'door': { const d = level.doors[e.d]; sfx.door(v1.set(d.cx, d.y + 1, d.cz), e.open); break; }
     case 'locked': { const d = level.doors[e.d]; sfx.rattle(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'LOCKED', '#ffb060'); break; }
     case 'unlock': { const d = level.doors[e.d]; sfx.unlock(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'UNLOCKED', '#80ff9a'); break; }
     case 'kick': { const d = level.doors[e.d]; sfx.kick(v1.set(d.cx, d.y + 1, d.cz), e.ok); if (e.ok) world.doors[e.d].cur = 0.9; else sayAt(d.cx, d.y + 1.5, d.cz, 'HELD', '#ffb060'); break; }
@@ -265,8 +266,8 @@ function onEvent(e) {
     case 'flash': { v1.set(e.x, e.y, e.z); sfx.bang(v1); puff([e.x, e.y + 0.2, e.z], 0xffffff); const d = v1.distanceTo(head.pos);
       if (d < 12) { v2.copy(v1).sub(head.pos).multiplyScalar(1 / Math.max(d, 0.01)); if (rayStatic(level, S.doorOpen, head.pos.x, head.pos.y, head.pos.z, v2.x, v2.y, v2.z, d) >= d - 0.15) { const k = (1 - d / 12) * (v2.dot(head.fwd) > 0.15 ? 1 : 0.35) * (S.nvg ? 1.4 : 1); flashWhite = Math.max(flashWhite, k * 2.2); sfx.ring(k); for (const h of hands) buzz(h, 1, 200); } } break; }
     case 'smoke': sfx.hiss(v1.set(e.x, e.y, e.z)); break;
-    case 'clink': sfx.impact(v1.set(e.x, e.y, e.z)); break;
-    case 'trap': { const d = level.doors[e.d]; sfx.boom(); puff([d.cx, d.y + 0.4, d.cz], 0xffc070); if (Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) < 6) flashWhite = Math.max(flashWhite, 0.7); sayAt(d.cx, d.y + 1.5, d.cz, 'TRIPWIRE!', '#ff5050'); break; }
+    case 'clink': sfx.clink(v1.set(e.x, e.y, e.z)); break;
+    case 'trap': { const d = level.doors[e.d]; sfx.boom(v1.set(d.cx, d.y + 1, d.cz)); puff([d.cx, d.y + 0.4, d.cz], 0xffc070); if (Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) < 6) flashWhite = Math.max(flashWhite, 0.7); sayAt(d.cx, d.y + 1.5, d.cz, 'TRIPWIRE!', '#ff5050'); break; }
     case 'disarm': { const d = level.doors[e.d]; sfx.cut(v1.set(d.cx, d.y + 0.3, d.cz), true); sayAt(d.cx, d.y + 1.2, d.cz, 'WIRE CUT', '#80ff9a'); break; }
     case 'cut': { const b = S.bombs[e.b]; if (b) sfx.cut(b.g.position, e.ok); if (e.defused) sfx.ok(); break; }
     case 'end': if (e.result === 'DETONATION') { sfx.boom(); flashWhite = 1; } else if (e.result === 'MISSION COMPLETE') sfx.ok(); break;
@@ -290,7 +291,8 @@ function deskKey(code) {
   if (code === 'KeyF') doShout();
   else if (code === 'KeyC') S.crouch = !S.crouch;
   else if (code === 'KeyT') S.light = !S.light;
-  else if (code === 'KeyV' && G) { toggleMode(G.st); sfx.click(); }
+  else if (code === 'KeyV' && G) { toggleMode(G.st); sfx.selector(); }
+  else if (code === 'KeyL' && S.phase === 'active') net.send({ t: 'end' });
   else if (code === 'KeyE') deskInteract();
   else if (code === 'KeyQ') doKick();
   else if (code === 'KeyN') toggleNVG();
@@ -299,8 +301,8 @@ function deskKey(code) {
   else if (code === 'Digit6' || code === 'Digit7') { const k = code === 'Digit6' ? 'flash' : 'smoke'; if (S.me[k === 'flash' ? 'fl' : 'sm'] > 0) { v1.copy(head.pos).addScaledVector(head.fwd, 0.4); net.send({ t: 'throw', k, o: [v1.x, v1.y - 0.1, v1.z], v: [head.fwd.x * 11, head.fwd.y * 11 + 3, head.fwd.z * 11] }); sfx.click(); } else sfx.beep(null, 200); }
   else if ((code === 'Digit1' || code === 'Digit2') && !S.reloading) { const k = code === 'Digit1' ? 'rifle' : 'pistol'; if (G) G.where = 'holster'; guns[k].where = 1; hands[1].item = k; sfx.click(); }
   else if (code === 'KeyR' && G && !S.reloading) {
-    S.reloading = true; if (G.st.mag !== null) { ejectMag(G.st); sfx.magOut(); }
-    setTimeout(() => { if (G.mags > 0) { G.mags--; insertMag(G.st, GUNS[G.kind].cap); sfx.magIn(); } setTimeout(() => { if (!G.st.chamber && G.st.mag > 0) { if (G.st.locked) release(G.st); else rack(G.st); sfx.rack(); } S.reloading = false; }, 350); }, 750);
+    S.reloading = true; if (G.st.mag !== null) { ejectMag(G.st); sfx.magOut(G.kind); }
+    setTimeout(() => { if (G.mags > 0) { G.mags--; insertMag(G.st, GUNS[G.kind].cap); sfx.magIn(G.kind); } setTimeout(() => { if (!G.st.chamber && G.st.mag > 0) { if (G.st.locked) { release(G.st); sfx.bolt(G.kind); } else { rack(G.st); sfx.rack(G.kind); } } S.reloading = false; }, 350); }, 750);
   }
 }
 function nearestCuffable(p, maxD) { let best = null, bd = maxD; for (const [id, a] of S.actors) { if (a.st !== 's' && a.st !== 'k' && a.st !== 'y' && a.st !== 'i') continue; const d = Math.hypot(a.g.position.x - p.x, a.g.position.z - p.z) + Math.abs(a.g.position.y + 0.9 - p.y) * 0.3; if (d < bd) { bd = d; best = id; } } return best; }
@@ -331,6 +333,7 @@ function readVR() {
     const s = o.src; if (!s || !s.gamepad || (s.handedness !== 'left' && s.handedness !== 'right')) continue;
     const h = hands[s.handedness === 'left' ? 0 : 1], b = s.gamepad.buttons, a = s.gamepad.axes; h.active = true; h.xr = o; h.pad = s.gamepad;
     h.in.trig = b[0] ? b[0].value : 0; h.in.grip = b[1] ? b[1].value : 0; h.in.stick = b[3] && b[3].pressed ? 1 : 0; h.in.a = b[4] && b[4].pressed ? 1 : 0; h.in.b = b[5] && b[5].pressed ? 1 : 0;
+    h.in.thumb = [3, 4, 5].some(k => b[k] && (b[k].touched || b[k].pressed)) ? 1 : 0; h.in.trigT = b[0] && (b[0].touched || b[0].value > 0.05) ? 1 : 0;   // capacitive touch: a resting thumb or finger
     h.in.sx = a.length >= 4 ? a[2] : (a[0] || 0); h.in.sy = a.length >= 4 ? a[3] : (a[1] || 0);
   }
   for (const h of hands) if (!h.active) Object.assign(h.in, mkIn());
@@ -397,11 +400,11 @@ function fire(h, G, o) {
     const d = rayStatic(level, S.doorOpen, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, 60); tracer(v1, v3.copy(v2).multiplyScalar(d).add(v1));
     sfx.shot(null, G.kind); G.kick += (o.support ? 0.03 : 0.07) * GUNS[G.kind].recoil; G.flashT = 0.045; buzz(h, 1, 50); if (o.support) buzz(o, 0.5, 40);
     if (G.st.locked) sfx.lock();
-  } else if (r === 'click') sfx.click();
+  } else if (r === 'click') sfx.dry(G.kind);
   if (S.mode !== 'vr') return;
-  if (press(h, 'a') && G.st.mag !== null) { ejectMag(G.st); sfx.magOut(); buzz(h, 0.4, 30); }
-  if (press(h, 'b') && release(G.st)) { sfx.rack(); buzz(h, 0.6, 40); }
-  if (press(h, 'stick') && G.kind === 'rifle') { toggleMode(G.st); sfx.click(); }
+  if (press(h, 'a') && G.st.mag !== null) { ejectMag(G.st); sfx.magOut(G.kind); buzz(h, 0.4, 30); }
+  if (press(h, 'b') && release(G.st)) { sfx.bolt(G.kind); buzz(h, 0.6, 40); }
+  if (press(h, 'stick') && G.kind === 'rifle') { toggleMode(G.st); sfx.selector(); }
 }
 function grab(h, o) {   // grip pressed on hand h; o is the other hand
   const G = gunIn(h); if (G) { G.where = 'holster'; h.item = null; o.support = false; o.rackG = null; sfx.click(); return; }
@@ -457,12 +460,12 @@ function handVR(h, o, dt) {
   }
   if (h.item === 'mag') {
     const mm = h.mags[h.magKind]; mm.position.copy(h.pos); mm.quaternion.copy(h.quat);
-    if (OG && OG.kind === h.magKind && OG.st.mag === null && OG.mesh.localToWorld(v1.copy(OG.ud.magwell)).distanceTo(h.pos) < 0.1) { insertMag(OG.st, GUNS[OG.kind].cap); h.item = null; sfx.magIn(); buzz(h, 0.8, 40); buzz(o, 0.5, 40); }
+    if (OG && OG.kind === h.magKind && OG.st.mag === null && OG.mesh.localToWorld(v1.copy(OG.ud.magwell)).distanceTo(h.pos) < 0.1) { insertMag(OG.st, GUNS[OG.kind].cap); h.item = null; sfx.magIn(OG.kind); buzz(h, 0.8, 40); buzz(o, 0.5, 40); }
   }
   for (const k in h.mags) h.mags[k].visible = h.item === 'mag' && h.magKind === k;
   for (const k in h.nades) { const m = h.nades[k]; m.visible = h.item === k; if (m.visible) { m.position.copy(h.pos); m.quaternion.copy(h.quat); } }
   for (const k in h.tools) { const m = h.tools[k]; m.visible = !h.item && S.tool === k && (!!OG || h.i === 0); if (m.visible) { m.position.copy(h.pos); m.quaternion.copy(h.quat); } }
-  if (h.rackG && !h.rackDone) { const back = v1.set(0, 0, 1).applyQuaternion(h.rackG.mesh.quaternion); if (v2.copy(h.pos).sub(h.rackStart).dot(back) > 0.045) { rack(h.rackG.st); h.rackDone = true; sfx.rack(); buzz(h, 0.8, 50); buzz(o, 0.4, 50); } }
+  if (h.rackG && !h.rackDone) { const back = v1.set(0, 0, 1).applyQuaternion(h.rackG.mesh.quaternion); if (v2.copy(h.pos).sub(h.rackStart).dot(back) > 0.045) { rack(h.rackG.st); h.rackDone = true; sfx.rack(h.rackG.kind); buzz(h, 0.8, 50); buzz(o, 0.4, 50); } }
   const bar = bars[h.i]; bar.visible = !!h.hold;
   if (h.hold) {
     const H = h.hold; let tx, tz, ok = true;
@@ -470,7 +473,7 @@ function handVR(h, o, dt) {
     else { const tgt = H.kind === 'cuff' ? S.actors.get(H.id) : S.officers.get(H.id), tp = tgt && (H.kind === 'cuff' ? tgt.g.position : tgt.head.position); ok = !!tp; if (tp) { tx = tp.x; tz = tp.z; } }
     if (!ok || Math.hypot(tx - h.pos.x, tz - h.pos.z) > 1.3) h.hold = null;
     else {
-      H.t += dt; if (H.kind !== 'cam') buzz(h, H.kind === 'pick' ? 0.12 + 0.2 * Math.random() : 0.2, 20); if (H.kind === 'pick' && Math.floor(H.t * 3) !== Math.floor((H.t - dt) * 3)) sfx.click();
+      H.t += dt; if (H.kind !== 'cam') buzz(h, H.kind === 'pick' ? 0.12 + 0.2 * Math.random() : 0.2, 20); if (H.kind === 'pick' && Math.floor(H.t * 3) !== Math.floor((H.t - dt) * 3)) sfx.pickTick();
       bar.position.copy(h.pos).y += 0.09; bar.quaternion.copy(head.quat); bar.scale.x = Math.max(0.02, Math.min(1, H.t / H.need)); bar.material.color.set(H.kind === 'pick' ? 0xffc040 : 0x40ff80);
       if (H.kind === 'cam') bar.visible = false;
       if (H.t >= H.need) { net.send(H.kind === 'cuff' ? { t: 'cuff', n: H.id } : H.kind === 'revive' ? { t: 'revive', p: H.id } : { t: H.kind, d: H.id }); h.hold = null; }
@@ -542,6 +545,45 @@ function doorCam(dt) {
   renderer.setRenderTarget(dcam.rt); renderer.render(scene, dcam.cam); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; dcam.screen.visible = true; myBody.g.visible = !!S.mode;
 }
 
+// ---------- finger pose from what the hand holds and what the controller senses ----------
+function handPose(h, o) {
+  const I = h.in, P = h.pose || (h.pose = { i: 0, g: 0, t: 0 });
+  if (gunIn(h)) { P.i = 0.3 + 0.5 * I.trig; P.g = 0.95; P.t = 0.85; }                                   // wrapped round the grip, index on the trigger
+  else if (h.item) { P.i = 0.8; P.g = 0.88; P.t = 0.7; }                                               // magazine, grenade
+  else if (h.support) { P.i = 0.75; P.g = 0.85; P.t = 0.5; }                                           // on the foregrip
+  else if (h.rackG) { P.i = 0.9; P.g = 0.9; P.t = 0.8; }                                               // pinching the charging handle
+  else if (S.tool !== 'hands' && h.tools[S.tool] && h.tools[S.tool].visible) { P.i = 0.55; P.g = 0.85; P.t = 0.6; }
+  else { P.i = Math.max(I.trigT ? 0.22 : 0.05, I.trig * 0.95); P.g = 0.08 + I.grip * 0.87; P.t = I.thumb ? 0.55 : 0.1; }   // empty: point, fist, open
+  return P;
+}
+// ---------- footsteps: suspects, hostages and teammates are heard walking (muffled through walls); your own steps are quieter ----------
+const stepAcc = new Map(), stepPos = new THREE.Vector3(), myStep = { x: 0, z: 0, acc: 0, init: false };
+function stepSound(key, x, y, z, moved, gainK, self) {
+  let a = (stepAcc.get(key) || 0) + moved; const stride = 0.7;
+  if (a > stride) { a -= stride; if (Math.hypot(x - head.pos.x, z - head.pos.z) < 26 || self) sfx.step(self ? null : stepPos.set(x, y + 0.05, z), floorAt(x, z, y), gainK); }
+  stepAcc.set(key, Math.min(a, stride));
+}
+function footsteps() {
+  for (const [id, a] of S.actors) { const st = a.st; if (!a.g.visible || !(st === 'g' || st === 'a' || st === 'c' || st === 'h') || a.moved < 0.003) continue; stepSound('n' + id, a.g.position.x, a.g.position.y, a.g.position.z, a.moved, Math.min(1.4, 0.5 + a.speed * 0.35)); }
+  for (const [id, o] of S.officers) { const p = o.head.position, prev = o.lastStep || (o.lastStep = p.clone()), moved = Math.hypot(p.x - prev.x, p.z - prev.z); prev.copy(p); if (moved > 0.003 && moved < 1 && !o.down) stepSound('o' + id, p.x, p.y - 1.65, p.z, moved, 0.9); }
+  if (!S.mode || S.me.down) return; const moved = myStep.init ? Math.hypot(head.pos.x - myStep.x, head.pos.z - myStep.z) : 0; myStep.x = head.pos.x; myStep.z = head.pos.z; myStep.init = true;
+  if (moved > 0.002 && moved < 1) stepSound('me', head.pos.x, S.feetY, head.pos.z, moved, S.crouch ? 0.12 : 0.28, true);
+}
+// sounds behind a wall, floor or closed door come through muffled
+setOccluder((x, y, z) => { const dx = x - head.pos.x, dy = y - head.pos.y, dz = z - head.pos.z, d = Math.hypot(dx, dy, dz); return d > 0.5 && rayStatic(level, S.doorOpen, head.pos.x, head.pos.y, head.pos.z, dx / d, dy / d, dz / d, d, true) < d - 0.3; });
+// ---------- walking out: a marked zone at the front gate, and a countdown while the squad stands in it ----------
+const exitMark = (() => { const g = new THREE.Group(), w = EXIT.x1 - EXIT.x0, d = EXIT.z1 - EXIT.z0, m = new THREE.MeshBasicMaterial({ color: 0x40ff80, transparent: true, opacity: 0.55, toneMapped: false });
+  for (const [x, z, sx, sz] of [[0, -d / 2, w, 0.08], [0, d / 2, w, 0.08], [-w / 2, 0, 0.08, d], [w / 2, 0, 0.08, d]]) { const b = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.01, sz), m); b.position.set(x, 0.035, z); g.add(b); }
+  const tag = label('EXIT - LEAVE MISSION', '#7dffa0', 512, 64); tag.scale.set(1.6, 0.2, 1); tag.position.set(0, 2.2, -d / 2 + 0.3); g.add(tag); g.position.set((EXIT.x0 + EXIT.x1) / 2, 0, (EXIT.z0 + EXIT.z1) / 2); scene.add(g); return g; })();
+let exitT = 0, exitShown = -1;
+function exitPrompt(dt) {
+  exitMark.visible = S.phase === 'active';
+  const inZone = S.phase === 'active' && head.pos.x > EXIT.x0 && head.pos.x < EXIT.x1 && head.pos.z > EXIT.z0 && head.pos.z < EXIT.z1, n = S.extract || 0;
+  if ((exitT -= dt) > 0 || !inZone) return; exitT = 1;
+  const text = n > 0 ? 'LEAVING IN ' + n : S.everInside ? 'WAITING FOR SQUAD' : null; if (!text) return;
+  sayAt(head.pos.x + head.fwd.x * 1.4, head.pos.y + 0.1, head.pos.z + head.fwd.z * 1.4, text, n > 0 ? '#7dffa0' : '#ffd060'); if (n > 0 && n !== exitShown) sfx.beep(null, 900); exitShown = n;
+}
+
 // ---------- frame loop ----------
 let last = performance.now(), poseT = 0, lobbyT = 0;
 const arr7 = (p, q) => [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4), +q.w.toFixed(4)];
@@ -556,6 +598,7 @@ function frame(t) {
   } else { const a = t * 0.00005; camera.position.set(12 + Math.sin(a) * 26, 9, 22 + Math.cos(a) * 14); camera.lookAt(12, 2, 8); headWorld(); }
   for (const h of hands) { if (h.active) { v1.copy(h.pos).sub(h.last).multiplyScalar(1 / dt); if (v1.lengthSq() < 900) h.vel.lerp(v1, 0.45); h.last.copy(h.pos); } }
   placeGuns(dt);
+  for (const h of hands) h.pose = handPose(h, hands[1 - h.i]);
   myBody.g.visible = !!S.mode; if (S.mode) myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY);
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
@@ -588,7 +631,8 @@ function frame(t) {
   S.figT = Math.max(0, S.figT - dt); fig.mesh.visible = S.figT > 0 && !!S.mode; fig.mesh.material.opacity = Math.min(1, S.figT);
   weather.update(dt, head.pos, () => sfx.thunder());
   setAmbience(S.wx === 'storm' ? 1 : S.wx === 'rain' ? 0.7 : 0, weather.state.inside);
-  setListener(head.pos, head.fwd);
+  setListener(head.pos, head.fwd, inFoot(head.pos.x, head.pos.z) && head.pos.y < 2 * STOREY);
+  footsteps(dt); exitPrompt(dt);
   if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(head.pos, head.quat), l: hands[0].active ? arr7(hands[0].pos, hands[0].quat) : null, r: hands[1].active ? arr7(hands[1].pos, hands[1].quat) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.visible ? 1 : 0 }); }
   renderer.render(scene, camera);
 }
@@ -626,7 +670,7 @@ function initTouch() {
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
   bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
-  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
+  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick }); S.tmenu = false; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
   const sEnd = e => { if (e.pointerId !== sid) return; sid = null; S.tmove.x = S.tmove.y = 0; knob.style.transform = ''; };

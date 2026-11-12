@@ -1,5 +1,5 @@
 // BREACHLINE mission simulation: suspects, civilians, bombs, rules of engagement, scoring. Pure logic.
-import { buildLevel, groundY, rayStatic, raySphere, findPath, solidAt, layerOf, inStair, NX, NZ, YARD, U, H, BREAKER, SPAWN, SUSPECT_SPOTS, CIV_SPOTS, BOMB_SPOTS } from './level.js';
+import { buildLevel, groundY, rayStatic, raySphere, findPath, solidAt, layerOf, inStair, inFoot, NX, NZ, YARD, U, H, BREAKER, EXIT, SPAWN, SUSPECT_SPOTS, CIV_SPOTS, BOMB_SPOTS } from './level.js';
 
 export function rng32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const DMG = { rifle: { head: 200, torso: 60, legs: 30 }, pistol: { head: 200, torso: 40, legs: 20 } };
@@ -17,7 +17,7 @@ export class Sim {
     this.seed = seed >>> 0; this.rnd = rng32(this.seed); const rnd = this.rnd;
     { const r = rng32(this.seed ^ 0x9e3779b9)(); this.weather = WEATHER.includes(this.wxPick) ? this.wxPick : r < 0.35 ? 'clear' : r < 0.6 ? 'rain' : r < 0.8 ? 'fog' : 'storm'; }
     this.phase = 'lobby'; this.timer = MISSION_TIME; this.t = 0; this.report = null;
-    this.log = { unauth: 0, execution: 0, civHit: 0, civKilled: 0, ff: 0, downs: 0, wrongWire: 0 };
+    this.log = { unauth: 0, execution: 0, civHit: 0, civKilled: 0, civExecuted: 0, ff: 0, downs: 0, wrongWire: 0 }; this.extractT = 0; this.left = null;
     const pick = (arr, n) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); };
     this.npcs = [];
     const spots = pick(SUSPECT_SPOTS, N_SUSPECTS + 4);
@@ -26,6 +26,8 @@ export class Sim {
       patrol: rnd() < 0.35 ? spots[N_SUSPECTS + (i % 4)] : null, pt: 0, pwait: 3 + rnd() * 6, resolve: 0.3 + rnd() * 0.65, sweep: (rnd() - 0.5) * 0.8,
       fakeChance: rnd() < 0.18, fake: false, shouts: 0, spd: 0, strafe: false, path: null, pi: 0, react: 0, cool: 0, burst: 3, lost: 0, tA: 0, tS: 0, hold: false, tgt: 0, lk: null, armed: true, flagged: false }));
     pick(CIV_SPOTS, N_CIVS).forEach(([f, x, z], i) => this.npcs.push({ id: 101 + i, kind: 'c', v: Math.floor(rnd() * 4), x, z, y: f * H, yaw: rnd() * 6.28, hp: 100, st: 'w', stubborn: rnd() < 0.25, flagged: false }));
+    // Most suspects will turn on a hostage once a firefight has gone on for a few rounds. Drawn from their own stream so the rest of the layout per seed is unchanged.
+    { const rr = rng32(this.seed ^ 0x51ed27); for (const n of this.npcs) if (n.kind === 's') { n.ruthless = rr() < 0.75; n.fired = 0; n.execAfter = 3 + Math.floor(rr() * 5); n.exec = null; } }
     this.doorOpen = this.level.doors.map(d => !d.exterior && rnd() < 0.3);
     this.gren = []; this.smokes = [];
     this.doorLocked = this.level.doors.map((d, i) => d.hidden ? false : d.exterior ? rnd() < 0.6 : !this.doorOpen[i] && rnd() < 0.3);
@@ -35,7 +37,7 @@ export class Sim {
       const wires = pick([0, 1, 2, 3], 4), order = pick([0, 1, 2, 3], 2);
       return { x, z, y: f * H + h, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
-    for (const p of this.players.values()) { p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; }
+    for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; }
   }
   start(seed, night = false, wx = this.wxPick) { this.night = !!night;   // every mission starts with the power on; night falls when someone throws the breaker
     this.wxPick = wx === 'random' || WEATHER.includes(wx) ? wx : this.wxPick; this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
@@ -82,6 +84,7 @@ export class Sim {
     else if (dead) { n.cov = null; n.crouch = false; n.stun = 0; n.st = part === 'head' || this.rnd() < 0.25 ? 'd' : 'i'; n.just = justified; n.armed = false; n.path = null; }   // most body hits incapacitate: the suspect can still be arrested
     else if (n.st === 'g' || n.st === 'a') this.engage(n, p, 0.3);
     else if (n.st === 'c' && n.hp < 60 && this.rnd() < 0.35) this.surrender(n);
+    if (n.exec && n.st === 'c' && this.rnd() < 0.5) n.exec = null;   // a wounded suspect may lose his nerve
     this.ev({ e: 'hit', n: n.id, dead });
   }
   hurt(p, dmg, part = 'torso') { if (p.down) return; p.hp -= dmg; p.w |= 1 << PARTS.indexOf(part); this.ev({ e: 'hurt', p: p.id, part }); if (p.hp <= 0) { p.hp = 0; p.down = true; this.log.downs++; this.ev({ e: 'down', p: p.id }); } }
@@ -104,7 +107,7 @@ export class Sim {
       else if (!(n.stun > 0)) { this.ev({ e: 'say', n: n.id, k: 'defy' }); if (n.st !== 'c') this.engage(n, p, 0.5 + this.rnd() * 0.4); }
     }
   }
-  surrender(n) { n.cov = null; n.crouch = false; n.stun = 0; n.st = 's'; n.tS = 0; n.path = null; n.armed = false; n.fake = n.fakeChance; n.fakeChance = false; n.fakeAt = 3.5 + this.rnd() * 4; this.ev({ e: 'say', n: n.id, k: 'surrender' }); }
+  surrender(n) { n.exec = null; n.cov = null; n.crouch = false; n.stun = 0; n.st = 's'; n.tS = 0; n.path = null; n.armed = false; n.fake = n.fakeChance; n.fakeChance = false; n.fakeAt = 3.5 + this.rnd() * 4; this.ev({ e: 'say', n: n.id, k: 'surrender' }); }
   engage(n, p, react) { n.wantCover = !n.cov && this.rnd() < 0.85; n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
   cuff(id, nid) {
     const p = this.players.get(id), n = this.npcs.find(q => q.id === nid); if (!p || p.down || !n || this.phase !== 'active') return;
@@ -159,7 +162,7 @@ export class Sim {
     for (const n of this.npcs) {
       if (n.kind !== 's' || !(n.st === 'g' || n.st === 'a' || n.st === 'c')) continue; const d = Math.hypot(n.x - g.x, n.y + 1.2 - g.y, n.z - g.z);
       if (d > 8 || !this.clear(g.x, g.y + 0.15, g.z, n.x, this.eyeY(n), n.z)) continue;
-      n.stun = d < 4 ? 6 : 4.5; n.cov = null; n.crouch = false; n.strafe = false; n.path = null; n.spd = 0; n.wantCover = false; n.st = 'a'; n.tA = 0; n.hold = true; n.fix = false; n.lk = [g.x, g.z, n.y];   // blind and deaf: no longer a threat until it wears off
+      n.stun = d < 4 ? 6 : 4.5; n.exec = null; n.cov = null; n.crouch = false; n.strafe = false; n.path = null; n.spd = 0; n.wantCover = false; n.st = 'a'; n.tA = 0; n.hold = true; n.fix = false; n.lk = [g.x, g.z, n.y];   // blind and deaf: no longer a threat until it wears off
     }
     if (by) this.noise(g.x, g.z, 30, by);
   }
@@ -271,6 +274,8 @@ export class Sim {
       else this.walk(n, dt, 2.2);
       if (n.tA > (n.fix ? 90 : 25)) { n.fix = false; n.st = 'g'; n.hold = false; this.goto(n, n.post[0], n.post[1], n.post[2]); }
     } else if (n.st === 'c') {
+      if (n.exec) return this.tickExec(n, dt);
+      if (n.ruthless && n.fired >= n.execAfter) { const c = this.hostageNear(n); if (c) { n.exec = { id: c.id, t: 1.4 + this.rnd() * 0.8 }; n.cov = null; n.crouch = false; n.path = null; n.strafe = false; n.spd = 0; this.ev({ e: 'say', n: n.id, k: 'threat' }); this.ev({ e: 'say', n: c.id, k: 'plead' }); return; } }
       if (n.wantCover) { n.wantCover = false; const p = seen || this.players.get(n.tgt); const c = p && this.findCover(n, p); if (c && this.goto(n, c.hx, c.hz, n.y)) { n.cov = c; n.strafe = false; } }
       if (n.cov) return this.tickCover(n, dt, seen, best);
       if (seen) {
@@ -284,7 +289,30 @@ export class Sim {
       }
     }
   }
+  // An unsecured hostage this suspect can see on the same floor, nearest first.
+  hostageNear(n) {
+    let best = null, bd = 8;
+    for (const c of this.npcs) { if (c.kind !== 'c' || !(c.st === 'w' || c.st === 'y') || Math.abs(c.y - n.y) > 1) continue; const d = Math.hypot(c.x - n.x, c.z - n.z); if (d < bd && this.clear(n.x, this.eyeY(n), n.z, c.x, c.y + 0.8, c.z)) { bd = d; best = c; } }
+    return best;
+  }
+  // He has said what he will do: turn the rifle on the hostage. You have about a second and a half to drop him, flash him or make him give up.
+  tickExec(n, dt) {
+    const c = this.npcs.find(q => q.id === n.exec.id);
+    if (!c || c.st === 'd' || c.st === 'u') { n.exec = null; return; }
+    this.face(n, c.x, c.z, dt, 6); n.path = null; n.spd = 0;
+    if ((n.exec.t -= dt) > 0) return;
+    for (let i = 0; i < 2; i++) this.ev({ e: 'ns', n: n.id, to: [r2(c.x), r2(c.y + 0.7), r2(c.z)] });
+    c.hp = 0; c.st = 'd'; c.byS = true; this.log.civExecuted++; this.ev({ e: 'hit', n: c.id, dead: true });
+    n.exec = null; n.execAfter = n.fired + 6 + Math.floor(this.rnd() * 5); n.react = 0.3;
+  }
+  // Anyone may call it: the mission ends now and is scored on what has been done. Complete only if every bomb is safe and every hostage is accounted for.
+  endMission(id, how = 'radio') {
+    if (this.phase !== 'active' || !this.players.has(id)) return;
+    const civ = this.npcs.filter(n => n.kind === 'c'), done = this.bombs.every(b => b.defused) && civ.every(n => n.st === 'u' || n.st === 'd');
+    this.left = how; this.phase = 'ended'; this.report = this.score(done ? 'MISSION COMPLETE' : 'MISSION INCOMPLETE'); this.ev({ e: 'end', result: this.report.result });
+  }
   npcFire(n, p, d) {
+    n.fired = (n.fired || 0) + 1;
     const hit = this.rnd() < Math.max(0.08, Math.min(0.5, 0.55 - 0.02 * d)), sp = hit ? 0 : 0.7;
     const to = [r2(p.hx + (this.rnd() - 0.5) * sp), r2(p.hy - 0.25 + (this.rnd() - 0.5) * sp), r2(p.hz + (this.rnd() - 0.5) * sp)];
     this.ev({ e: 'ns', n: n.id, to });
@@ -301,7 +329,11 @@ export class Sim {
     if (this.timer <= 0 && this.bombs.some(b => !b.defused)) result = 'DETONATION';
     else if (ps.length && ps.every(p => p.down)) result = 'SQUAD DOWN';
     else if (sus.every(n => SECURED[n.st]) && civ.every(n => n.st === 'u' || n.st === 'd') && this.bombs.every(b => b.defused)) result = 'MISSION COMPLETE';
-    if (result) { this.phase = 'ended'; this.report = this.score(result); this.ev({ e: 'end', result }); }
+    if (result) { this.phase = 'ended'; this.report = this.score(result); this.ev({ e: 'end', result }); return; }
+    // walk out: once someone has been inside, every officer still standing at the front gate for 5 seconds ends the mission
+    for (const p of ps) if (p.has && inFoot(p.hx, p.hz)) p.entered = true;
+    const up = ps.filter(p => !p.down && p.has), atGate = p => p.hx > EXIT.x0 && p.hx < EXIT.x1 && p.hz > EXIT.z0 && p.hz < EXIT.z1 && p.y > -0.5;
+    if (up.length && ps.some(p => p.entered) && up.every(atGate)) { if ((this.extractT += dt) >= 5) this.endMission(up[0].id, 'exit'); } else this.extractT = 0;
   }
   score(result) {
     const L = this.log, sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c');
@@ -317,8 +349,11 @@ export class Sim {
     if (L.execution) lines.push(['Shot a surrendered suspect x' + L.execution, -20 * L.execution]);
     if (L.civHit) lines.push(['Civilian shot x' + L.civHit, -15 * L.civHit]);
     if (L.civKilled) lines.push(['Civilian killed x' + L.civKilled, -15 * L.civKilled]);
+    if (L.civExecuted) lines.push(['Hostage killed by a suspect x' + L.civExecuted, -10 * L.civExecuted]);
     if (L.ff) lines.push(['Friendly fire x' + L.ff, -5 * L.ff]);
-    let total = Math.max(0, Math.min(100, lines.reduce((s, l) => s + l[1], 0)));
+    const loose = sus.filter(n => !SECURED[n.st]).length, unsafe = this.bombs.length - defused, left = civ.filter(n => n.st === 'w' || n.st === 'y').length;
+    if (this.left) lines.push([(this.left === 'exit' ? 'Walked out' : 'Ended by radio') + (loose ? ', ' + loose + ' suspect' + (loose > 1 ? 's' : '') + ' unaccounted for' : '') + (left ? ', ' + left + ' hostage' + (left > 1 ? 's' : '') + ' left inside' : '') + (unsafe ? ', ' + unsafe + ' bomb' + (unsafe > 1 ? 's' : '') + ' live' : ''), null]);
+    let total = Math.max(0, Math.min(100, lines.reduce((s, l) => s + (l[1] || 0), 0)));
     if (result !== 'MISSION COMPLETE') total = Math.min(total, 49);
     const grade = total >= 90 ? 'A' : total >= 80 ? 'B' : total >= 70 ? 'C' : total >= 60 ? 'D' : 'F';
     return { result, lines, total, grade, time: Math.round(MISSION_TIME - this.timer) };
@@ -327,7 +362,7 @@ export class Sim {
     const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9)]);
     const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.stun > 0 && (n.st === 'a' || n.st === 'g' || n.st === 'c') ? 'z' : n.st === 'c' && n.crouch ? 'h' : n.st, n.kind === 's' && n.armed ? 1 : 0]);
     const E = this.events; this.events = [];
-    const s = { t: 's', ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };
+    const s = { t: 's', X: this.extractT > 0 ? Math.ceil(5 - this.extractT) : 0, ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };
     if (this.report) s.R = this.report;
     return s;
   }

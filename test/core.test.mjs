@@ -242,4 +242,29 @@ await t('cover: a suspect under fire moves out of the line of fire and shoots fr
     if (hid) covered++; if (hid && shot) fired++; }
   assert.ok(covered >= runs * 0.7, `took cover in ${covered}/${runs}`); assert.ok(fired >= covered * 0.7, `fired from cover in ${fired}/${covered}`);
 });
+await t('a suspect in a firefight turns on a nearby hostage after a few shots; you get a window to stop him', () => {
+  const setup = seed => { const [s, p] = mkSim(seed); const n = s.npcs[0], c = s.npcs.find(q => q.kind === 'c'); for (const o of s.npcs) if (o !== n && o !== c) o.st = 'u';
+    Object.assign(n, { x: 4.5, z: 10, y: 0, ruthless: true, execAfter: 3, fired: 0, wantCover: false }); Object.assign(c, { x: 6.5, z: 11.6, y: 0, st: 'w' }); put(s, p, 6, 1.65, 14.6); p.hp = 1e6; s.engage(n, p, 0.2); n.wantCover = false; return [s, p, n, c]; };
+  let [s, p, n, c] = setup(3); let threat = false, shotsBefore = 0;
+  for (let i = 0; i < 15 * 20 && c.st !== 'd'; i++) { s.tick(1 / 15); for (const e of s.events) { if (e.e === 'say' && e.k === 'threat') { threat = true; shotsBefore = n.fired; } } s.events.length = 0; }
+  assert.ok(threat && shotsBefore >= 3, 'warned after a few shots at the officer, fired ' + shotsBefore); assert.equal(c.st, 'd', 'killed the hostage'); assert.equal(s.log.civExecuted, 1); assert.equal(s.log.civKilled, 0, 'not counted against the officer');
+  for (let i = 0; i < 30; i++) s.tick(1 / 15); s.endMission(1); assert.ok(s.report.lines.some(l => /Hostage killed by a suspect x1/.test(l[0]) && l[1] === -10));
+  // stopped in the window: shoot him, flash him, or he surrenders
+  for (const stop of ['shoot', 'flash', 'surrender']) { [s, p, n, c] = setup(3);
+    for (let i = 0; i < 15 * 20 && !n.exec; i++) { s.tick(1 / 15); s.events.length = 0; } assert.ok(n.exec, 'threat started');
+    if (stop === 'shoot') { for (let k = 0; k < 3 && n.st === 'c'; k++) { s.t += 1; aimAt(s, p, n, 1.3); } } else if (stop === 'flash') s.flash({ x: n.x, y: 0.1, z: n.z + 1, by: 1 }); else s.surrender(n);
+    for (let i = 0; i < 15 * 3; i++) s.tick(1 / 15); assert.notEqual(c.st, 'd', stop + ' should save the hostage'); assert.equal(s.log.unauth, 0, 'shooting him mid-threat is justified'); }
+  // no hostage in sight, or already secured: he just keeps fighting
+  [s, p, n, c] = setup(3); c.st = 'u'; for (let i = 0; i < 15 * 15; i++) { s.tick(1 / 15); s.events.length = 0; } assert.ok(!n.exec && c.st === 'u');
+});
+await t('end mission by radio or by walking out; scored on what was done', () => {
+  let [s, p] = mkSim(4); for (const o of s.npcs) o.st = o.kind === 'c' ? 'u' : o.st; for (const b of s.bombs) b.defused = true; s.npcs[0].st = 'i';
+  s.endMission(1); assert.equal(s.report.result, 'MISSION COMPLETE', 'bombs and hostages done counts as complete'); assert.ok(s.report.total < 100 && s.report.lines.some(l => /unaccounted/.test(l[0])));
+  [s, p] = mkSim(4); s.endMission(1); assert.equal(s.report.result, 'MISSION INCOMPLETE'); assert.ok(s.report.total <= 49);
+  const h = new RoomHost(() => { }); h.join(1, 'A'); h.message(1, { t: 'start' }); h.message(1, { t: 'end' }); assert.equal(h.sim.phase, 'ended');
+  [s, p] = mkSim(4); for (const o of s.npcs) o.st = 'u'; put(s, p, 12, 1.65, 27); for (let i = 0; i < 15 * 8; i++) s.tick(1 / 15); assert.equal(s.phase, 'active', 'standing at the gate before going in does nothing');
+  put(s, p, 12, 1.65, 12); s.tick(1 / 15); put(s, p, 12, 1.65, 27); for (let i = 0; i < 15 * 3; i++) s.tick(1 / 15); assert.equal(s.phase, 'active'); assert.ok(s.snapshot().X > 0, 'countdown shown');
+  for (let i = 0; i < 15 * 3; i++) s.tick(1 / 15); assert.equal(s.phase, 'ended'); assert.ok(s.report.lines.some(l => /Walked out/.test(l[0])));
+  [s, p] = mkSim(4); const q = s.addPlayer(2, 'B'); put(s, p, 12, 1.65, 12); s.tick(0.1); put(s, p, 12, 1.65, 27); s.pose(2, { h: [12, 1.65, 12, 0, 0, 0, 1] }); for (let i = 0; i < 15 * 7; i++) s.tick(1 / 15); assert.equal(s.phase, 'active', 'waits for the whole squad');
+});
 console.log(n + ' tests passed');

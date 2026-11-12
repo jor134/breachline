@@ -7,7 +7,7 @@ with sync_playwright() as p:
     logs=[]
     pg.on('console', lambda m: logs.append(m.type+': '+m.text) if m.type in ('error','warning') else None)
     pg.on('pageerror', lambda e: logs.append('PAGEERROR: '+str(e)))
-    pg.goto(url); pg.wait_for_timeout(2500)
+    pg.goto(url); pg.wait_for_timeout(2500); pg.set_default_timeout(400000)
     if script:
         r = pg.evaluate(open(script).read()); print('RESULT', json.dumps(r)[:3000])
         pg.wait_for_timeout(600)

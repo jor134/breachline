@@ -59,17 +59,21 @@ const ALL = 'xXyYzZ';
 
 // Furniture is built from parts that fit inside its collision box, so what you see matches what stops you.
 function furnish(b, w) {
-  const { x0, x1, z0, z1, y0, y1 } = w, lx = x1 - x0, lz = z1 - z0, long = lx >= lz, len = long ? lx : lz;
-  // a(u0,u1,v0,v1): u runs along the long side (0..len), v across the short side (0..depth)
-  const P = (m, u0, u1, v0, v1, a, c, faces = ALL, s = 1) => long ? b(m).box(x0 + u0, x0 + u1, y0 + a, y0 + c, z0 + v0, z0 + v1, faces, s) : b(m).box(x0 + v0, x0 + v1, y0 + a, y0 + c, z0 + u0, z0 + u1, faces, s);
-  const dep = long ? lz : lx, h = y1 - y0;
+  const { x0, x1, z0, z1, y0, y1 } = w, lx = x1 - x0, lz = z1 - z0;
+  // Every piece has a front: w.face is the way it faces ('+x', '-x', '+z', '-z'). Without one it faces across its short side, toward +.
+  const face = w.face || (lx >= lz ? '+z' : '+x'), acrossX = face[1] === 'z', neg = face[0] === '-', len = acrossX ? lx : lz, dep = acrossX ? lz : lx, h = y1 - y0;
+  // P(u0, u1, v0, v1): u runs side to side across the front (0..len), v from the back (0) to the front (dep)
+  const P = (m, u0, u1, v0, v1, a, c, faces = ALL, s = 1) => acrossX
+    ? b(m).box(x0 + u0, x0 + u1, y0 + a, y0 + c, neg ? z1 - v1 : z0 + v0, neg ? z1 - v0 : z0 + v1, faces, s)
+    : b(m).box(neg ? x1 - v1 : x0 + v0, neg ? x1 - v0 : x0 + v1, y0 + a, y0 + c, z0 + u0, z0 + u1, faces, s);
   switch (w.sub) {
     case 'sofa': { const n = Math.max(1, Math.round((len - 0.4) / 0.8)), cw = (len - 0.4) / n;
       P('fabric', 0, len, 0, dep, 0.08, 0.4); P('fabric', 0, len, 0, 0.2, 0.4, h); P('fabric', 0, 0.2, 0.2, dep, 0.4, 0.62); P('fabric', len - 0.2, len, 0.2, dep, 0.4, 0.62);
       for (let i = 0; i < n; i++) { P('linen', 0.2 + i * cw + 0.015, 0.2 + (i + 1) * cw - 0.015, 0.22, dep - 0.02, 0.4, 0.52); P('linen', 0.2 + i * cw + 0.03, 0.2 + (i + 1) * cw - 0.03, 0.2, 0.34, 0.52, h - 0.04); }
       P('fascia', 0.05, 0.11, 0.05, 0.11, 0, 0.08); P('fascia', len - 0.11, len - 0.05, 0.05, 0.11, 0, 0.08); P('fascia', 0.05, 0.11, dep - 0.11, dep - 0.05, 0, 0.08); P('fascia', len - 0.11, len - 0.05, dep - 0.11, dep - 0.05, 0, 0.08); break; }
-    case 'bed': P('walnut', 0, len, 0, dep, 0.06, 0.28); P('walnut', 0, 0.08, 0, dep, 0, h + 0.5); P('linen', 0.1, len - 0.03, 0.04, dep - 0.04, 0.28, h - 0.05);
-      P('fabric', len * 0.42, len - 0.02, 0.02, dep - 0.02, 0.3, h); P('lacquer', 0.14, 0.5, 0.12, dep / 2 - 0.06, h - 0.05, h + 0.07); P('lacquer', 0.14, 0.5, dep / 2 + 0.06, dep - 0.12, h - 0.05, h + 0.07); break;
+    case 'bed':   // headboard against the back, foot toward the front
+      P('walnut', 0, len, 0, dep, 0.06, 0.28); P('walnut', 0, len, 0, 0.08, 0, h + 0.5); P('linen', 0.04, len - 0.04, 0.1, dep - 0.03, 0.28, h - 0.05);
+      P('fabric', 0.02, len - 0.02, dep * 0.42, dep - 0.02, 0.3, h); P('lacquer', 0.12, len / 2 - 0.06, 0.14, 0.5, h - 0.05, h + 0.07); P('lacquer', len / 2 + 0.06, len - 0.12, 0.14, 0.5, h - 0.05, h + 0.07); break;
     case 'table': if (h < 0.55) { P('walnut', 0, len, 0, dep, h - 0.05, h); P('top', 0.12, len - 0.12, 0.12, dep - 0.12, 0, h - 0.05); }
       else { P('walnut', 0, len, 0, dep, h - 0.05, h); for (const [u, v] of [[0.06, 0.06], [len - 0.12, 0.06], [0.06, dep - 0.12], [len - 0.12, dep - 0.12]]) P('fascia', u, u + 0.06, v, v + 0.06, 0, h - 0.05); } break;
     case 'shelf': { P('walnut', 0, len, 0, 0.03, 0, h); P('walnut', 0, 0.03, 0, dep, 0, h); P('walnut', len - 0.03, len, 0, dep, 0, h);
@@ -167,10 +171,10 @@ export function buildWorld(scene) {
   for (let x = 1; x <= 24; x += 2.2) spot(x, -0.226, -1.5);
   // interior dressing (no collision): rugs, pendants, chandelier, screen, art
   const rug = (m, x0, x1, z0, z1, y) => b(m).quad([x0, y + 0.02, z0], [x1, y + 0.02, z0], [x1, y + 0.02, z1], [x0, y + 0.02, z1], [0, 1, 0], 1);
-  rug('linen', 1.4, 6.2, 10.6, 15.8, 0); rug('carpet', 17, 22.5, 10.2, 13.3, 0); rug('linen', 2, 6.4, 10.4, 14, H); rug('fabric', 9.8, 14.2, 10.4, 14.6, H); rug('fabric', 1.4, 6.6, 10.4, 14.8, -H); b('dark').box(0.11, 0.15, -H + 0.7, -H + 2.5, 9.6, 14.4, 'X'); b('fascia').box(0.1, 0.13, -H + 0.64, -H + 2.56, 9.54, 14.46, 'xXYyzZ'.replace('x', ''), 1);
+  rug('linen', 2.1, 8.8, 9.4, 14.2, 0); rug('carpet', 17, 22.5, 10.2, 13.3, 0); rug('linen', 2.6, 6.4, 9.6, 12.4, H); rug('fabric', 9.8, 14.2, 10.4, 14.6, H); rug('fabric', 2.4, 6.8, 9.6, 14.4, -H); b('dark').box(0.11, 0.15, -H + 0.7, -H + 2.5, 9.6, 14.4, 'X'); b('fascia').box(0.1, 0.13, -H + 0.64, -H + 2.56, 9.54, 14.46, 'xXYyzZ'.replace('x', ''), 1);
   for (const [x, z, y0] of [[18.8, 11.75, 0], [19.75, 11.75, 0], [20.7, 11.75, 0], [18.8, 3.6, 0], [20.2, 3.6, 0]]) { b('fascia').box(x - 0.006, x + 0.006, y0 + 2.0, y0 + H, z - 0.006, z + 0.006, 'xXzZ'); b('glow').box(x - 0.09, x + 0.09, y0 + 1.82, y0 + 2.0, z - 0.09, z + 0.09, ALL); }
   for (let i = 0; i < 9; i++) { const a = i * 2.4, r = 0.25 + (i % 3) * 0.22, x = 12 + Math.cos(a) * r, z = 12.4 + Math.sin(a) * r, y = 2.0 + (i % 4) * 0.2; b('fascia').box(x - 0.005, x + 0.005, y + 0.1, H, z - 0.005, z + 0.005, 'xXzZ'); b('glow').box(x - 0.05, x + 0.05, y, y + 0.1, z - 0.05, z + 0.05, ALL); }
-  b('dark').box(2, 4.2, 1.0, 2.1, 8.1, 8.14, 'Z'); b('fascia').box(1.96, 4.24, 0.96, 2.14, 8.1, 8.13, 'xXYyZ', 1);
+  b('dark').box(5.86, 8.14, 0.98, 2.26, 8.1, 8.155, 'Z'); b('fascia').box(5.8, 8.2, 0.92, 2.32, 8.1, 8.15, 'xXYyZ', 1);   // living room TV over the media console, clear of the study door
   b('walnut').box(9.11, 9.14, 1.1, 2.3, 14, 15.4, 'X', 1); b('top').box(14.86, 14.89, 1.2, 2.2, 14.2, 15.2, 'x', 1);
   const NOSHADE = { glass: 1, water: 1, glow: 1, ao: 1, aoBlob: 1, lightpool: 1, ocean: 1 };
   for (const k in B) { const m = B[k].mesh(MATS[k]); if (k === 'glass' || k === 'water') m.renderOrder = 5; if (k === 'ao' || k === 'aoBlob' || k === 'lightpool') m.renderOrder = 2; else if (!NOSHADE[k]) { m.castShadow = k !== 'gravel'; m.receiveShadow = true; } scene.add(m); }
