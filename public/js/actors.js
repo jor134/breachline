@@ -147,8 +147,12 @@ export class Human {
   }
   attachSkin(tpl) {
     const g = this.g, keepQ = g.quaternion.clone(), keepP = g.position.clone(); g.position.set(0, 0, 0); g.quaternion.identity(); g.updateMatrixWorld(true);
-    const sk = this.skin = new Skin(tpl, g), r = sk.role, gun = this.gun;
-    g.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) { let p = o, inGun = false; while (p) { if (p === gun) inGun = true; p = p.parent; } if (!inGun) o.visible = false; } });
+    let sk; try { sk = new Skin(tpl, g); } catch (e) { console.error('character rig failed', tpl.id, e); g.position.copy(keepP); g.quaternion.copy(keepQ); return; }
+    this.skin = sk; const r = sk.role, gun = this.gun;
+    // the built-in figure stays until the model has actually been drawn once, so a model the headset cannot draw never leaves an empty space
+    const old = []; g.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) { let p = o, inGun = false; while (p) { if (p === gun) inGun = true; p = p.parent; } if (!inGun) old.push(o); } });
+    let firstSkin = null; sk.wrap.traverse(o => { if (o.isSkinnedMesh && !firstSkin) firstSkin = o; });
+    if (firstSkin) firstSkin.onAfterRender = () => { firstSkin.onAfterRender = () => { }; for (const o of old) o.visible = false; };
     this.W = new Map(); this.D = { b: new THREE.Quaternion(), u: new THREE.Quaternion(), sh: [new THREE.Quaternion(), new THREE.Quaternion()], el: [new THREE.Quaternion(), new THREE.Quaternion()], hp: [new THREE.Quaternion(), new THREE.Quaternion()], kn: [new THREE.Quaternion(), new THREE.Quaternion()] };
     this.Wq = sk.bones.map(() => new THREE.Quaternion()); this.Iq = new THREE.Quaternion();
     this.poseSkin(true);
@@ -208,7 +212,7 @@ export class Human {
     this.g.rotation.x = c.lie; p.y = baseY + c.yOff; const lying = Math.abs(c.lie) / HP, off = -0.8 * lying * Math.sign(c.lie || 1);   // a fallen body's shadow lies under the body, not at its feet
     this.blob.position.set(p.x + Math.sin(this.g.rotation.y) * off, baseY + 0.024, p.z + Math.cos(this.g.rotation.y) * off); this.blob.scale.set(1 + lying * 0.3, 1, 1 + lying * 0.9); this.blob.rotation.y = this.g.rotation.y;
     if (this.gun) { if (this.flashT > 0) this.flashT -= dt; this.gun.userData.flash.visible = this.flashT > 0; }
-    if (this.skin) this.poseSkin(false);
+    if (this.skin) { try { this.poseSkin(false); } catch (e) { console.error('character pose failed', e); this.skin.dispose(); this.skin = null; this.g.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) o.visible = true; }); } }
   }
   muzzle(out) { return out.set(this.g.position.x + Math.sin(this.g.rotation.y) * 0.6, this.g.position.y + 1.35, this.g.position.z + Math.cos(this.g.rotation.y) * 0.6); }
 }

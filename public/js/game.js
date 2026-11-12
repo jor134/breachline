@@ -13,6 +13,11 @@ import { RoomHost, TICK } from './core/host.js';
 const $ = id => document.getElementById(id), Q = new URLSearchParams(location.search);
 const V = () => new THREE.Vector3(), v1 = V(), v2 = V(), v3 = V(), v4 = V(), q1 = new THREE.Quaternion(), m1 = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+// problems worth reporting (a model that failed to load, a shader the headset rejected, a lost GPU context) show on the HUD and the wrist display
+const ERRS = []; const noteErr = m => { m = String(m).replace(/\s+/g, ' ').slice(0, 90); if (!ERRS.includes(m)) { ERRS.push(m); if (ERRS.length > 4) ERRS.shift(); const el = document.getElementById('errs'); if (el) { el.textContent = ERRS.join('\n'); el.style.display = 'block'; } } };
+for (const k of ['error', 'warn']) { const f = console[k].bind(console); console[k] = (...a) => { f(...a); const t = a.map(x => x && x.message ? x.message : String(x)).join(' '); if (k === 'error' || /not loaded|failed/i.test(t)) noteErr(t); }; }
+addEventListener('error', e => noteErr(e.message)); addEventListener('unhandledrejection', e => noteErr(e.reason && e.reason.message || e.reason));
+renderer.domElement.addEventListener('webglcontextlost', () => noteErr('GPU context lost (out of graphics memory?)'));
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.setSize(innerWidth, innerHeight); renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
 renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.08;   // rolls off hot spots (flashlight, glass glare) without washing out colour
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // static sun shadows, drawn once
@@ -204,14 +209,14 @@ const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0625), new THREE.Mes
 let hudT = 0;
 function hudText() {
   const t = Math.max(0, S.timer), mm = Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
-  return { mm, hp: S.me.hp, obj: 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
+  return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
 }
 function drawHud() {
   const h = hudText();
   if (S.mode === 'vr') {
     const g = wc.getContext('2d'); g.fillStyle = '#05080c'; g.fillRect(0, 0, 256, 160); g.fillStyle = S.phase === 'active' && S.timer < 60 ? '#ff5050' : '#7dffa0'; g.font = 'bold 54px monospace'; g.textAlign = 'center'; g.fillText(S.phase === 'active' ? h.mm : S.phase.toUpperCase(), 128, 54);
     g.fillStyle = '#333'; g.fillRect(16, 68, 224, 14); g.fillStyle = h.hp > 40 ? '#40c060' : '#e04040'; g.fillRect(16, 68, 224 * h.hp / 100, 14);
-    g.fillStyle = '#cfd8e3'; g.font = '15px monospace'; g.fillText(h.obj, 110, 106); g.fillText(h.mags, 110, 128); drawBody(g, 218, 88, 0.85, ''); g.textAlign = 'center'; g.fillStyle = S.net === 'online' ? '#7dffa0' : '#ffb060'; g.fillText(S.net === 'online' ? 'ROOM ' + S.room : S.net.toUpperCase(), 128, 153); wtex.needsUpdate = true;
+    g.fillStyle = '#cfd8e3'; g.font = '15px monospace'; g.fillText(h.obj, 110, 106); g.fillText(h.mags, 110, 128); if (h.err) { g.fillStyle = '#ff8060'; g.font = '11px monospace'; g.textAlign = 'left'; g.fillText(h.err.slice(0, 40), 6, 152); g.textAlign = 'center'; g.font = '15px monospace'; g.fillStyle = '#cfd8e3'; } drawBody(g, 218, 88, 0.85, ''); g.textAlign = 'center'; g.fillStyle = S.net === 'online' ? '#7dffa0' : '#ffb060'; g.fillText(S.net === 'online' ? 'ROOM ' + S.room : S.net.toUpperCase(), 128, 153); wtex.needsUpdate = true;
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
