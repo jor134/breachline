@@ -2,8 +2,8 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { buildWorld, label } from './gfx.js';
 import { Human, Officer, Bomb, Body, RIG, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
-import { loadCar } from './car.js';
-import { initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
+import { loadCar, loadParkedCars } from './car.js';
+import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
 import { resolveCircle, rayStatic, MAP_IDS, MAPS, MISSION_IDS } from './core/level.js';
@@ -70,6 +70,7 @@ function loadMap(id, tod) {
     const keep = m => { if (!m || gen !== mapGen) { if (m) scene.remove(m); return; } if (m.isMesh) m.castShadow = m.receiveShadow = true; extras.push(m); renderer.shadowMap.needsUpdate = true; };
     if (M.veg) loadVegetation(scene, M).then(v => keep(v && v.mesh)).catch(e => console.warn('vegetation not loaded', e));
     for (const c of M.cars || []) loadCar(scene, c.x, 0, c.z, Math.PI, c.length).then(keep).catch(e => console.warn('car not loaded', e));
+    if (M.parked) loadParkedCars(scene, M.parked).then(keep).catch(e => console.warn('parked cars not loaded', e));
   }
 }
 loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : 'training');   // everyone arrives at the training facility; the mission board sends the squad out
@@ -328,7 +329,7 @@ function onEvent(e) {
     case 'locked': { const d = level.doors[e.d]; sfx.rattle(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'LOCKED', '#ffb060'); break; }
     case 'unlock': { const d = level.doors[e.d]; if (e.k === 'cut') { sfx.cut(v1.set(d.cx, d.y + 1.1, d.cz), true); sayAt(d.cx, d.y + 1.6, d.cz, 'LOCK CUT', '#80ff9a'); } else { sfx.unlock(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'UNLOCKED', '#80ff9a'); } break; }
     case 'kick': { const d = level.doors[e.d]; sfx.kick(v1.set(d.cx, d.y + 1, d.cz), e.ok); if (e.ok) world.doors[e.d].cur = 0.9; else sayAt(d.cx, d.y + 1.5, d.cz, 'HELD', '#ffb060'); break; }
-    case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (L[2] && a.g.position.distanceTo(head.pos) < 14) sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); } } break;
+    case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (L[2] && a.g.position.distanceTo(head.pos) < 14) { sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); if (voiceState.error) noteErr(voiceState.error); } } } break;
     case 'shout': if (e.p !== S.me.id) sfx.say('Police! Hands up!', 1); break;
     case 'cuff': if (a) sfx.cuff(a.g.position); break;
     case 'flash': { v1.set(e.x, e.y, e.z); sfx.bang(v1); puff([e.x, e.y + 0.2, e.z], 0xffffff); const d = v1.distanceTo(head.pos);

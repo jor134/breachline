@@ -70,7 +70,7 @@ export const FURNITURE = F;
 export const SUSPECT_SPOTS = [
   ...G.map(i => [0, i * 9 + 6.5, 5.5]), ...G.map(i => [0, i * 9 + 2, -2.5]), [0, 6, 9.2], [0, 27, 9.3], [0, 45, 9.2],
   [0, 4, 12], [0, 16.5, 13], [0, 22, 13], [0, 33, 12.5], [0, 42, 11.5], [0, 51, 14],
-  [0, 10, -8], [0, 30, -12], [0, 48, -8], [0, 66, -10], [0, -10, -10],
+  [0, 8, 17.6], [0, 46, 17.6], [0, 10, -8], [0, 30, -12], [0, 48, -8], [0, 66, -10], [0, -10, -10],
   [1, 6, 1], [1, 15, 6], [1, 24, 0], [1, 33, 6], [1, 42, 0], [1, 50, 5], [1, 20, 9.2], [1, 40, 9.2],
   [1, 3, 13.5], [1, 22, 12], [1, 28, 14], [1, 34, 12.6], [1, 39, 14.2], [1, 16, 12],
 ];
@@ -106,19 +106,28 @@ function floorAt(x, z, y) {
   if (inFoot(x, z)) { if (inStair(x, z)) return 'metal'; const f = y > H / 2 ? 1 : 0; for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return r[6] === 'carpet' ? 'carpet' : r[6] === 'wood' ? 'wood' : 'concrete'; }
   return 'concrete';
 }
-// Solids that are not room walls: the pit wall, the barrier on the far side of the track, motorhomes, paddock fence.
-export const MOTORHOMES = [[2, 22, 0], [-14, 22, 1], [58, 22, 2], [74, 22, 3], [40, 28, 4], [-2, 30, 5]].map(([x, z, c]) => ({ x0: x, x1: x + 13, z0: z, z1: z + 2.6, c }));
+// The squad arrives in the car park behind the pit building: team transporters stand in a U around the spawn with staff
+// cars parked inside and outside it. Trucks: [x0, z0, length, along ('x' | 'z'), team, cab end (+1 / -1)]. Cars: [x, z, turn, colour].
+export const TRUCKS = [[10, 21.5, 16.5, 'z', 0, -1], [40.5, 21.5, 16.5, 'z', 1, -1], [-7, 38.6, 16.5, 'x', 2, 1], [43, 38.6, 16.5, 'x', 3, -1], [-9, 18.6, 16.5, 'x', 4, 1], [58, 18.6, 16.5, 'x', 5, -1]]
+  .map(([x0, z0, len, along, team, cab]) => ({ x0, z0, x1: along === 'x' ? x0 + len : x0 + 2.5, z1: along === 'z' ? z0 + len : z0 + 2.5, along, team, cab }));
+const CAR_COL = [0xb8bcc2, 0x1d1f24, 0xe8e8e6, 0x2c4f8a, 0x8a1f1f, 0x4a4d52, 0x3f5e3a, 0xc9b98f];
+export const PARKED = [[14.8, 24.7, Math.PI], [17.6, 24.7, Math.PI], [20.4, 24.7, Math.PI], [31.6, 24.7, Math.PI], [34.4, 24.7, Math.PI], [37.2, 24.7, Math.PI],
+  [14.8, 31.2, 0], [17.6, 31.2, 0], [34.4, 31.2, 0], [37.2, 31.2, 0],
+  [-6, 27.5, Math.PI], [-3.2, 27.5, Math.PI], [-0.4, 27.5, Math.PI], [2.4, 27.5, Math.PI], [5.2, 27.5, Math.PI], [46, 27.5, Math.PI], [48.8, 27.5, Math.PI], [51.6, 27.5, Math.PI], [54.4, 27.5, Math.PI], [57.2, 27.5, Math.PI]]
+  .map(([x, z, turn], i) => ({ x, z, turn, color: CAR_COL[(i * 5) % CAR_COL.length] }));
+// Solids that are not room walls: the pit wall, the barrier on the far side of the track, trucks, parked cars, the fence.
 function extra({ boxes }) {
   const box = (kind, x0, x1, y0, y1, z0, z1, o = {}) => boxes.push(Object.assign({ f: 0, kind, x0, x1, y0, y1, z0, z1 }, o));
   box('pitwall', PITWALL.x0, PITWALL.x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1);
   box('barrier', YARD.x0, YARD.x1, 0, 1.2, TRACK.z0 - 1.2, TRACK.z0 - 0.4);
-  for (const m of MOTORHOMES) box('motorhome', m.x0, m.x1, 0, 3.8, m.z0, m.z1, { mh: m.c });
+  for (const t of TRUCKS) box('truck', t.x0, t.x1, 0, 4.1, t.z0, t.z1, { team: t.team });
+  for (const c of PARKED) box('pcar', c.x - 0.95, c.x + 0.95, 0, 1.3, c.z - 2.2, c.z + 2.2);
   box('fence', YARD.x0, EXIT.x0, 0, 2.4, 40, 40.08); box('fence', EXIT.x1, YARD.x1, 0, 2.4, 40, 40.08);
   box('fence', YARD.x0, YARD.x0 + 0.08, 0, 2.4, TRACK.z0, 40); box('fence', YARD.x1 - 0.08, YARD.x1, 0, 2.4, TRACK.z0, 40);
 }
 export default {
   id: 'grandprix', name: 'GRAND PRIX', op: 'Operation CHEQUERED FLAG', H, DOOR_H, YARD, layers: 2, layerFloor: [0, 1], tods: ['day', 'night'],
-  spawn: SPAWN, exit: EXIT, breaker: BREAKER, cars: [], rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
+  spawn: SPAWN, exit: EXIT, breaker: BREAKER, cars: [], parked: PARKED, rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
   spots: { s: SUSPECT_SPOTS, c: CIV_SPOTS, b: BOMB_SPOTS }, hvt: HVT, veg: null, counts: { s: 14, c: 7, b: 3 }, time: 900, patrolMax: 26,
   stairs: [{ ...STAIR, yb: 0, n: 1 }], foot: FOOT, race: true,
   lobby: { x: 31.5, y: 1.5, z: 35.5, tx: 26, tz: 33 },

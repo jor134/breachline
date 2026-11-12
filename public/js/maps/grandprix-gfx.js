@@ -3,7 +3,7 @@
 // cars in the garages and the motorhomes in the paddock. Two looks: an afternoon race and a floodlit night race.
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid } from '../mats.js';
-import { TEAMS, FURNITURE, MOTORHOMES, PITWALL, FOOT, H } from '../core/maps/grandprix.js';
+import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H } from '../core/maps/grandprix.js';
 import { TRACK, VIS } from '../core/maps/circuit.js';
 import { raceCar } from '../racecar.js';
 
@@ -46,7 +46,7 @@ export default {
       stand: S(tex('#7d848c', 800, grid(1, 4, 'rgba(0,0,0,0.3)')), 'satin'), seatR: S(tex('#2a4d9a', 400, grid(8, 1, 'rgba(0,0,0,0.35)')), 'satin'), tyreM: S(tex('#151515', 300, grid(1, 3, 'rgba(80,80,80,0.6)')), 'matte'),
       mast: S(tex('#8e949a', 300), 'metal'), gantry: S(tex('#1d2024', 300), 'metal'),
     });
-    TEAMS.forEach((c, i) => { M['team' + i] = S(tex(c, 900, grid(1, 2, 'rgba(0,0,0,0.12)')), 'paint'); M['mh' + i] = S(tex('#1b1d21', 300, (g, s) => { g.fillStyle = c; g.fillRect(0, s * 0.55, s, s * 0.12); g.fillStyle = 'rgba(150,190,220,0.6)'; for (let k = 0; k < 4; k++) g.fillRect(k * s / 4 + 8, s * 0.2, s / 4 - 16, s * 0.25); }), 'paint'); });
+    TEAMS.forEach((c, i) => { M['team' + i] = S(tex(c, 900, grid(1, 2, 'rgba(0,0,0,0.12)')), 'paint'); M['mh' + i] = S(tex('#1b1d21', 300, (g, s) => { g.fillStyle = c; g.fillRect(0, s * 0.12, s, s * 0.6); g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(0, s * 0.74, s, s * 0.04); }), 'paint'); });
     floodMat = M.flood = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
     const fc = document.createElement('canvas'); fc.width = fc.height = 128; const fg = fc.getContext('2d'); fg.strokeStyle = 'rgba(175,180,186,0.9)'; fg.lineWidth = 1;
     for (let i = 0; i <= 128; i += 8) { fg.beginPath(); fg.moveTo(i, 0); fg.lineTo(i, 128); fg.stroke(); fg.beginPath(); fg.moveTo(0, i); fg.lineTo(128, i); fg.stroke(); }
@@ -102,8 +102,24 @@ export default {
     for (const [f, x0, z0, x1, z1, hh, kind, face] of FURNITURE) {
       if (kind === 'racecar') { const i = Math.floor(x0 / 9), g = raceCar(TEAMS[i]); g.position.set((x0 + x1) / 2, f * H, (z0 + z1) / 2); g.rotation.y = face === '-z' ? Math.PI : 0; root.add(g); }
     }
-    // motorhomes in the paddock
-    for (const m of MOTORHOMES) b('mh' + m.c).box(m.x0, m.x1, 0, 3.8, m.z0, m.z1, 'xXYzZ', 0.08);
+    // car park: bay lines, lamp posts, and the team transporters (cab + trailer in team colours, the team's name on both sides)
+    for (const [z0, z1] of [[22.3, 27.1], [28.8, 33.6], [25.1, 29.9]]) for (let x = -7.4; x < 60; x += 2.8) { if (z0 === 25.1 ? x > 9 && x < 44 : x < 13 || x > 39) continue; flat('gpline', x - 0.05, x + 0.05, z0, z1, 0.006); }
+    for (const [x, z] of [[2, 34], [26, 22], [50, 34], [26, 38]]) { b('mast').box(x - 0.1, x + 0.1, 0, 7, z - 0.1, z + 0.1, 'xXzZ', 1); b('gantry').box(x - 0.5, x + 0.5, 7, 7.2, z - 0.25, z + 0.25, 'xXyYzZ', 1); b('flood').box(x - 0.45, x + 0.45, 6.98, 7, z - 0.2, z + 0.2, 'y', 1); }
+    for (const t of TRUCKS) {
+      const alongX = t.along === 'x', L = alongX ? t.x1 - t.x0 : t.z1 - t.z0, cabAtEnd = t.cab > 0, cab = 2.6;
+      const seg = (u0, u1) => alongX ? [t.x0 + u0, t.x0 + u1, t.z0, t.z1] : [t.x0, t.x1, t.z0 + u0, t.z0 + u1];
+      const [cx0, cx1, cz0, cz1] = seg(cabAtEnd ? L - cab : 0, cabAtEnd ? L : cab), [tx0, tx1, tz0, tz1] = seg(cabAtEnd ? 0 : cab + 0.3, cabAtEnd ? L - cab - 0.3 : L);
+      b('team' + t.team).box(cx0 + 0.05, cx1 - 0.05, 0.7, 3.2, cz0 + 0.05, cz1 - 0.05, 'xXYzZ', 0.5);
+      b('gantry').box(tx0, tx1, 0.5, 1.1, tz0 + 0.3, tz1 - 0.3, 'xXzZ', 0.5);
+      b('mh' + t.team).box(tx0, tx1, 1.1, 4.1, tz0, tz1, 'xXYzZ', 0.12);
+      const wheels = alongX ? [cx0 + 0.6, cx1 - 1.4, tx0 + 0.7, tx0 + 2, tx1 - 2.2] : [cz0 + 0.6, cz1 - 1.4, tz0 + 0.7, tz0 + 2, tz1 - 2.2];
+      for (const w of wheels) for (const side of [0, 1]) { if (alongX) b('tyreM').box(w, w + 0.9, 0, 0.9, side ? t.z1 - 0.45 : t.z0, side ? t.z1 : t.z0 + 0.45, 'xXYzZ', 1); else b('tyreM').box(side ? t.x1 - 0.45 : t.x0, side ? t.x1 : t.x0 + 0.45, 0, 0.9, w, w + 0.9, 'xXYzZ', 1); }
+      for (const side of [0, 1]) {   // team name on the trailer sides
+        const sg = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(8, L - cab - 2), 1.1), sign(NAMES[t.team], TEAMS[t.team])), mid = alongX ? (tx0 + tx1) / 2 : (tz0 + tz1) / 2;
+        if (alongX) { sg.position.set(mid, 2.9, side ? t.z1 + 0.02 : t.z0 - 0.02); sg.rotation.y = side ? 0 : Math.PI; } else { sg.position.set(side ? t.x1 + 0.02 : t.x0 - 0.02, 2.9, mid); sg.rotation.y = side ? Math.PI / 2 : -Math.PI / 2; }
+        root.add(sg);
+      }
+    }
     for (const [x, z, r, h] of [[-160, -200, 110, 26], [200, -230, 140, 32], [60, 260, 150, 30], [-200, 120, 120, 24]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); hills.add(m); }
   },
 };

@@ -98,9 +98,25 @@ export const CarGeo = (() => {
   return { body: mergeGeos([tub, helmet, ...body]), bodyOpen: mergeGeos([tubOpen, ...body]), dark: mergeGeos(dark), post: mergeGeos(post) };
 })();
 
-const darkM = new THREE.MeshStandardMaterial({ color: 0x1c1f22, roughness: 0.6, metalness: 0.1 }), paint = new Map();
-export function raceCar(color) {
-  let m = paint.get(color); if (!m) { m = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.25 }); paint.set(color, m); }
-  const g = new THREE.Group(); g.add(new THREE.Mesh(CarGeo.body, m), new THREE.Mesh(CarGeo.dark, darkM), new THREE.Mesh(CarGeo.post, darkM));
-  g.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; } }); return g;
+// The downloaded car ("Ferrari F1 2019" by valvetin, CC BY 4.0), stripped to solid colours and simplified by
+// tools/solid_car.py: one mesh per colour group, shaded flat. Until it has loaded, cars use the built-in shape above.
+import { GLTFLoader } from '../vendor/GLTFLoader.js';
+const M = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.55, metalness: 0.1, flatShading: true, side: THREE.DoubleSide }, o));
+const darkM = M(0x1c1f22), SOLID = { carbon: M(0x17181a, { roughness: 0.45 }), metal: M(0x8e949a, { metalness: 0.6, roughness: 0.35 }), tyre: M(0x101010, { roughness: 0.9 }), rim: M(0x2a2c30, { metalness: 0.5, roughness: 0.4 }) };
+const paint = new Map(), all = new Set();
+const paintOf = color => { let m = paint.get(color); if (!m) { m = M(color, { roughness: 0.32, metalness: 0.25 }); paint.set(color, m); } return m; };
+const model = { hi: null, lo: null };
+const Q = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
+function fill(g) {
+  g.clear(); const color = g.userData.color, mdl = model[g.userData.lo ? 'lo' : 'hi'] || model.hi || model.lo;
+  if (mdl) for (const [name, geo] of mdl) g.add(new THREE.Mesh(geo, name === 'paint' ? paintOf(color) : SOLID[name] || darkM));
+  else g.add(new THREE.Mesh(CarGeo.body, paintOf(color)), new THREE.Mesh(CarGeo.dark, darkM), new THREE.Mesh(CarGeo.post, darkM));
+  return g;
 }
+export function raceCar(color, lo = false) { const g = new THREE.Group(); g.userData.color = color; g.userData.lo = lo; all.add(g); return fill(g); }
+export function dropCar(g) { all.delete(g); }
+// two levels of detail: the parked cars you walk past get the finer one, the cars racing past at 280 km/h the lighter one
+if (!Q.get('lite') && typeof document !== 'undefined') for (const [k, f] of [['lo', 'car_lo.glb'], ['hi', 'car.glb']]) new GLTFLoader().load('models/f1/' + f, gl => {
+  const m = model[k] = []; gl.scene.traverse(o => { if (o.isMesh) m.push([o.name, o.geometry]); });
+  for (const g of [...all]) { if (!g.parent) { all.delete(g); continue; } fill(g); }
+}, undefined, e => console.warn('race car model not loaded', e));

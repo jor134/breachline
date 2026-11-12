@@ -4,6 +4,7 @@
 let ctx = null, noiseBuf = null, master = null, dry = null, send = null, occluder = null, inside = false;
 const L = { x: 0, y: 0, z: 0 };
 export function initAudio() {
+  primeSpeech();
   if (ctx) { ctx.resume?.(); return; }
   const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
   ctx = new AC();
@@ -111,7 +112,7 @@ export const sfx = {
   hiss(pos) { burst(pos, 3.5, 5000, 0.6, 'highpass'); },
   thunder() { burst(null, 3.2, 160, 2.2); tone(null, 70, 24, 2.6, 1.6); setTimeout(() => burst(null, 2.2, 110, 1.2), 500); },
   nvg(on) { tone(null, on ? 500 : 2600, on ? 2800 : 400, on ? 0.5 : 0.25, 0.12, 'sine'); burst(null, 0.03, 4000, 0.3, 'highpass'); },
-  say(text, pitch = 1) { try { if (window.speechSynthesis) { const u = new SpeechSynthesisUtterance(text); u.rate = 1.25; u.pitch = pitch; u.volume = 0.9; speechSynthesis.speak(u); } } catch { } },
+  say(text, pitch = 1) { speak(text, pitch); },
 };
 
 // A race-car engine: two detuned saws through a low-pass, panned in 3D. The caller moves it, sets its pitch (doppler
@@ -129,4 +130,34 @@ export function engineVoice() {
     },
     stop() { try { o1.stop(); o2.stop(); g.disconnect(); p.disconnect(); } catch (e) { } },
   };
+}
+
+// ---- spoken lines (suspects, hostages, your own shout) through the browser's text-to-speech ----
+// Chrome-based browsers (the Quest's included) can leave the speech queue paused or stuck after the page enters VR, loses
+// focus or plays a long line, and then every later line waits silently behind it. So: unlock it on the first tap, resume a
+// paused queue, clear one that has been stuck, keep the queue short, and use a fixed English voice once the list is known.
+const TTS = typeof window !== 'undefined' && window.speechSynthesis ? window.speechSynthesis : null;
+let ttsVoice = null, ttsLast = 0, ttsPrimed = false;
+export const voiceState = { ok: !!TTS, voices: 0, error: TTS ? '' : 'no speech in this browser' };
+function pickVoice() {
+  if (!TTS) return; const v = TTS.getVoices(); voiceState.voices = v.length;
+  ttsVoice = v.find(x => /^en(-|_)(US|GB)/i.test(x.lang) && x.localService) || v.find(x => /^en/i.test(x.lang)) || v[0] || null;
+}
+if (TTS) { pickVoice(); try { TTS.addEventListener('voiceschanged', pickVoice); } catch { TTS.onvoiceschanged = pickVoice; } }
+export function primeSpeech() {   // call from a tap / click / entering VR: browsers only allow speech after the user has acted
+  if (!TTS || ttsPrimed) return; ttsPrimed = true;
+  try { TTS.cancel(); const u = new SpeechSynthesisUtterance(' '); u.volume = 0; TTS.speak(u); pickVoice(); } catch (e) { voiceState.error = String(e); }
+}
+function speak(text, pitch) {
+  if (!TTS) return; const now = performance.now();
+  try {
+    if (TTS.paused) TTS.resume();
+    if ((TTS.speaking || TTS.pending) && now - ttsLast > 4000) TTS.cancel();   // stuck: nothing has finished for 4 s
+    if (TTS.pending) TTS.cancel();                                             // never let lines pile up behind each other
+    if (!ttsVoice) pickVoice();
+    const u = new SpeechSynthesisUtterance(text); u.rate = 1.2; u.pitch = pitch; u.volume = 1; if (ttsVoice) { u.voice = ttsVoice; u.lang = ttsVoice.lang; } else u.lang = 'en-US';
+    u.onend = () => { ttsLast = performance.now(); }; u.onerror = e => { voiceState.error = 'speech: ' + (e.error || 'failed'); ttsLast = 0; };
+    TTS.speak(u); ttsLast = now;
+    if (voiceState.voices === 0) voiceState.error = voiceState.error || 'no voices installed for speech';
+  } catch (e) { voiceState.error = 'speech: ' + e; }
 }

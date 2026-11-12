@@ -1,10 +1,10 @@
 // The race outside during the Grand Prix mission: cars drawn and heard where the shared race clock says they are.
 import { carsAt, carColor, VIS } from './core/maps/circuit.js';
-import { raceCar } from './racecar.js';
+import { raceCar, dropCar } from './racecar.js';
 import { engineVoice } from './audio.js';
 export function createRace(scene) {
   const cars = new Map(), voices = [], buf = [];
-  const get = i => { let g = cars.get(i); if (!g) { g = raceCar(carColor(i)); g.rotation.y = Math.PI / 2; scene.add(g); cars.set(i, g); } return g; };   // nose toward +x
+  const get = i => { let g = cars.get(i); if (!g) { g = raceCar(carColor(i), true); g.rotation.y = Math.PI / 2; scene.add(g); cars.set(i, g); } return g; };   // nose toward +x
   return {
     update(raceT, head, inside) {
       const list = carsAt(raceT, buf), seen = new Set();
@@ -19,7 +19,7 @@ export function createRace(scene) {
         e.set(x, 0.6, z, 520 * dop, Math.min(0.5, 9 / Math.max(d, 4)) * (inside ? 0.35 : 1), inside);
       });
     },
-    dispose() { for (const g of cars.values()) scene.remove(g); cars.clear(); for (const e of voices) e.stop(); voices.length = 0; },
+    dispose() { for (const g of cars.values()) { scene.remove(g); dropCar(g); } cars.clear(); for (const e of voices) e.stop(); voices.length = 0; },
   };
 }
 export { VIS };
