@@ -108,8 +108,9 @@ const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(ki
 const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol(true, true)) };
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
 const PISTOL_TILT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.3);
-const HOLSTER = RIG, HOLSTER_ROT = { rifle: [-1.0, 0.6, 0.3], pistol: [-1.5, 0, 0] }, _he = new THREE.Euler();   // grab zones sit exactly where the holders are drawn on the vest and belt
-const bodyPt = (off, out) => out.set(off[0], 0, off[2]).applyAxisAngle(UP, S.bodyYaw).add(head.pos).setY(head.pos.y + off[1]);
+const HOLSTER = RIG, HOLSTER_ROT = { rifle: [-1.3, 0, 0.5], pistol: [-1.5, 0, 0] }, _he = new THREE.Euler();   // grab zones sit exactly where the holders are drawn on the vest and belt
+const bodyPt = (off, out) => out.set(off[0], 0, off[2] + (S.mode === 'vr' ? myBody.back || 0 : 0)).applyAxisAngle(UP, S.bodyYaw)   // gear moves back with your body as you look down
+  .add(head.pos).setY(head.pos.y + off[1]);
 const myBody = new Body(true); myBody.g.visible = false; scene.add(myBody.g);
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 const torch = new THREE.SpotLight(0xfff2dd, 16, 30, 0.44, 0.8, 1.6); torch.visible = false; scene.add(torch, torch.target);
@@ -774,5 +775,5 @@ $('tplay').onclick = () => { initAudio(); connect($('solo').checked); begin('des
 let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('install').style.display = 'inline-block'; });
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.__bl = { HOLSTER_ROT, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

@@ -229,10 +229,10 @@ const POSE = {
 
 // ---------- officer body: vest, belt, holders, legs, and arms that reach to the hands ----------
 // Offsets are from the head, with -z forward. These are also the grab zones used by the game.
-export const SELF_BACK = { d: 0.12, tilt: 0.22 };   // your own body sits this far behind your eyes
+export const SELF_BACK = { d: 0.02, tilt: 0.25 };   // your own body sits this far behind your eyes
 // Looking down, real eyes swing forward over the chest; the body here follows the eyes, so it is pushed back by up to
 // SELF_BACK.tilt more as the head tilts down: you see your chest and gear, not the tops of your shoulders and the collar.
-export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [-0.02, -0.78, -0.3], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
+export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.0, -0.76, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qPi = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), _eul = new THREE.Euler(), _ax = new THREE.Vector3(1, 0, 0), _kneeFwd = new THREE.Vector3(0, 0, 1), GRIP = { i: 0.7, g: 0.8, t: 0.5 };
 const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
 let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null, TORSO = null, gearParts = null, gearG = null;
@@ -321,7 +321,7 @@ export class Body {
     hd.rotation.set(down ? -HP : 0, yaw + Math.PI, 0); hd.updateMatrix(); const hq = hd.quaternion, ihq = _q1.copy(hq).invert();
     const e = this.eye, fwd = a1.set(0, 0, 1).applyQuaternion(hq), pitch0 = headQ ? Math.asin(Math.max(-1, Math.min(1, a4.set(0, 0, -1).applyQuaternion(headQ).y))) : 0;
     if (down) hd.position.copy(headPos).addScaledVector(fwd, -e.y).setY(headPos.y - 0.12);
-    else { const off = a2.set(e.x, 0, e.z - (this.detailed ? SELF_BACK.d + SELF_BACK.tilt * Math.max(0, Math.sin(-pitch0)) : 0)).applyQuaternion(hq); hd.position.set(headPos.x - off.x, feetY, headPos.z - off.z); }   // your own body: 13 cm behind the eyes
+    else { const off = a2.set(e.x, 0, e.z + (this.back = this.detailed ? SELF_BACK.d + SELF_BACK.tilt * Math.max(0, Math.sin(-pitch0)) : 0)).applyQuaternion(hq); hd.position.set(headPos.x - off.x, feetY, headPos.z - off.z); }   // your own body: 13 cm behind the eyes
     hd.updateMatrixWorld(true);
     const drop = down ? 0 : Math.max(0, Math.min(0.85, e.y - (headPos.y - feetY))); sk.hipsOff.set(0, -drop, 0);
     // head: the headset's rotation in the model's frame; chest and spine take part of the pitch, and lean in a crouch
