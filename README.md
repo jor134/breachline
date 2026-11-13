@@ -23,3 +23,10 @@ Sound effects are recorded CC0 libraries from GitHub (Free Firearm Sound Library
 
 ## Not in yet
 Voice chat, climbing (container tops, crane ladders), downloaded furniture and character models, AI teammates.
+
+## Level editor
+
+`editor.html` (linked from the start screen as LEVEL EDITOR) builds maps top-down with a mouse or touch: rooms on a 0.5 m grid (up to 3 floors), doors, archways, gaps and windows on their walls, stairs between floors, furniture, the squad spawn and exit, and suspect, hostage, bomb, HVT and breaker spots. Style presets (house, office, warehouse, terminal), day or night, and uploaded textures for walls, the ground and floors. CHECK finds problems (missing markers, spots nobody can reach), TEST plays the draft solo in the game (`?draft=1`), PUBLISH puts it on the training room's mission board for everyone. Drafts save on the device; Open also lists published maps to edit, and maps can be exported and imported as JSON.
+
+The format and its checks are in `js/core/maps/custom.js` (shared by the editor, the game and the Worker). Published maps and textures live in the `Library` Durable Object (SQLite) behind `/api/maps` and `/api/tex`. Publishing and uploads need the creator code: set the `CREATOR_CODE` secret on the Worker (Cloudflare dashboard > Workers > breachline > Settings > Variables and Secrets). Without it, publishing is off.
+

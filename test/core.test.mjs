@@ -449,6 +449,17 @@ await t('airport HVT runs for the jet once he hears the squad, then digs in ther
   assert.ok(evs.some(e => e.e === 'hvtrun'), 'announced'); assert.ok(Math.hypot(h.x - fx, h.z - fz) < 1.6, 'reached the jet: ' + h.x.toFixed(1) + ',' + h.z.toFixed(1)); assert.ok(Math.abs(h.y - 1.615 * 1.25) < 0.05, 'in the cabin');
   for (let i = 0; i < 15; i++) s.tick(1 / 15); assert.ok(!h.fleeing && h.st !== 'g', 'holding there');
 });
+await t('custom maps: the sample compiles, checks clean, plays; broken ones are caught', async () => {
+  const { compile, check, clean } = await import('../public/js/core/maps/custom.js'); const lv = await import('../public/js/core/level.js'); const fs = await import('node:fs');
+  const d = JSON.parse(fs.readFileSync(new URL('../public/maps/sample.json', import.meta.url)));
+  const r = check(d, lv); assert.ok(r.ok, r.errors.join('; '));
+  lv.registerMap(compile(d, 'u_sample')); assert.ok(lv.MISSION_IDS.includes('u_sample'));
+  const s = new Sim('u_sample'); s.addPlayer(1, 'A'); s.start(2, false, 'clear', 'u_sample'); assert.equal(s.mapId, 'u_sample'); assert.equal(s.bombs.length, 1); for (let i = 0; i < 60; i++) s.tick(1 / 15); assert.equal(s.phase, 'active');
+  const L = lv.buildLevel('u_sample'); assert.ok(Math.abs(L.groundY(14, 14, 3.3) - 3.2) < 0.01, 'upper floor'); assert.ok(L.map.breaker && Math.abs(L.map.breaker.x - 31.87) < 0.01, 'breaker on the wall');
+  const walledIn = JSON.parse(JSON.stringify(d)); walledIn.openings = walledIn.openings.filter(o => o[6] !== 'ext'); const r2 = check(walledIn, lv); assert.ok(!r2.ok && r2.errors.some(e => /cannot be reached/.test(e)), 'no way in');
+  assert.ok(!check({ ...d, spawn: null }, lv).ok); assert.ok(!check({ ...d, floors: 2, stairs: [] }, lv).ok);
+  const c = clean({ name: '<script>x</script>', rooms: [[0, -5, -5, 999, 3, 'wood']], furniture: [[0, 1, 1, 2, 2, 99, 'nuke', 'up']] }); assert.equal(c.name, 'scriptxscript'); assert.deepEqual(c.rooms[0].slice(1, 5), [0, 0, 60, 3]); assert.equal(c.furniture[0][6], 'crate'); assert.equal(c.furniture[0][5], 2.4);
+});
 Sim.BOTS = true;
 const run = (s, sec, until) => { const ev = []; for (let i = 0; i < sec * 15; i++) { s.tick(1 / 15); ev.push(...s.events.splice(0)); if (until && until()) break; } return ev; };
 await t('bots: three fill a solo squad, two with a friend, a joiner takes a bot place, none in training; rooms count humans', async () => {

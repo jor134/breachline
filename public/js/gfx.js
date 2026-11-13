@@ -8,6 +8,7 @@ import terminalGfx from './maps/terminal-gfx.js';
 import trainingGfx from './maps/training-gfx.js';
 import grandprixGfx from './maps/grandprix-gfx.js';
 import airportGfx from './maps/airport-gfx.js';
+import { customGfx } from './maps/custom-gfx.js';
 const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx };
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
@@ -118,7 +119,7 @@ function furnish(b, w) {
 
 export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   initMats();
-  const level = buildLevel(id), map = level.map, H = map.H, YARD = map.YARD, G = MAPGFX[level.id]; if (G.setTod) G.setTod(tod); const env = G.env, root = new THREE.Group(), B = {}; root.name = 'world'; scene.add(root);
+  const level = buildLevel(id), map = level.map, H = map.H, YARD = map.YARD, G = MAPGFX[level.id] || (map.custom ? (map.gfx = map.gfx || customGfx(map)) : MAPGFX.mansion); if (G.setTod) G.setTod(tod); const env = G.env, root = new THREE.Group(), B = {}; root.name = 'world'; scene.add(root);
   if (G.mats) G.mats(MATS);
   const b = k => B[k] || (B[k] = new Builder()), cx = (YARD.x0 + YARD.x1) / 2, cz = (YARD.z0 + YARD.z1) / 2;
   // sky dome (gradient), stars, moon, far silhouettes

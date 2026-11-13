@@ -6,7 +6,8 @@ import { loadCar, loadParkedCars } from './car.js';
 import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
-import { resolveCircle, rayStatic, MAP_IDS, MAPS, MISSION_IDS } from './core/level.js';
+import { resolveCircle, rayStatic, MAP_IDS, MAPS, MISSION_IDS, registerMap } from './core/level.js';
+import { compile as compileCustom } from './core/maps/custom.js';
 import { createRace } from './race.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
@@ -74,7 +75,10 @@ function loadMap(id, tod) {
     if (world.gfx.load) world.gfx.load().then(m => { if (gen === mapGen) scene.add(m); keep(m); }).catch(e => console.warn('map model not loaded', e));   // e.g. the airport's jet
   }
 }
-loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : 'training');   // everyone arrives at the training facility; the mission board sends the squad out
+loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : 'training');
+// ?draft=1: the level editor's TEST button. The draft from this device's editor plays solo, straight into the mission.
+const DRAFT = (() => { if (!Q.get('draft')) return null; try { const d = JSON.parse(localStorage.getItem('bl_draft') || 'null'); if (!d) return null; registerMap(compileCustom(d, 'draft')); return d; } catch (e) { console.warn('draft not loaded', e); return null; } })();
+if (DRAFT) { $('solo').checked = true; setTimeout(() => { status('Testing your draft "' + DRAFT.name + '": pick VR, phone or desktop. It plays solo.'); const a = $('editlink'); a.textContent = 'BACK TO THE EDITOR'; }, 0); }   // everyone arrives at the training facility; the mission board sends the squad out
 
 const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
   net: 'offline', room: '', report: null, doorLocked: level.doors.map(() => false), bodyYaw: 0, panel: 'lobby', menu: false, deskPick: null, night: false, nvg: false, tool: 'hands', hintT: 0, wx: 'clear', wxPick: 'random', squad: [], secured: 0, civs: 5, defused: 0, light: true, now: 0, eye: 1.66, crouch: false, yaw: 0, pitch: 0, ads: false, reloading: false, tilt: +(localStorage.getItem('bl_tilt') || 0) };
@@ -291,7 +295,7 @@ function showLobbyPanel() {
       'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 function showBoard() {   // the mission board in the training lobby: pick where the squad goes next, see how the range went
-  S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); const T = trainLine(), nx = MAPS[S.nextMap] || MAPS[MISSION_IDS[0]];
+  S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); const T = trainLine(), cu = S.customList.find(c => c.id === S.nextMap), nx = MAPS[S.nextMap] || (cu ? { name: cu.name + ' (LOADING)', op: cu.name + '  (by ' + cu.creator + ')' } : MAPS[MISSION_IDS[0]]);
   panel.draw('MISSION BOARD', 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo (not connected)' : 'connecting'),
     [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
       'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', 'Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
@@ -380,7 +384,25 @@ function applyInit(init) {
   S.civs = init.npcs.filter(n => n[1] === 'c').length; if (S.night !== !!init.night || S.wx !== init.weather) { S.night = !!init.night; S.wx = init.weather || 'clear'; applyLook(); }
   for (const [x, y, z, wires, order, yaw] of init.bombs) { const b = new Bomb(x, y, z, wires, order, yaw); b.order = order; b.n = 0; scene.add(b.g); S.bombs.push(b); }
 }
+// Player-made maps: fetched from the library the first time anything names them, then registered like a built-in map.
+const customLoads = new Map();
+function ensureCustom(mid) {
+  if (typeof mid !== 'string' || !mid.startsWith('u_') || MAPS[mid]) return Promise.resolve(true);
+  if (!customLoads.has(mid)) customLoads.set(mid, fetch('api/maps/' + mid.slice(2), { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject(new Error('map ' + r.status))).then(d => { registerMap(compileCustom(d, mid)); return true; }).catch(e => { customLoads.delete(mid); console.warn('custom map not loaded', e); return false; }));
+  return customLoads.get(mid);
+}
+S.customList = [];
+function loadCustomList() { return fetch('api/maps', { cache: 'no-store' }).then(r => r.ok ? r.json() : { maps: [] }).then(j => { S.customList = (j.maps || []).map(m => ({ id: 'u_' + m.id, name: String(m.name || '').toUpperCase(), creator: m.creator })); }).catch(() => { }); }
+loadCustomList();
+// a message about a map we have not got yet waits (with everything after it) until the map has arrived
+let msgGate = null;
 function onMsg(m) {
+  if (msgGate) { msgGate.push(m); return; }
+  const mid = (m.t === 'init' || m.t === 'welcome') && m.init && m.init.map;
+  if (typeof mid === 'string' && mid.startsWith('u_') && !MAPS[mid]) { msgGate = [m]; ensureCustom(mid).then(() => { const q = msgGate; msgGate = null; for (const x of q) onMsg(x); }); return; }
+  onMsg2(m);
+}
+function onMsg2(m) {
   if (m.t === 'welcome') { const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && (m.ph !== 'active' || m.init.map === 'training') && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
   else if (m.t === 'init') { applyInit(m.init); if (S.phase !== 'active' || M.training) showLobbyPanel(); }
   else if (m.t === 'full') status('That room is full (4 officers). Try another code.');
@@ -405,7 +427,7 @@ function applySnap(m) {
   if (m.R) S.report = m.R;
   if (m.RT != null) { const d = m.RT - S.raceT; S.raceT = Math.abs(d) > 0.6 ? m.RT : S.raceT + d * 0.25; }
   if (m.TP && S.net !== 'offline') S.todPick = m.TP;
-  if (m.TG) { m.TG.forEach((r, i) => { const t = targets[i]; if (!t) return; t.up = r[0]; t.tx = r[1]; if (t.hostile !== r[2]) { t.hostile = r[2]; t.board.material = r[2] ? tgTex.h : tgTex.n; } }); S.house = m.HS; S.tstats = m.TS; if (m.NM) S.nextMap = m.NM; if (m.WP && S.net !== 'offline') S.wxPick = m.WP; }
+  if (m.TG) { m.TG.forEach((r, i) => { const t = targets[i]; if (!t) return; t.up = r[0]; t.tx = r[1]; if (t.hostile !== r[2]) { t.hostile = r[2]; t.board.material = r[2] ? tgTex.h : tgTex.n; } }); S.house = m.HS; S.tstats = m.TS; if (m.NM) { S.nextMap = m.NM; ensureCustom(m.NM); } if (m.WP && S.net !== 'offline') S.wxPick = m.WP; }
   for (const e of m.E) onEvent(e);
   if (S.phase !== prev) { S.menu = false; if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'active' && !M.training) { panel.mesh.visible = false; S.panel = null; } else showLobbyPanel(); }
 }
@@ -800,7 +822,9 @@ function buildExitMark() {   // a marked rectangle on the ground at the map's wa
 function placeMapProps() { breaker.g.position.set(M.breaker.x, M.breaker.y, M.breaker.z); buildExitMark(); }
 function nextMission() { return M.training ? (MISSION_IDS.includes(S.nextMap) ? S.nextMap : MISSION_IDS[0]) : M.id; }
 function cycleMap() {
-  if (M.training) { S.nextMap = MISSION_IDS[(MISSION_IDS.indexOf(S.nextMap) + 1) % MISSION_IDS.length]; sfx.click(); net.send({ t: 'choose', m: S.nextMap }); showLobbyPanel(); return; }
+  if (M.training) {   // built-in missions, then the published ones from the map library
+    const ids = [...MISSION_IDS, ...S.customList.map(c => c.id).filter(id => !MISSION_IDS.includes(id))], next = ids[(ids.indexOf(S.nextMap) + 1) % ids.length]; sfx.click();
+    S.nextMap = next; showLobbyPanel(); ensureCustom(next).then(ok => { if (ok && S.nextMap === next) { net.send({ t: 'choose', m: next }); showLobbyPanel(); } }); return; }
   const id = MAP_IDS[(MAP_IDS.indexOf(M.id) + 1) % MAP_IDS.length]; sfx.click(); net.send({ t: 'map', m: id }); if (!net.ws && !net.host) { loadMap(id); showLobbyPanel(); } }
 placeMapProps(); ready = true;
 let exitT = 0, exitShown = -1;
@@ -878,7 +902,8 @@ function connect(solo) {
   if (connecting) return connecting;
   const name = (nameIn.value.trim() || 'Officer').slice(0, 14), room = (roomIn.value.toUpperCase().replace(/[^A-Z0-9]/g, '') || 'ALPHA').slice(0, 8);
   localStorage.setItem('bl_name', name); localStorage.setItem('bl_room', room); S.room = room; history.replaceState(null, '', '?room=' + room);
-  return connecting = net.connect(room, name, solo).then(r => { S.net = r; status(r === 'online' ? 'Connected to room ' + room + '. Friends join with the same code.' : solo ? 'Solo practice.' : 'Server not reachable: running solo practice on this device.'); return r; });
+  if (DRAFT) solo = true;
+  return connecting = net.connect(room, name, solo).then(r => { S.net = r; if (DRAFT) setTimeout(() => net.send({ t: 'start', wx: 'clear', map: 'draft', tod: DRAFT.style && DRAFT.style.night ? 'night' : 'day' }), 300); status(r === 'online' ? 'Connected to room ' + room + '. Friends join with the same code.' : solo ? 'Solo practice.' : 'Server not reachable: running solo practice on this device.'); return r; });
 }
 function begin(mode) { S.mode = mode; $('ui').style.display = 'none'; $('hud').style.display = mode === 'desktop' ? 'block' : 'none'; camera.rotation.set(0, 0, 0); camera.position.set(0, 1.66, 0); S.spawnIn = mode === 'vr' ? 4 : 0; placeAtSpawn(); resetLoadout(); showLobbyPanel(); }
 $('vr').onclick = async () => {
@@ -919,7 +944,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v35';
+const BUILD = 'v36';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

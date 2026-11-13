@@ -11,9 +11,19 @@ directory = "./public"
 name = "ROOMS"
 class_name = "Room"
 
+[[durable_objects.bindings]]
+name = "LIBRARY"
+class_name = "Library"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+# Published player-made maps and their textures (the level editor). Publishing needs the CREATOR_CODE secret:
+#   Cloudflare dashboard > Workers > breachline > Settings > Variables and Secrets > add secret CREATOR_CODE
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Library"]
 
 [observability]
 enabled = true

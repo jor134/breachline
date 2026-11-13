@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>BREACHLINE Level Editor</title>
+<meta name="theme-color" content="#0a1020">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0a1020;color:#e8eef5;font:14px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none}
+#top{position:fixed;left:0;right:0;top:0;height:50px;display:flex;align-items:center;gap:6px;padding:0 8px;background:#0e1622;border-bottom:1px solid #22344c;overflow-x:auto;z-index:3}
+#top b{letter-spacing:.1em;margin-right:6px;white-space:nowrap}
+button,select,input{font:inherit;color:#e8eef5;background:#16233a;border:1px solid #2c4a6b;border-radius:7px;padding:6px 10px;min-height:36px}
+button{cursor:pointer;white-space:nowrap}button:hover{background:#1d2f4d}button.on{background:#1f7a3d;border-color:#7dffa0}
+button.warn{background:#5a2020;border-color:#a04040}
+#tools{position:fixed;left:0;top:50px;bottom:0;width:116px;padding:6px;background:#0e1622;border-right:1px solid #22344c;overflow-y:auto;z-index:2;display:flex;flex-direction:column;gap:4px}
+#tools button{width:100%;text-align:left;padding:6px 8px;font-size:13px}
+#tools .h{font-size:11px;color:#8fb4dc;text-transform:uppercase;letter-spacing:.08em;margin:6px 2px 0}
+#wrap{position:fixed;left:116px;top:50px;right:280px;bottom:0;background:#08101a}#cv{display:block;width:100%;height:100%;touch-action:none}
+#side{position:fixed;right:0;top:50px;bottom:0;width:280px;padding:10px;background:#0e1622;border-left:1px solid #22344c;overflow-y:auto;z-index:2}
+#side h3{margin:12px 0 6px;font-size:12px;color:#8fb4dc;text-transform:uppercase;letter-spacing:.08em}
+#side label{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:4px 0}
+#side input[type=number]{width:80px}#side input[type=text]{width:150px}
+#msg{position:fixed;left:126px;bottom:10px;max-width:min(560px,60vw);padding:8px 12px;background:rgba(12,17,24,.94);border:1px solid #2c4a6b;border-radius:8px;z-index:4;display:none;white-space:pre-wrap}
+#msg.err{border-color:#c05050}#msg.ok{border-color:#40c070}
+#hint{position:fixed;left:126px;top:58px;padding:4px 8px;background:rgba(12,17,24,.8);border-radius:6px;font-size:12px;color:#9fb0c3;z-index:2;pointer-events:none}
+.tex{display:flex;align-items:center;gap:6px}.tex img{width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #2c4a6b}
+#dlg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:10}
+#dlg .card{width:min(92vw,420px);max-height:80vh;overflow:auto;padding:16px;background:#0e1622;border:1px solid #2c4a6b;border-radius:10px}
+#dlg .row{display:flex;gap:6px;justify-content:space-between;align-items:center;margin:6px 0}
+#sideBtn{display:none}
+@media (max-width: 900px), (max-height: 500px) {
+  #tools{width:92px}#tools button{font-size:12px;padding:6px}
+  #wrap{left:92px;right:0}#top{height:44px}#tools,#wrap,#side{top:44px}button,select,input{min-height:32px;padding:4px 8px}#msg,#hint{left:100px}
+  #side{display:none;width:min(88vw,320px);box-shadow:-8px 0 20px rgba(0,0,0,.5)}
+  #side.open{display:block}#sideBtn{display:inline-block}
+}
+</style>
+</head>
+<body>
+<div id="top">
+  <b>LEVEL EDITOR</b>
+  <button id="bNew">New</button><button id="bOpen">Open</button><button id="bSave">Save</button>
+  <button id="bUndo">Undo</button>
+  <select id="floor"></select>
+  <button id="bCheck">Check</button><button id="bTest">Test</button><button id="bPub">Publish</button>
+  <button id="sideBtn">Settings</button>
+  <a href="./" style="color:#7dd0ff;white-space:nowrap;margin-left:6px">Back to game</a>
+</div>
+<div id="tools"></div>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<div id="hint"></div>
+<div id="side"></div>
+<div id="msg"></div>
+<div id="dlg"><div class="card" id="dlgc"></div></div>
+<script type="module" src="js/editor.js"></script>
+</body>
+</html>

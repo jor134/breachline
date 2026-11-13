@@ -6,12 +6,14 @@ import training from './maps/training.js';
 import grandprix from './maps/grandprix.js';
 import airport from './maps/airport.js';
 export const MAPS = { training, mansion, terminal, grandprix, airport };
+const cache = new Map();
 export const MAP_IDS = Object.keys(MAPS);
 export const MISSION_IDS = MAP_IDS.filter(k => !MAPS[k].training);
+// Player-made maps (core/maps/custom.js) are added at run time once their data has been fetched.
+export function registerMap(def) { const fresh = !MAPS[def.id]; MAPS[def.id] = def; cache.delete(def.id); if (fresh) { MAP_IDS.push(def.id); if (!def.training && def.id !== 'u_check' && def.id !== 'draft') MISSION_IDS.push(def.id); } return def; }
 export const U = 0.5, T = 0.2;
 const GRID = 4;   // spatial index bucket size (m)
 
-const cache = new Map();
 export function buildLevel(id = 'mansion') {
   if (!MAPS[id]) id = 'mansion';
   if (cache.has(id)) return cache.get(id);
