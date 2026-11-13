@@ -231,18 +231,14 @@ const POSE = {
 // ---------- officer body: vest, belt, holders, legs, and arms that reach to the hands ----------
 // Offsets are from the head, with -z forward. These are also the grab zones used by the game.
 export const HAND_BACK = [0.85, 0.5, -0.1], HAND_KN = [0.018, -0.012, -0.01];   // back-of-hand direction and knuckle point in the controller's frame (x mirrored for the left hand)
-export const SELF_BACK = { d: 0.02, tilt: 0.25, wide: 7 / 6, up: 0, nade: 0 };   // up / nade: BODY FIT height offset, grenades forward   // up: BODY FIT height offset   // your own body sits this far behind your eyes, and is this much broader and deeper
+export const SELF_BACK = { d: 0.02, tilt: 0.25, wide: 7 / 6, up: 0, gear: 0 };   // up / gear: BODY FIT height offset, all vest and belt gear forward   // up: BODY FIT height offset   // your own body sits this far behind your eyes, and is this much broader and deeper
 // Looking down, real eyes swing forward over the chest; the body here follows the eyes, so it is pushed back by up to
 // SELF_BACK.tilt more as the head tilts down: you see your chest and gear, not the tops of your shoulders and the collar.
 export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.0, -0.76, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qPi = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), _eul = new THREE.Euler(), _ax = new THREE.Vector3(1, 0, 0), _kneeFwd = new THREE.Vector3(0, 0, 1), GRIP = { i: 0.7, g: 0.8, t: 0.5 };
 const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
 let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null, TORSO = null, gearParts = null, gearG = null;
-const gearGeo = () => gearG || (gearG = merge(gearParts.map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);
-// your own body: the grenades (the last NADES parts) on a mesh of their own, so BODY FIT can slide them forward or back
-const NADES = 9; let gearSelfG = null, nadeG = null;
-const gearSelfGeo = () => gearSelfG || (gearSelfG = merge(gearParts.slice(0, -NADES).map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);
-const nadeGeo = () => nadeG || (nadeG = merge(gearParts.slice(-NADES).map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);   // pouches, radio, holster, grenades on the squad model's vest
+const gearGeo = () => gearG || (gearG = merge(gearParts.map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);   // pouches, radio, holster, grenades on the squad model's vest
 // ---------- articulated glove: palm plus four fingers of three joints and a thumb, curled by a pose { i: index, g: other fingers, t: thumb } ----------
 // Local frame matches the controller grip: back of the hand up (+y), fingers forward (-z), thumb on the left for a right hand (mirrored for the left).
 const FINGERS = [[-0.027, [0.04, 0.024, 0.02], 0.0085, 0.06], [-0.009, [0.044, 0.027, 0.021], 0.0088, 0.01], [0.009, [0.041, 0.025, 0.02], 0.0082, -0.04], [0.026, [0.032, 0.019, 0.017], 0.0073, -0.11]];
@@ -303,7 +299,7 @@ export class Body {
   attachSkin(tpl) {
     const holder = this.holder = new THREE.Group(); holder.rotation.order = 'YXZ'; this.g.add(holder); holder.updateMatrixWorld(true);
     const sk = this.skin = new Skin(tpl, holder), r = sk.role, P = sk.restP;
-    this.torso.geometry = this.detailed ? gearSelfGeo() : gearGeo(); if (this.detailed && !this.nades) { this.nades = new THREE.Mesh(nadeGeo(), this.torso.material); this.torso.add(this.nades); } this.legs.visible = false; for (const a of this.arms) { a.up.visible = a.fore.visible = a.glove.visible = false; a.off = true; }
+    this.torso.geometry = gearGeo(); this.legs.visible = false; for (const a of this.arms) { a.up.visible = a.fore.visible = a.glove.visible = false; a.off = true; }
     const hp = P[r.head]; this.eye = new THREE.Vector3(hp.x, hp.y + 0.1, hp.z + 0.1);
     if (this.detailed) { sk.bones[r.neck].scale.setScalar(0.001); sk.wrap.traverse(o => { if (o.isMesh && /glass/.test(o.material.name)) o.visible = false; }); }   // your own head and goggles would fill the view
     this.W = new Map(); this.H = {};
@@ -363,7 +359,7 @@ export class Body {
   update(headPos, yaw, hands, feetY, headQ) {
     const s = Math.sin(yaw), c = Math.cos(yaw), now = performance.now(), dt = Math.min(0.1, (now - this.lastT) / 1000); this.lastT = now;
     if (this.skin) this.poseSkin(headPos, yaw, hands, feetY, headQ, dt);
-    if (this.nades) this.nades.position.z = -SELF_BACK.nade; const tb = 0.05 + (this.back || 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up : 0), headPos.z + c * tb);   // vest gear moves back with the body, matching the grab zones (bodyPt) this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;
+    const tb = 0.05 + (this.back || 0) - (this.detailed && this.skin ? SELF_BACK.gear : 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up : 0), headPos.z + c * tb);   // vest gear moves back with the body, matching the grab zones (bodyPt) this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;
     this.arms.forEach((a, i) => {
       if (a.off) return; const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
       const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat).multiply(_q2.setFromAxisAngle(a4.set(0, 0, 1), -a.sx * 1.05)); if (this.detailed && h.pose) poseHand(a.glove, h.pose, dt);
