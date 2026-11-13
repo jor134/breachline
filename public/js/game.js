@@ -71,6 +71,7 @@ function loadMap(id, tod) {
     if (M.veg) loadVegetation(scene, M).then(v => keep(v && v.mesh)).catch(e => console.warn('vegetation not loaded', e));
     for (const c of M.cars || []) loadCar(scene, c.x, 0, c.z, Math.PI, c.length).then(keep).catch(e => console.warn('car not loaded', e));
     if (M.parked) loadParkedCars(scene, M.parked).then(keep).catch(e => console.warn('parked cars not loaded', e));
+    if (world.gfx.load) world.gfx.load().then(m => { if (gen === mapGen) scene.add(m); keep(m); }).catch(e => console.warn('map model not loaded', e));   // e.g. the airport's jet
   }
 }
 loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : 'training');   // everyone arrives at the training facility; the mission board sends the squad out
@@ -836,7 +837,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v30';
+const BUILD = 'v31';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

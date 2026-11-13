@@ -11,11 +11,15 @@ export const HALL = { x0: 12, x1: 52, z0: 30, z1: 56 };   // double height: no u
 export const YARD = { x0: -30, z0: -72, x1: 96, z1: 90 };
 export const STAIR = { x0: 1, x1: 2.5, z0: 23, z1: 28.6 };
 export const HANGAR = { x0: 6, x1: 58, z0: -66, z1: -24, h: 16, door: [12, 52], doorH: 10 };
-// the jet: fuselage along z, nose to the hangar door. Cabin floor at H/2 (floor 0.5), cargo hold floor at HOLD.
-export const CAB = H / 2, HOLD = 0.3, HF = HOLD / H;
-export const JET = { x0: 30, x1: 34, cx: 32, nose: -26, tail: -60, c0: -52, c1: -31, door: [-32.6, -31.4], hatch: [-47, -45], roof: CAB + 2.1 };
-export const AIRSTAIR = { x0: 34.15, x1: 38.15, z0: -32.6, z1: -31.4 };   // down the jet's right side
-export const HRAMP = { x0: 28.6, x1: 30.05, z0: -47, z1: -45 };            // short ramp up to the hold door on the left
+// the jet: a BAe 146 model (models/jet/bae146.glb, made by tools/jet_glb.py at scale JS), nose to the hangar door. The model's
+// own coordinates (metres before scaling, x across, z along with the nose toward +z) are placed at x = JX, z = JZ.
+// Walkable: the cabin and the airstairs truck at the front left door. The cargo hold is a crawl space: its hatch on the right,
+// behind the wing, is open and the bomb sits just inside, within reach of someone standing on the ground.
+export const JS = 1.25, JX = 32, JZ = -42.25, mx = x => JX + JS * x, mz = z => JZ + JS * z;
+export const CAB = 1.615 * JS, CF = CAB / H, HOLD = 1.1;
+export const JET = { cx: JX, w: 2.05, skin: 2.35, nose: mz(13.04), tail: mz(-12.81), c0: JZ - 8.4, c1: JZ + 11.5, door: [mz(8.5), mz(9.1)], hatch: [mz(-4.0), mz(-2.6)], roof: CAB + 2.85,
+  seats: [JZ - 7.19, JZ + 9.59], left: [JX - 2.0, JX - 0.6], right: [JX + 0.4, JX + 1.95] };
+export const AIRSTAIR = { x0: JX + JET.skin, x1: JX + JET.skin + 4, z0: JET.door[0], z1: JET.door[1] };   // stair truck at the door, down the left side
 export const BREAKER = { x: 58, y: 1.4, z: 47.87 };
 export const SPAWN = [[28, 73], [29.5, 73], [31, 73], [32.5, 73]];
 export const EXIT = { x0: 22, x1: 38, z0: 68, z1: 82 };
@@ -92,16 +96,16 @@ export const SUSPECT_SPOTS = [
   [0, 6, 38], [0, 6, 52], [0, 58, 36], [0, 60, 45], [0, 58, 53],
   [0, 20, -8], [0, 44, -14], [0, 32, -20], [0, 10, -40], [0, 54, -44], [0, 22, -58], [0, 44, -58], [0, 26, -30], [0, 40, -34],
   [1, 8, 25], [1, 20, 28], [1, 44, 28], [1, 16, 24.6], [1, 28, 24.6], [1, 36, 24.6], [1, 48, 24.6], [1, 58, 28], [1, 4, 40], [1, 6, 50], [1, 58, 40], [1, 60, 52],
-  [0.5, 32, -37], [0.5, 32, -49], [HF, 31, -44],
+  [CF, JX - 0.25, -36], [CF, JX - 0.25, -46],
 ];
 export const CIV_SPOTS = [[0, 3, 6], [0, 60, 6], [0, 5, 17.6], [0, 52, 19], [0, 28, 26.5], [0, 20, 42.6], [0, 44, 50], [0, 4, 33.6], [0, 60, 38], [0, 56, 53.6],
   [1, 22, 24.6], [1, 4, 52], [1, 60, 44]];
-export const CIV_MUST = [[0.5, 32, -42]];         // a passenger kept in the jet's cabin
-export const SUS_MUST = [[0.5, 32, -33.6]];       // and a gunman at the cabin door
+export const CIV_MUST = [[CF, JX - 0.25, -41]];         // a passenger kept in the jet's cabin
+export const SUS_MUST = [[CF, JX - 0.8, -31.3]];       // and a gunman at the cabin door
 export const BOMB_SPOTS = [[0, 9, 19.5, 1.1], [0, 59, 20.95, 1.0], [0, 24, 38.6, 1.05], [0, 40, 46.6, 1.05], [0, 5.5, 35.6, 0.76], [0, 58, 32.7, 0.76],
   [0, 15, 1.6, 1.05], [0, 6.9, -56, 0.95], [1, 40, 24.7, 0.76], [1, 5, 53.6, 0.76], [0, 57, 50.6, 0.76]];
-export const BOMB_MUST = [HF, 32.1, -40, 0.9];      // always one in the cargo hold, on a crate
-export const HVT = { at: [1, 4, 47], guards: [[1, 7, 43], [1, 8, 52]], flee: [0.5, 32, -46] };
+export const BOMB_MUST = [0, JX - 1.6, (JET.hatch[0] + JET.hatch[1]) / 2, HOLD];      // always one in the cargo hold, just inside the open hatch
+export const HVT = { at: [1, 4, 47], guards: [[1, 7, 43], [1, 8, 52]], flee: [CF, JX - 0.25, JZ - 7.8] };
 
 // ---- shape helpers ----
 export const inFoot = (x, z) => x >= FOOT.x0 && x <= FOOT.x1 && z >= FOOT.z0 && z <= FOOT.z1;
@@ -109,18 +113,16 @@ export const inStair = (x, z) => x > STAIR.x0 && x < STAIR.x1 && z > STAIR.z0 &&
 const inHall = (x, z) => x > HALL.x0 && x < HALL.x1 && z > HALL.z0 && z < HALL.z1;
 const upHere = (x, z) => inFoot(x, z) && z >= UP_Z && !inHall(x, z);
 export const inHangar = (x, z) => x > HANGAR.x0 && x < HANGAR.x1 && z > HANGAR.z0 && z < HANGAR.z1;
-const doorZ = z => z > JET.door[0] && z < JET.door[1], hatchZ = z => z > JET.hatch[0] && z < JET.hatch[1];
-export const inJet = (x, z) => z > JET.c0 && z < JET.c1 && x > JET.x0 + 0.05 && (x < JET.x1 - 0.05 || (doorZ(z) && x < AIRSTAIR.x0) );
+const doorZ = z => z > JET.door[0] && z < JET.door[1];
+export const inJet = (x, z) => z > JET.c0 && z < JET.c1 && x > JX - JET.w && (x < JX + JET.w || (doorZ(z) && x < AIRSTAIR.x0));
 const inAir = (x, z) => x >= AIRSTAIR.x0 && x < AIRSTAIR.x1 && z > AIRSTAIR.z0 && z < AIRSTAIR.z1;
-const inHRamp = (x, z) => x > HRAMP.x0 && x <= HRAMP.x1 && z > HRAMP.z0 && z < HRAMP.z1;
 const stairT = z => (STAIR.z1 - z) / (STAIR.z1 - STAIR.z0), stairUp = z => Math.min(1, stairT(z) / 0.85) * H;
-export const airY = x => CAB * (AIRSTAIR.x1 - x) / (AIRSTAIR.x1 - AIRSTAIR.x0), hrampY = x => HOLD * Math.min(1, (x - HRAMP.x0) / (JET.x0 - HRAMP.x0));
-// Every walkable surface over (x, z) as [height, nav layer]. Layers: 0 ground (and the jet's hold), 1 upper floor (and the jet's cabin).
+export const airY = x => CAB * (AIRSTAIR.x1 - x) / (AIRSTAIR.x1 - AIRSTAIR.x0);
+// Every walkable surface over (x, z) as [height, nav layer]. Layers: 0 ground, 1 upper floor (and the jet's cabin).
 function surfaces(x, z) {
   if (inFoot(x, z)) { if (inStair(x, z)) return stairT(z) > 0.85 ? [[H, 1]] : [[stairUp(z), 0]]; return upHere(x, z) ? [[0, 0], [H, 1]] : [[0, 0]]; }
-  if (inJet(x, z)) return x > JET.x1 - 0.05 ? [[CAB, 1]] : [[HOLD, 0], [CAB, 1]];
+  if (inJet(x, z)) return [[CAB, 1]];
   if (inAir(x, z)) return [[airY(x), 0]];
-  if (inHRamp(x, z)) return [[hrampY(x), 0]];
   return [[0, 0]];
 }
 function floorRay(ox, oy, oz, dx, dy, dz, best) {
@@ -138,7 +140,7 @@ function solidFloor(x, y, z) {
 }
 function floorAt(x, z, y) {
   if (inFoot(x, z)) { if (inStair(x, z)) return 'metal'; const f = y > H / 2 ? 1 : 0; for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return r[6] === 'carpet' ? 'carpet' : r[6] === 'wood' ? 'wood' : 'concrete'; }
-  if (inJet(x, z)) return y > 1.5 ? 'carpet' : 'metal';
+  if (inJet(x, z)) return 'carpet';
   if (inAir(x, z)) return 'metal';
   return 'concrete';
 }
@@ -152,22 +154,22 @@ function extra({ boxes }) {
   const Hg = HANGAR, t = 0.3;
   box('hangar', Hg.x0 - t, Hg.x0, 0, Hg.h, Hg.z0, Hg.z1); box('hangar', Hg.x1, Hg.x1 + t, 0, Hg.h, Hg.z0, Hg.z1); box('hangar', Hg.x0 - t, Hg.x1 + t, 0, Hg.h, Hg.z0 - t, Hg.z0);
   box('hangar', Hg.x0 - t, Hg.door[0], 0, Hg.h, Hg.z1, Hg.z1 + t); box('hangar', Hg.door[1], Hg.x1 + t, 0, Hg.h, Hg.z1, Hg.z1 + t); box('hangar', Hg.door[0], Hg.door[1], Hg.doorH, Hg.h, Hg.z1, Hg.z1 + t);
-  // the jet
-  const J = JET, w = 0.2, y0 = HOLD;
-  box('jet', J.x0 - w, J.x0 + 0.05, y0, J.roof + 0.3, J.c0, J.hatch[0]); box('jet', J.x0 - w, J.x0 + 0.05, y0, J.roof + 0.3, J.hatch[1], J.c1);   // left side, split at the hold hatch
-  box('jet', J.x0 - w, J.x0 + 0.05, CAB - 0.15, J.roof + 0.3, J.hatch[0], J.hatch[1]);
-  box('jet', J.x1 - 0.05, J.x1 + w, y0, J.roof + 0.3, J.c0, J.door[0]); box('jet', J.x1 - 0.05, J.x1 + w, y0, J.roof + 0.3, J.door[1], J.c1);           // right side, split at the cabin door
-  box('jet', J.x1 - 0.05, J.x1 + w, y0, CAB - 0.15, J.door[0], J.door[1]); box('jet', J.x1 - 0.05, J.x1 + w, CAB + DOOR_H - 0.1, J.roof + 0.3, J.door[0], J.door[1]);
-  box('jet', J.x0 - w, J.x1 + w, 0.6, J.roof + 0.4, J.c1, J.nose);          // nose and cockpit: sealed bulkhead
-  box('jet', J.x0 - w, J.x1 + w, 0.6, J.roof + 0.4, J.tail, J.c0);          // tail cone
-  box('jet', J.x0, J.x1, CAB - 0.15, CAB, J.c0, J.c1); box('jet', J.x0, J.x1, J.roof, J.roof + 0.3, J.c0, J.c1);   // cabin floor (the hold's ceiling) and roof
-  box('jet', J.x0, J.x1, 0, y0, J.c0, J.c1);                                // belly under the hold
-  box('wing', 14, J.x0 - w, 1.3, 1.6, -43, -37); box('wing', J.x1 + w, 50, 1.3, 1.6, -43, -37);   // wings: you duck under them, bullets don't
-  box('wing', 26.5, J.x0 - w, CAB + 0.4, CAB + 1.9, -56, -51); box('wing', J.x1 + w, 37.5, CAB + 0.4, CAB + 1.9, -56, -51);   // tail engines
-  box('wing', J.cx - 0.15, J.cx + 0.15, J.roof, 10.5, -60, -53);           // fin
-  // cabin: two seats each side of a wide aisle, galley clear at the door; the hold: cargo on pallets
-  for (let z = J.c0 + 1.2; z < J.c1 - 3.2; z += 0.86) { furn('aseat', J.x0 + 0.1, J.x0 + 1.4, CAB, CAB + 1.1, z, z + 0.6, '-z'); furn('aseat', J.x1 - 1.4, J.x1 - 0.1, CAB, CAB + 1.1, z, z + 0.6, '-z'); }
-  furn('crate', 31.6, 32.6, HOLD, HOLD + 0.9, -40.5, -39.5); furn('crate', 30.2, 31.4, HOLD, HOLD + 1.1, -50.5, -48.5); furn('crate', 32.6, 33.8, HOLD, HOLD + 1.1, -36, -34); furn('crate', 30.2, 31.2, HOLD, HOLD + 0.8, -38, -36.6);
+  // the jet: skin walls split at the door and the hatch, cabin floor and roof, belly, sealed nose and tail, wings, engines, gear, fin
+  const J = JET, w0 = JX - J.skin, w1 = JX - J.w, e0 = JX + J.w, e1 = JX + J.skin, top = J.roof + 0.4, bot = 0.75, [h0, h1] = J.hatch, [d0, d1] = J.door;
+  box('jet', w0, w1, bot, top, J.c0, h0); box('jet', w0, w1, bot, top, h1, J.c1); box('jet', w0, w1, CAB - 0.12, top, h0, h1); box('jet', w0, w1, bot, HOLD, h0, h1);   // right side
+  box('jet', e0, e1, bot, top, J.c0, d0); box('jet', e0, e1, bot, top, d1, J.c1); box('jet', e0, e1, bot, CAB - 0.12, d0, d1); box('jet', e0, e1, CAB + 2.15, top, d0, d1);   // left side, door
+  box('jet', w0, e1, CAB - 0.12, CAB, J.c0, J.c1); box('jet', w0, e1, J.roof, J.roof + 0.4, J.c0, J.c1);   // cabin floor, roof
+  box('jet', w0, e1, bot, HOLD, J.c0, J.c1); box('jet', w0, e1, HOLD, CAB - 0.12, J.c0, h0); box('jet', w0, e1, HOLD, CAB - 0.12, h1, J.c1); box('jet', JX - 1.0, e1, HOLD, CAB - 0.12, h0, h1);   // belly and hold, open behind the hatch
+  box('jet', w0, e1, 0.8, top, J.c1, J.nose); box('jet', w0, e1, 0.9, top + 0.6, J.tail, J.c0);   // nose with the cockpit, tail cone
+  box('wing', mx(1.8), mx(13.2), 5.15, 5.85, mz(-0.75), mz(5.2)); box('wing', mx(-13.2), mx(-1.8), 5.15, 5.85, mz(-0.75), mz(5.2));   // high wings
+  for (const s of [-1, 1]) for (const [a, c, y0n, z0n, z1n] of [[3.0, 4.9, 1.43, -0.18, 5.23], [5.5, 7.4, 1.26, -0.4, 4.5]]) {   // four engines under the wing, and a blocker under each so nobody walks into a nacelle
+    const x0 = s > 0 ? mx(a) : mx(-c), x1 = s > 0 ? mx(c) : mx(-a);
+    box('wing', x0, x1, y0n * JS, 4.9, mz(z0n), mz(z1n)); box('fence', x0, x1, 0, y0n * JS, mz(z0n), mz(z1n));
+  }
+  for (const s of [-1, 1]) box('gear', s > 0 ? mx(2.4) : mx(-3.1), s > 0 ? mx(3.1) : mx(-2.4), 0, 2.1, mz(0), mz(1.7));   // main gear and its fairing
+  box('wing', JX - 0.35, JX + 0.35, 5.3, 10.75, mz(-12.8), mz(-8.6));   // fin
+  // cabin seats: two blocks either side of the aisle
+  box('jetseat', J.left[0], J.left[1], CAB, CAB + 1.12, J.seats[0], J.seats[1]); box('jetseat', J.right[0], J.right[1], CAB, CAB + 1.12, J.seats[0], J.seats[1]);
   for (const [x, z, yaw] of GAPLANES) box('gaplane', x - 0.6, x + 0.6, 0.4, 1.9, z - 3.6, z + 3.6, { yaw });
   for (const [x, z] of TREES) box('trunk', x - 0.3, x + 0.3, 0, CANOPY.y, z - 0.3, z + 0.3);
   for (const c of PARKED) box('pcar', c.x - 2.2, c.x + 2.2, 0, 1.3, c.z - 0.95, c.z + 0.95);
@@ -180,7 +182,7 @@ export default {
   lobby: { x: 34.5, y: 1.5, z: 76.5, tx: 30, tz: 73 },
   brief: ['Armed crew hold the terminal and a grounded jet: 8 hostages, 3 bombs.', 'One bomb is in the jet\'s cargo hold, out in the maintenance hangar.', 'The target is in the VIP lounge upstairs. He will run for the jet', 'the moment he hears you: cut him off or follow him across the apron.'],
   surfaces, floorRay, solidFloor, terrainY: () => 0, floorAt, extra,
-  indoor: (f, x, z) => inFoot(x, z) && (f === 0 || z >= UP_Z), onStairs: (x, z) => inStair(x, z) || inAir(x, z) || inHRamp(x, z),
+  indoor: (f, x, z) => inFoot(x, z) && (f === 0 || z >= UP_Z), onStairs: (x, z) => inStair(x, z) || inAir(x, z),
   inside: (x, z, y) => (inFoot(x, z) && y < (z < UP_Z ? H : 2 * H)) || inHangar(x, z) || inJet(x, z), objective: (x, z) => inFoot(x, z) || inHangar(x, z) || z < 0,
   roofY: (x, z) => inFoot(x, z) ? (z < UP_Z ? H + 0.3 : 2 * H + 0.3) : inHangar(x, z) ? HANGAR.h : (x > CANOPY.x0 && x < CANOPY.x1 && z > CANOPY.z0 && z < CANOPY.z1) ? CANOPY.y : 0,
 };

@@ -4,7 +4,9 @@
 // interiors), two light aircraft, the runway and a control tower in the distance. Two looks: day and night.
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, vertexSheen } from '../mats.js';
-import { H, FOOT, UP_Z, HALL, HANGAR, JET, CAB, HOLD, AIRSTAIR, HRAMP, CANOPY, TREES, GAPLANES } from '../core/maps/airport.js';
+import { GLTFLoader } from '../../vendor/GLTFLoader.js';
+import { envMap, pbrMats } from '../mats.js';
+import { H, FOOT, UP_Z, HALL, HANGAR, JET, CAB, HOLD, AIRSTAIR, CANOPY, TREES, GAPLANES, JX, JZ } from '../core/maps/airport.js';
 
 let tod = 'day', floodMat = null, signs = [];
 const LAMPS = [[32, 8, 43, 14, 24], [18, 3.9, 6, 9, 16], [46, 3.9, 6, 9, 16], [32, 13.5, -42, 18, 34], [32, CAB + 1.9, -40, 4, 9], [32, 8.4, 61, 8, 18], [6, H + 3.8, 44, 6, 12], [32, 3.9, 26, 7, 14]];
@@ -28,42 +30,20 @@ function sign(text, bg = '#16181c', fg = '#f2f2ee', w = 512, h = 96, bar = null)
 }
 const plane = (root, text, w, h, x, y, z, ry, opt = {}) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), sign(text, opt.bg, opt.fg, opt.pw, opt.ph, opt.bar)); m.position.set(x, y, z); m.rotation.y = ry; root.add(m); return m; };
 
-// The jet's hull: rings round the z axis with a radius and centre height that taper into the nose and up into the tail.
-// Quads inside the cabin door and the hold hatch are left out so the openings are real. Vertex colours carry the livery.
-function hull() {
-  const R = 2.2, CY = HOLD + R, seg = 28, pos = [], col = [], idx = [];
-  const prof = z => {   // [radius, centre y, centre x offset]
-    if (z > JET.c1) { const t = Math.min(1, (z - JET.c1) / (JET.nose - JET.c1)); return [R * Math.sqrt(Math.max(0.0001, 1 - t * t * 0.96)), CY - t * 0.7, 0]; }
-    if (z < JET.c0) { const t = Math.min(1, (JET.c0 - z) / (JET.c0 - JET.tail)); return [R * (1 - t * 0.82), CY + t * 1.2, 0]; }
-    return [R, CY, 0];
-  };
-  const zs = []; for (let z = JET.tail; z < JET.nose; z += 0.3) zs.push(z); zs.push(JET.nose);
-  const white = [0.95, 0.96, 0.97], navy = [0.06, 0.24, 0.62], mid = [0.16, 0.42, 0.82], pale = [0.45, 0.66, 0.92];
-  const paint = (y, cy, r) => { const v = (y - cy) / r; return v < -0.55 ? navy : v < -0.38 ? mid : v < -0.26 ? pale : white; };
-  for (const z of zs) { const [r, cy] = prof(z); for (let i = 0; i <= seg; i++) { const a = i / seg * Math.PI * 2, x = JET.cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; pos.push(x, y, z); col.push(...paint(y, cy, r)); } }
-  const hole = (x, y, z) => (x > JET.cx + 1 && z > JET.door[0] - 0.02 && z < JET.door[1] + 0.02 && y > CAB - 0.02 && y < CAB + 2.0) || (x < JET.cx - 1 && z > JET.hatch[0] - 0.02 && z < JET.hatch[1] + 0.02 && y > HOLD && y < CAB - 0.2);
-  for (let k = 0; k < zs.length - 1; k++) for (let i = 0; i < seg; i++) {
-    const a = k * (seg + 1) + i, b = a + 1, c = a + seg + 1, d = c + 1, mx = (pos[a * 3] + pos[d * 3]) / 2, my = (pos[a * 3 + 1] + pos[d * 3 + 1]) / 2, mz = (pos[a * 3 + 2] + pos[d * 3 + 2]) / 2;
-    if (hole(mx, my, mz)) continue; idx.push(a, c, b, b, c, d);
-  }
-  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals();
-  const m = vertexSheen('paint').clone(); m.side = THREE.DoubleSide; return new THREE.Mesh(g, m);
-}
-// a flat tapered slab (wing, tailplane, fin) between a root and a tip chord, as quads into a builder
-function slab(bb, root, tip, t) {   // root/tip: [[x, y, z0], [x, y, z1]] leading/trailing edge points; t = thickness
-  const [r0, r1] = root, [t0, t1] = tip, up = (p, d) => [p[0], p[1] + d, p[2]];
-  bb.quad(up(r0, t), up(r1, t), up(t1, t * 0.5), up(t0, t * 0.5), [0, 1, 0], 0.5); bb.quad(up(r0, -t), up(t0, -t * 0.5), up(t1, -t * 0.5), up(r1, -t), [0, -1, 0], 0.5);
-  bb.quad(up(r0, -t), up(r0, t), up(t0, t * 0.5), up(t0, -t * 0.5), [0, 0, 1], 0.5); bb.quad(up(r1, -t), up(t1, -t * 0.5), up(t1, t * 0.5), up(r1, t), [0, 0, -1], 0.5);
-}
-function vslab(bb, root, tip, t) {   // a vertical slab (the fin): root/tip are [[x, y, z0], [x, y, z1]], thickness along x
-  const [r0, r1] = root, [t0, t1] = tip, sx = (p, d) => [p[0] + d, p[1], p[2]];
-  for (const s of [-1, 1]) bb.quad(sx(r0, s * t), sx(r1, s * t), sx(t1, s * t * 0.6), sx(t0, s * t * 0.6), [s, 0, 0], 0.5);
-  bb.quad(sx(t0, -t * 0.6), sx(t1, -t * 0.6), sx(t1, t * 0.6), sx(t0, t * 0.6), [0, 1, 0], 0.5);
-}
 export default {
   get env() { return tod === 'night' ? NIGHT : DAY; },
   envs: { day: DAY, night: NIGHT },
   setTod(t) { tod = t === 'night' ? 'night' : 'day'; },
+  // The BAe 146 (models/jet/bae146.glb): already scaled and cleaned by tools/jet_glb.py; placed with its own origin at (JX, 0, JZ).
+  load() {
+    return new Promise((res, rej) => new GLTFLoader().load('models/jet/bae146.glb', g => {
+      const m = g.scene; m.position.set(JX, 0, JZ);
+      m.traverse(o => { if (!o.isMesh) return; const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const mt of mats) { mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.3; if (!pbrMats.includes(mt)) pbrMats.push(mt); if (mt.transparent) { mt.depthWrite = false; } }
+        o.castShadow = true; o.receiveShadow = true; });
+      res(m);
+    }, undefined, rej));
+  },
   noshade: { apline: 1, flood: 1, star: 1, apyellow: 1 }, noCast: ['apron', 'road', 'apline', 'apyellow', 'kerbstone', 'grassA', 'epoxyW', 'runway'],
   tread: 'steel',
   outer: w => w.f >= 1 || w.z0 > 55 ? 'apfacade' : 'apfacadeLow',
@@ -147,43 +127,17 @@ export default {
       b('glow').box(Hg.x0 + 2, Hg.x1 - 2, Hg.h - 2.65, Hg.h - 2.6, z - 0.06, z + 0.06, 'y');
     }
     plane(root, 'MAINTENANCE', 10, 1.1, 32, Hg.h + 0.95, Hg.z1 + 0.41, 0, { bg: '#1b2430', bar: '#f0c020' });
-    // ---- the jet ----
-    root.add(hull());
-    const J = JET, CY = HOLD + 2.2;
-    for (let z = J.c0 + 1.4; z < J.c1 - 1.2; z += 0.86) for (const s of [-1, 1]) {   // cabin windows, both sides, inside and out
-      const ang = 0.42, x = J.cx + s * Math.cos(ang) * 2.21, y = CY + Math.sin(ang) * 2.21; if (s > 0 && z > J.door[0] - 0.3 && z < J.door[1] + 0.3) continue;
-      b('jetwin').quad([x, y - 0.17, z - 0.13], [x, y - 0.17, z + 0.13], [x, y + 0.17, z + 0.13], [x, y + 0.17, z - 0.13], [s, 0, 0]); b('jetwin').quad([x - s * 0.03, y - 0.17, z - 0.13], [x - s * 0.03, y - 0.17, z + 0.13], [x - s * 0.03, y + 0.17, z + 0.13], [x - s * 0.03, y + 0.17, z - 0.13], [-s, 0, 0]);
-    }
-    for (const s of [-1, 1]) b('jetwin').quad([J.cx + s * 0.25, CY - 0.05, J.nose + 1.25], [J.cx + s * 1.25, CY - 0.25, J.nose + 1.65], [J.cx + s * 1.05, CY + 0.25, J.nose + 1.9], [J.cx + s * 0.25, CY + 0.42, J.nose + 1.45], [s * 0.4, 0.5, 0.7]);   // cockpit glass
-    b('carpet').quad([J.x0 + 0.05, CAB + 0.004, J.c0], [J.x1 - 0.05, CAB + 0.004, J.c0], [J.x1 - 0.05, CAB + 0.004, J.c1], [J.x0 + 0.05, CAB + 0.004, J.c1], [0, 1, 0], 0.5);
-    b('holdFloor').quad([J.x0 + 0.2, HOLD + 0.004, J.c0], [J.x1 - 0.2, HOLD + 0.004, J.c0], [J.x1 - 0.2, HOLD + 0.004, J.c1], [J.x0 + 0.2, HOLD + 0.004, J.c1], [0, 1, 0], 0.5);
-    b('cabinWall').box(J.x0 + 0.3, J.x1 - 0.3, CAB - 0.15, CAB - 0.01, J.c0, J.c1, 'y', 0.5);   // hold ceiling
-    for (const [z0, z1] of [[J.c0, J.hatch[0]], [J.hatch[1], J.c1]]) b('holdFloor').box(J.x0 + 0.2, J.x0 + 0.25, HOLD, CAB - 0.15, z0, z1, 'X', 0.5);   // hold side liners
-    b('holdFloor').box(J.x1 - 0.25, J.x1 - 0.2, HOLD, CAB - 0.15, J.c0, J.c1, 'x', 0.5);
-    b('cabinWall').box(J.x0 + 0.4, J.x1 - 0.4, J.roof - 0.02, J.roof, J.c0, J.c1, 'y', 0.5); b('glow').box(J.cx - 0.12, J.cx + 0.12, J.roof - 0.03, J.roof - 0.02, J.c0 + 0.5, J.c1 - 0.5, 'y');
-    for (const [x0, x1] of [[J.x0 + 0.15, J.x0 + 0.85], [J.x1 - 0.85, J.x1 - 0.15]]) b('bin').box(x0, x1, CAB + 1.75, J.roof - 0.02, J.c0 + 0.6, J.c1 - 2.6, 'xXyzZ', 0.5);   // overhead bins
-    b('cabinWall').box(J.x0, J.x1, CAB, J.roof, J.c1 - 0.05, J.c1, 'z', 0.5); b('door').box(J.cx - 0.4, J.cx + 0.4, CAB, CAB + 1.95, J.c1 - 0.07, J.c1 - 0.05, 'z', 1);   // cockpit bulkhead and door
-    b('cabinWall').box(J.x0, J.x1, CAB, J.roof, J.c0, J.c0 + 0.05, 'Z', 0.5); b('cabinWall').box(J.x0, J.x1, HOLD, CAB - 0.15, J.c0, J.c0 + 0.05, 'Z', 0.5); b('cabinWall').box(J.x0, J.x1, HOLD, CAB - 0.15, J.c1 - 0.05, J.c1, 'z', 0.5);
-    b('cabinWall').box(J.x1 - 1.6, J.x1 - 0.2, CAB, CAB + 1.0, J.c1 - 1.1, J.c1 - 0.08, 'xYz', 0.5);   // galley unit by the door
-    // wings, tail engines, T-tail
-    const wb = b('gear'); slab(wb, [[J.x0, 1.38, -37], [J.x0, 1.38, -43.4]], [[14, 1.7, -41.4], [14, 1.7, -43.6]], 0.12); slab(wb, [[J.x1, 1.38, -37], [J.x1, 1.38, -43.4]], [[50, 1.7, -41.4], [50, 1.7, -43.6]], 0.12);
-    slab(wb, [[J.cx, 10.2, -55.8], [J.cx, 10.2, -59.6]], [[J.cx - 5.2, 10.4, -58.2], [J.cx - 5.2, 10.4, -59.8]], 0.08); slab(wb, [[J.cx, 10.2, -55.8], [J.cx, 10.2, -59.6]], [[J.cx + 5.2, 10.4, -58.2], [J.cx + 5.2, 10.4, -59.8]], 0.08);
-    vslab(b('cessna'), [[J.cx, CY + 1.4, -51], [J.cx, CY + 1.4, -59.8]], [[J.cx, 10.3, -55.6], [J.cx, 10.3, -59.6]], 0.16);
-    { const eng = new THREE.CylinderGeometry(0.75, 0.62, 4.6, 18, 1, true); eng.rotateX(Math.PI / 2); const em = new THREE.Mesh(eng, sheen({ color: 0xe8eaec, side: THREE.DoubleSide }, 'metal')), em2 = em.clone();
-      em.position.set(J.x0 - 1.85, CAB + 1.15, -53.5); em2.position.set(J.x1 + 1.85, CAB + 1.15, -53.5); root.add(em, em2);
-      for (const e of [em, em2]) { const fan = new THREE.Mesh(new THREE.CircleGeometry(0.7, 18), new THREE.MeshLambertMaterial({ color: 0x24272b })); fan.position.copy(e.position); fan.position.z += 2.0; root.add(fan); }
-      for (const s of [-1, 1]) b('gear').box(s < 0 ? J.x0 - 1.2 : J.x1 + 0.0, s < 0 ? J.x0 : J.x1 + 1.2, CAB + 1.05, CAB + 1.25, -55, -52.5, ALLF, 1); }
-    // landing gear: nose strut and twin mains under the wing roots
-    const wheel = new THREE.CylinderGeometry(0.42, 0.42, 0.28, 16); wheel.rotateZ(Math.PI / 2); const wm = sheen({ color: 0x141414 }, 'matte');
-    for (const [x, z, n] of [[J.cx, -28.4, 0.3], [J.x0 + 0.4, -41, 0.42], [J.x1 - 0.4, -41, 0.42]]) { b('gear').box(x - 0.08, x + 0.08, 0.4, HOLD + 0.9, z - 0.08, z + 0.08, 'xXzZ', 1);
-      for (const s of [-1, 1]) { const w = new THREE.Mesh(wheel, wm); w.position.set(x + s * 0.24, 0.42, z); w.scale.setScalar(n / 0.42); root.add(w); } }
-    // airstairs: treads, stringers, hand rails
-    const A = AIRSTAIR, N = 12; for (let i = 0; i < N; i++) { const x1 = A.x1 - i * (A.x1 - A.x0) / N, x0 = x1 - (A.x1 - A.x0) / N, y = CAB * (i + 1) / N; b('steel').box(x0, x1, y - 0.06, y, A.z0 + 0.05, A.z1 - 0.05, 'xXYzZ', 1); }
-    for (const z of [A.z0, A.z1]) { b('gear').quad([A.x1, 0, z], [A.x0, CAB - 0.2, z], [A.x0, CAB, z], [A.x1, 0.2, z], [0, 0, z < A.z1 ? -1 : 1], 1); b('gear').box(A.x1 + 0.1, A.x1 + 0.2, 0, 1.0, z - 0.04, z + 0.04, 'xXzZ', 1);
-      b('steel').quad([A.x1 + 0.15, 1.0, z], [A.x0, CAB + 1.0, z], [A.x0, CAB + 1.05, z], [A.x1 + 0.15, 1.05, z], [0, 0, 1], 1); }
-    b('gear').box(A.x0 - 0.4 + 0.4, A.x1 + 1.0, 0, 0.5, A.z0 - 0.2, A.z1 + 0.2, 'xXYzZ', 1);   // the stair truck's base
-    // the hold hatch, swung up
-    b('cessna').box(J.x0 - 1.3, J.x0 - 0.2, CAB - 0.15, CAB - 0.05, J.hatch[0], J.hatch[1], 'xXyYzZ', 1); { const R2 = HRAMP; b('steel').quad([R2.x0, 0.01, R2.z0], [30.05, HOLD, R2.z0], [30.05, HOLD, R2.z1], [R2.x0, 0.01, R2.z1], [0, 1, 0], 1); }
+    // ---- the jet (the model itself arrives later, see load()): the stair truck at the door and the inside of the open cargo bay ----
+    const J = JET, A = AIRSTAIR, N = 10;
+    for (let i = 0; i < N; i++) { const x1 = A.x1 - i * (A.x1 - A.x0) / N, x0 = x1 - (A.x1 - A.x0) / N, y = CAB * (i + 1) / N; b('steel').box(x0, x1, y - 0.06, y, A.z0 + 0.03, A.z1 - 0.03, 'xXYzZ', 1); }
+    for (const z of [A.z0 - 0.04, A.z1 + 0.04]) { b('gear').quad([A.x1, 0, z], [A.x0, CAB - 0.2, z], [A.x0, CAB, z], [A.x1, 0.2, z], [0, 0, z < A.z1 ? -1 : 1], 1); b('gear').box(A.x1 + 0.1, A.x1 + 0.2, 0, 1.0, z - 0.04, z + 0.04, 'xXzZ', 1);
+      b('steel').quad([A.x1 + 0.15, 1.0, z], [A.x0 + 0.2, CAB + 1.0, z], [A.x0 + 0.2, CAB + 1.05, z], [A.x1 + 0.15, 1.05, z], [0, 0, 1], 1); b('gear').box(A.x0 + 0.15, A.x0 + 0.25, CAB, CAB + 1.05, z - 0.04, z + 0.04, 'xXzZ', 1); }
+    b('apyellow').box(A.x0 + 0.6, A.x1 + 1.4, 0, 0.55, A.z0 - 0.5, A.z1 + 0.5, 'xXYzZ', 1);   // the stair truck's chassis
+    const [h0, h1] = J.hatch, bx0 = JX - J.skin + 0.05, bx1 = JX - 1.0, cy = CAB - 0.12;
+    b('holdFloor').box(bx0, bx1, HOLD - 0.02, HOLD, h0, h1, 'Y', 0.5); b('cabinWall').box(bx0, bx1, cy, cy + 0.02, h0, h1, 'y', 0.5);
+    b('holdFloor').box(bx1, bx1 + 0.02, HOLD, cy, h0, h1, 'x', 0.5); b('holdFloor').box(bx0, bx1, HOLD, cy, h0, h0 + 0.02, 'Z', 0.5); b('holdFloor').box(bx0, bx1, HOLD, cy, h1 - 0.02, h1, 'z', 0.5);
+    b('glow').box(bx1 - 0.6, bx1 - 0.3, cy - 0.01, cy, (h0 + h1) / 2 - 0.15, (h0 + h1) / 2 + 0.15, 'y');
+    b('cessna').box(JX - J.skin - 1.0, JX - J.skin - 0.05, 2.0, 2.06, h0, h1, 'xXyYzZ', 1);   // the hatch door, swung up and out
     // ---- light aircraft in the hangar ----
     for (const [x, z, yaw] of GAPLANES) {
       const g = new THREE.Group(), ms = sheen({ color: 0xf1f1ee }, 'paint'), mr = sheen({ color: 0xb3392a }, 'paint'), md = new THREE.MeshLambertMaterial({ color: 0x1b2028 });

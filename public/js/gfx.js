@@ -228,7 +228,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     if (G.look) G.look(night, nvg, wx);
   };
   const dispose = () => { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skyT.dispose(); };
-  return { root, level, map, doors, look, dispose, sun, tod };
+  return { root, level, map, doors, look, dispose, sun, tod, gfx: G };
 }
 
 export function label(text, color = '#fff', w = 256, h = 64) {
