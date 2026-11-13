@@ -423,4 +423,25 @@ await t('pvp terrorist locks and wire traps: two each, own doors pass safely, SW
   const hp = bad.hp; at(2, c); s.door(2, c); assert.ok(s.doorOpen[c] && bad.hp === hp, 'terrorist passes their own wire');
   const chp = cop.hp; at(1, e); s.door(1, e); assert.ok(s.doorOpen[e] && cop.hp < chp, 'SWAT trips the wire');
 });
+await t('airport: every post, hostage, bomb and the jet reachable from the kerb; bomb in the hold; passenger and gunman in the cabin', async () => {
+  const { buildLevel: BL, findPath: FP } = await import('../public/js/core/level.js');
+  const L = BL('airport'), M = L.map, [sx, sz] = M.spawn[0];
+  const reach = ([f, x, z]) => { const p = FP(L, sx, sz, 0, x, z, f * M.H, true); const e = p && p[p.length - 1]; return !!p && Math.hypot(e[0] - x, e[1] - z) < 1.2; };
+  for (const sp of [...M.spots.s, ...M.spots.c, ...M.civMust, ...M.susMust, M.hvt.at, M.hvt.flee]) assert.ok(reach(sp), 'reachable ' + sp);
+  assert.ok(Math.abs(L.groundY(32, -40, 2.3) - M.H / 2) < 0.01, 'cabin floor'); assert.ok(Math.abs(L.groundY(32, -44, 0.3) - 0.3) < 0.01, 'hold floor');
+  const s = new Sim('airport'); s.addPlayer(1, 'A'); s.start(5, false, 'clear', 'airport');
+  const b0 = s.bombs[0]; assert.ok(b0.x > 30 && b0.x < 34 && b0.z > -52 && b0.z < -31 && b0.y < 1.5, 'one bomb in the cargo hold');
+  assert.ok(s.npcs.some(n => n.kind === 'c' && Math.abs(n.y - M.H / 2) < 0.01 && n.z < -31), 'passenger in the cabin');
+  assert.ok(s.npcs.some(n => n.kind === 's' && Math.abs(n.y - M.H / 2) < 0.01 && n.z < -31), 'gunman in the cabin');
+});
+await t('airport HVT runs for the jet once he hears the squad, then digs in there', async () => {
+  const s = new Sim('airport'); s.addPlayer(1, 'A'); s.start(8, false, 'clear', 'airport'); const p = s.players.get(1); p.has = true;
+  const h = s.npcs.find(n => n.hvt), [, fx, fz] = s.M.hvt.flee;
+  s.pose(1, { h: [h.x + 3, h.y + 1.65, h.z - 9, 0, 1, 0, 0] }); p.y = h.y; s.phase = 'active';
+  h.st = 'a'; h.lk = [p.hx, p.hz, p.y]; h.tA = 0;
+  s.pose(1, { h: [80, 1.65, 80, 0, 0, 0, 1] }); p.y = 0;   // the squad steps away so nobody shoots him on the way
+  const evs = []; for (let i = 0; i < 15 * 90 && Math.hypot(h.x - fx, h.z - fz) > 1.6; i++) { s.tick(1 / 15); evs.push(...s.events.splice(0)); }
+  assert.ok(evs.some(e => e.e === 'hvtrun'), 'announced'); assert.ok(Math.hypot(h.x - fx, h.z - fz) < 1.6, 'reached the jet: ' + h.x.toFixed(1) + ',' + h.z.toFixed(1)); assert.ok(Math.abs(h.y - s.M.H / 2) < 0.05, 'in the cabin');
+  for (let i = 0; i < 15; i++) s.tick(1 / 15); assert.ok(!h.fleeing && h.st !== 'g', 'holding there');
+});
 console.log(n + ' tests passed');

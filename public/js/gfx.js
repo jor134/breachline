@@ -7,7 +7,8 @@ import mansionGfx from './maps/mansion-gfx.js';
 import terminalGfx from './maps/terminal-gfx.js';
 import trainingGfx from './maps/training-gfx.js';
 import grandprixGfx from './maps/grandprix-gfx.js';
-const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx };
+import airportGfx from './maps/airport-gfx.js';
+const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx };
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
 export function initMats() {
@@ -96,6 +97,14 @@ function furnish(b, w) {
     case 'crate': P('wood', 0, len, 0, dep, 0, h, ALL, 1); P('fascia', -0.01, len + 0.01, dep * 0.3, dep * 0.34, 0, h + 0.005, 'xXYzZ'); P('fascia', -0.01, len + 0.01, dep * 0.66, dep * 0.7, 0, h + 0.005, 'xXYzZ'); break;
     case 'console': P('fascia', 0, len, 0, dep, 0, h - 0.25); P('top', 0, len, 0.05, dep, h - 0.25, h, ALL, 1); P('glow', len * 0.08, len * 0.92, dep - 0.02, dep, h - 0.6, h - 0.32, 'xXzZ'); break;
     case 'binnacle': P('fascia', len * 0.3, len * 0.7, dep * 0.3, dep * 0.7, 0, h - 0.2); P('steel', 0, len, 0, dep, h - 0.2, h); break;
+    case 'seats': { const n = Math.max(1, Math.round(len / 0.62)), cw = len / n;   // gate seating: a beam on legs with moulded seats
+      P('fascia', 0, len, dep * 0.3, dep * 0.45, 0.32, 0.38); for (const u of [0.15, len - 0.25]) P('fascia', u, u + 0.08, dep * 0.25, dep * 0.5, 0, 0.32);
+      for (let i = 0; i < n; i++) { P('seatM', i * cw + 0.03, (i + 1) * cw - 0.03, 0.05, dep, 0.38, 0.46); P('seatM', i * cw + 0.03, (i + 1) * cw - 0.03, 0, 0.08, 0.46, h); } break; }
+    case 'aseat': { const half = len / 2;   // a pair of aircraft seats: cushion, tall back with a headrest cover, arm rests
+      for (const u of [0, half]) { P('fabric', u + 0.03, u + half - 0.03, 0.12, dep, 0.18, 0.46); P('fabric', u + 0.03, u + half - 0.03, 0, 0.14, 0.18, h); P('linen', u + 0.08, u + half - 0.08, -0.004, 0.06, h - 0.25, h - 0.02, 'zY'); }
+      P('fascia', 0, 0.04, 0.12, dep, 0.46, 0.62); P('fascia', len - 0.04, len, 0.12, dep, 0.46, 0.62); P('fascia', 0.1, len - 0.1, 0.2, dep - 0.1, 0, 0.18); break; }
+    case 'xray': P('lacquer', 0, len, 0, dep, 0.55, 1.0); P('dark', 0.02, len - 0.02, 0.4, dep - 0.4, 0.55, h); P('lacquer', 0, len, dep * 0.35, dep * 0.65, 1.0, h); P('top', 0, len, 0, dep, 0.5, 0.55); P('fascia', 0.05, len - 0.05, 0.05, dep - 0.05, 0, 0.5, 'xXzZ'); break;
+    case 'column': P('lacquer', 0, len, 0, dep, 0, h, 'xXzZ'); P('fascia', -0.02, len + 0.02, -0.02, dep + 0.02, 0, 0.12, 'xXzZ'); break;
     case 'booth': P('lacquer', 0, len, 0, dep, 0, h); break;
     case 'guard': P('lacquer', 0, len, 0, dep, 0, h - 0.1); P('fascia', -0.1, len + 0.1, -0.1, dep + 0.1, h - 0.1, h); P('glass', 0.05, len - 0.05, -0.002, dep + 0.002, 1.0, 2.1, 'xXzZ'); break;
     case 'baffle': P('steelplate', 0, len, 0, dep, 0, h); break;
@@ -131,12 +140,16 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   const cut = (r, hs) => { let out = [r]; for (const [hx0, hz0, hx1, hz1] of hs || []) { const nx = []; for (const [a, c, e, g] of out) { if (hx1 <= a || hx0 >= e || hz1 <= c || hz0 >= g) { nx.push([a, c, e, g]); continue; }
       if (c < hz0) nx.push([a, c, e, hz0]); if (g > hz1) nx.push([a, hz1, e, g]); const zc = Math.max(c, hz0), zg = Math.min(g, hz1); if (a < hx0) nx.push([a, zc, hx0, zg]); if (e > hx1) nx.push([hx1, zc, e, zg]); } out = nx; } return out; };
   for (const [lv, hs] of Object.entries(holes)) for (const [hx0, hz0, hx1, hz1] of hs) { const y = lv * H; b('fascia').box(hx0, hx1, y - 0.22, y, hz1 - 0.04, hz1, 'Z', 1); b('fascia').box(hx0 - 0.002, hx0 + 0.04, y - 0.22, y, hz0, hz1, 'X', 1); b('fascia').box(hx1 - 0.04, hx1 + 0.002, y - 0.22, y, hz0, hz1, 'x', 1); b('fascia').box(hx0, hx1, y - 0.22, y, hz0, hz0 + 0.04, 'z', 1); }   // slab edges round the opening
+  // a 'void' room is the upper half of a double-height space: no floor of its own, and the room under it has no ceiling
+  const voidOver = (f, x, z) => map.rooms.some(r => r[0] === f + 1 && r[6] === 'void' && x > r[2] && x < r[4] && z > r[3] && z < r[5]);
   for (const [f, , x0, z0, x1, z1, mat] of map.rooms) {
-    const y = f * H + 0.004; for (const [a, c, e, g] of cut([x0, z0, x1, z1], holes[f])) b(MATS[mat] ? mat : 'tile').quad([a, y, c], [e, y, c], [e, y, g], [a, y, g], [0, 1, 0], 0.5);
+    const y = f * H + 0.004, open = voidOver(f, (x0 + x1) / 2, (z0 + z1) / 2), vd = mat === 'void';
+    if (!vd) for (const [a, c, e, g] of cut([x0, z0, x1, z1], holes[f])) b(MATS[mat] ? mat : 'tile').quad([a, y, c], [e, y, c], [e, y, g], [a, y, g], [0, 1, 0], 0.5);
+    if (open) continue;
     const cy = f * H + H - 0.012; for (const [a, c, e, g] of cut([x0, z0, x1, z1], holes[f + 1])) b('ceiling').quad([a, cy, c], [e, cy, c], [e, cy, g], [a, cy, g], [0, -1, 0], 0.5);
     const inHole = (hs, x, z, m) => (hs || []).some(([a, c, e, g]) => x > a - m && x < e + m && z > c - m && z < g + m);
     for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) { if (inHole(holes[f + 1], x, z, 0.2) || inHole(holes[f], x, z, 0.5)) continue; b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
-      ao('lightpool', [x - 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z + 1.5], [x - 1.5, y + 0.03, z + 1.5], [0, 1, 0]); }   // pool of light on the floor under each fitting
+      if (!vd) ao('lightpool', [x - 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z + 1.5], [x - 1.5, y + 0.03, z + 1.5], [0, 1, 0]); }   // pool of light on the floor under each fitting
   }
   // walls: plaster inside, the map's cladding outside, glass with dark mullions
   for (const w of level.boxes) {

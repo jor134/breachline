@@ -229,7 +229,7 @@ function showLobbyPanel() {
   if (S.menu) return; if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
   panel.draw('BREACHLINE', M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
     [squadLine(), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, B/Y = SHOUT. Helmet = NVG.',
-      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 function showBoard() {   // the mission board in the training lobby: pick where the squad goes next, see how the range went
   S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); const T = trainLine(), nx = MAPS[S.nextMap] || MAPS[MISSION_IDS[0]];
@@ -347,6 +347,7 @@ function onEvent(e) {
     case 'heal': if (e.p === S.me.id) { sfx.ok(); S.lastPart = ''; S.figT = 2.5; } break;
     case 'down': if (e.p === S.me.id) sfx.hurt(); break;
     case 'tlock': case 'ttrap': { const d = level.doors[e.d]; if (e.p === S.me.id && d) { hint(d.cx, d.y + 1.3, d.cz, (e.e === 'tlock' ? 'DOOR LOCKED' : 'WIRE SET') + ' - ' + e.left + ' LEFT'); sfx.click(); } break; }
+    case 'hvtrun': { const a = S.actors.get(e.n); if (a) sayAt(a.g.position.x, a.g.position.y + 2.2, a.g.position.z, S.pvp && S.me.team === 'tango' ? 'THE BOSS IS HEADING FOR THE JET' : 'HVT IS RUNNING FOR THE JET', '#ff8040'); break; }
     case 'grab': { const a = S.actors.get(e.n); if (e.p === S.me.id && a) { hint(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, 'SHIELD: PISTOL ONLY'); if (S.mode !== 'vr' && hands[1].item === 'rifle') deskKey('Digit2'); } break; }   // phone / desktop: switch to the pistol for you
     case 'drop': { const a = S.actors.get(e.n); if (a && e.why !== 'let go') sayAt(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, e.why === 'flash' ? 'HOSTAGE BROKE FREE (FLASHED)' : e.why === 'shot' ? 'HOSTAGE BROKE FREE (SHOT)' : 'HOSTAGE FREE', '#80d0ff'); break; }
     case 'carhit': if (e.p != null) { sfx.boom({ x: e.x, y: 0.5, z: e.z }); if (e.p === S.me.id) sayAt(head.pos.x + head.fwd.x * 1.5, head.pos.y, head.pos.z + head.fwd.z * 1.5, 'HIT BY A RACE CAR', '#ff6060'); } break;
@@ -835,7 +836,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v29';
+const BUILD = 'v30';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
