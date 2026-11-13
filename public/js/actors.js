@@ -223,6 +223,7 @@ const POSE = {
   g: { srx: -0.2, er: -1.0, slx: -0.85, slz: 0.5, el: -0.8 }, a: { srx: -0.5, er: -1.0, slx: -1.05, slz: 0.5, el: -0.75, spine: 0.06 }, c: { srx: -1.05, er: -0.55, slx: -1.3, slz: 0.5, el: -0.35, spine: 0.1, kl: 0.12, kr: 0.12, hl: -0.1, hr: 0.14, drop: -0.02 },
   h: { srx: -0.9, er: -0.75, slx: -1.2, slz: 0.5, el: -0.45, spine: 0.3, hl: -1.25, hr: -1.25, kl: 2.0, kr: 2.0, drop: -0.4 },   // crouched behind cover
   z: { slx: -2.15, srx: -2.0, el: -2.0, er: -1.9, slz: 0.2, srz: -0.2, spine: 0.4, kl: 0.25, kr: 0.2, drop: -0.04 },      // stunned: hands to the face
+  x: Object.assign({}, UPH, { spine: 0.14, drop: -0.06 }),   // held as a shield: hands up, stooped
   s: UPH, k: Object.assign({}, UPH, KN), y: Object.assign({}, UPH, KN), u: Object.assign({}, BACK, KN), w: Object.assign({ slx: -2.3, srx: -2.3, el: -1.7, er: -1.7, spine: 0.55 }, KN),
   d: { lie: -HP, yOff: 0.15, slx: -0.2, slz: -0.7, srx: -0.3, srz: 0.5, kl: 0.2, kr: 0.5, hr: -0.25 }, i: { lie: -HP, yOff: 0.15, slx: -0.5, slz: -0.6, srx: -0.2, srz: 0.4, kl: 0.6, hl: -0.4, kr: 0.15 }, j: Object.assign({ lie: HP, yOff: 0.15 }, BACK),
 };

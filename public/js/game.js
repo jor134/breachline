@@ -162,7 +162,7 @@ function toggleNVG() { S.nvg = !S.nvg; sfx.nvg(S.nvg); applyLook(); }
 function hint(x, y, z, text) { if (S.now - S.hintT < 1.2) return; S.hintT = S.now; sayAt(x, y, z, text, '#ffd060'); sfx.beep(null, 300); }
 // wounds: a leg hit slows you, an arm hit shakes your aim; a body diagram shows where you were hit
 const PARTS = ['head', 'torso', 'armL', 'armR', 'legL', 'legR'], FIG = { head: [14, 0, 12, 12], torso: [10, 13, 20, 26], armL: [2, 13, 7, 26], armR: [31, 13, 7, 26], legL: [10, 40, 9, 34], legR: [21, 40, 9, 34] };
-const legMul = () => [1, 0.65, 0.4][(S.me.w >> 4 & 1) + (S.me.w >> 5 & 1)], armShake = () => [0, 0.012, 0.026][(S.me.w >> 2 & 1) + (S.me.w >> 3 & 1)];
+const legMul = () => [1, 0.65, 0.4][(S.me.w >> 4 & 1) + (S.me.w >> 5 & 1)] * (S.me.holding ? 0.5 : 1), armShake = () => [0, 0.012, 0.026][(S.me.w >> 2 & 1) + (S.me.w >> 3 & 1)];
 function drawBody(g, x, y, k, flash) { PARTS.forEach((p, i) => { const [a, b, c, d] = FIG[p]; g.fillStyle = p === flash ? '#ffffff' : S.me.w & (1 << i) ? '#e03030' : '#46505c'; g.fillRect(x + a * k, y + b * k, c * k, d * k); }); }
 const fig = (() => { const c = document.createElement('canvas'); c.width = 96; c.height = 176; const tex = new THREE.CanvasTexture(c); const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.085, 0.156), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, fog: false })); mesh.position.set(-0.17, -0.05, -0.5); mesh.renderOrder = 994; mesh.visible = false; camera.add(mesh); return { c, tex, mesh }; })();
 function drawFig() { const g = fig.c.getContext('2d'); g.clearRect(0, 0, 96, 176); g.fillStyle = 'rgba(5,8,12,0.7)'; g.fillRect(0, 0, 96, 176); drawBody(g, 8, 8, 2, Math.floor(S.now * 5) % 2 ? S.lastPart : ''); g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.textAlign = 'center'; g.fillText(S.lastPart ? ({ head: 'HEAD', torso: 'TORSO', armL: 'LEFT ARM', armR: 'RIGHT ARM', legL: 'LEFT LEG', legR: 'RIGHT LEG' })[S.lastPart] : 'TREATED', 48, 170); fig.tex.needsUpdate = true; }
@@ -318,7 +318,7 @@ function applySnap(m) {
   if (m.T) for (let i = 0; i < S.doorTrap.length; i++) { const v = +m.T[i]; S.doorTrap[i] = v; const d = world.doors[i]; d.trap.visible = v > 0 && m.ph === 'active'; if (v) { const o = (v === 1 ? 0.3 : -0.3); d.trap.position.set(level.doors[i].x0 + (d.horiz ? 0 : o), level.doors[i].y, level.doors[i].z0 + (d.horiz ? o : 0)); } }
   nadeView(m.G || [], m.SM || []);
   for (const [id, name, , hp, down, h, l, r, g, w] of m.P) {
-    if (id === S.me.id) { const tm = w & 2048 ? 'tango' : 'swat'; if (tm !== S.me.team) { S.me.team = tm; myBody.setTeam(tm); } S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
+    if (id === S.me.id) { const tm = w & 2048 ? 'tango' : 'swat'; if (tm !== S.me.team) { S.me.team = tm; myBody.setTeam(tm); } const hd = !!(w & 4096); if (hd !== !!S.me.holding) { S.me.holding = hd; if (!hd) for (const q of hands) q.shield = false; } S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
     seen.add(id); let o = S.officers.get(id); if (!o) { o = new Officer(name, label(name, '#9fd0ff')); scene.add(o.g); S.officers.set(id, o); }
     o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team);
   }
@@ -343,6 +343,8 @@ function onEvent(e) {
     case 'hurt': if (e.p === S.me.id) { hudT = 0; hurtT = 1; sfx.hurt(); for (const h of hands) buzz(h, 1, 150); S.lastPart = e.part; S.figT = 4; } break;
     case 'heal': if (e.p === S.me.id) { sfx.ok(); S.lastPart = ''; S.figT = 2.5; } break;
     case 'down': if (e.p === S.me.id) sfx.hurt(); break;
+    case 'grab': { const a = S.actors.get(e.n); if (e.p === S.me.id && a) { hint(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, 'SHIELD: PISTOL ONLY'); if (S.mode !== 'vr' && hands[1].item === 'rifle') deskKey('Digit2'); } break; }   // phone / desktop: switch to the pistol for you
+    case 'drop': { const a = S.actors.get(e.n); if (a && e.why !== 'let go') sayAt(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, e.why === 'flash' ? 'HOSTAGE BROKE FREE (FLASHED)' : e.why === 'shot' ? 'HOSTAGE BROKE FREE (SHOT)' : 'HOSTAGE FREE', '#80d0ff'); break; }
     case 'carhit': if (e.p != null) { sfx.boom({ x: e.x, y: 0.5, z: e.z }); if (e.p === S.me.id) sayAt(head.pos.x + head.fwd.x * 1.5, head.pos.y, head.pos.z + head.fwd.z * 1.5, 'HIT BY A RACE CAR', '#ff6060'); } break;
     case 'revive': if (e.p === S.me.id) sfx.ok(); break;
     case 'hit': if (a) a.flinch = 1; break;
@@ -399,7 +401,11 @@ function deskKey(code) {
 }
 function nearestCuffable(p, maxD) { let best = null, bd = maxD; for (const [id, a] of S.actors) { if (a.st !== 's' && a.st !== 'k' && a.st !== 'y' && a.st !== 'i') continue; const d = Math.hypot(a.g.position.x - p.x, a.g.position.z - p.z) + Math.abs(a.g.position.y + 0.9 - p.y) * 0.3; if (d < bd) { bd = d; best = id; } } return best; }
 function nearestDowned(p, maxD) { let best = null, bd = maxD; for (const o of S.officers.values()) { if (!o.down) continue; const d = o.head.position.distanceTo(p); if (d < bd) { bd = d; best = o.id; } } return best; }
+// PvP human shield (terrorist players): the nearest hostage still free within reach of p
+const shieldOn = () => S.pvp && S.me.team === 'tango' && S.phase === 'active' && !S.me.down;
+function nearestHostage(p, maxD) { let best = null, bd = maxD; for (const [id, a] of S.actors) { if (a.kind !== 'c' || a.st === 'u' || a.st === 'd' || a.st === 'x') continue; const d = Math.hypot(a.g.position.x - p.x, a.g.position.z - p.z) + Math.abs(a.g.position.y + 1.1 - p.y) * 0.5; if (d < bd) { bd = d; best = id; } } return best; }
 function deskInteract() {
+  if (shieldOn()) { if (S.me.holding) return net.send({ t: 'release' }); const n = nearestHostage(head.pos, 1.6); if (n != null) return net.send({ t: 'hold', n }); }
   for (let i = 0; i < S.bombs.length; i++) { const b = S.bombs[i]; if (!b.defused && b.g.position.distanceTo(head.pos) < 1.7) { const p = b.g.position; return S.tool === 'cutters' ? net.send({ t: 'cut', b: i, w: b.order[b.n] }) : hint(p.x, p.y + 0.4, p.z, 'SELECT CUTTERS'); } }
   if (nearBreaker(head.pos, 1.7)) return net.send({ t: 'breaker' });
   const n = nearestCuffable(v1.copy(head.pos).setY(head.pos.y - 0.7), 1.6); if (n != null) return net.send({ t: 'cuff', n });
@@ -498,6 +504,7 @@ function placeGuns(dt) {
 }
 function fire(h, G, o) {
   const held = h.in.trig > 0.6, edge = held && !(h.prev.trig > 0.6);
+  if (S.me.holding && G.kind === 'rifle') { if (edge) { hint(head.pos.x + head.fwd.x, head.pos.y - 0.2, head.pos.z + head.fwd.z, 'PISTOL ONLY WHILE HOLDING A HOSTAGE'); sfx.click(); } return; }
   if (h.block && !held) h.block = false;
   if (!held && !press(h, 'a') && !press(h, 'b') && !press(h, 'stick')) return;
   G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set((Math.random() - 0.5) * 0.008, (Math.random() - 0.5) * 0.008, -1).normalize().applyQuaternion(G.mesh.quaternion);
@@ -519,6 +526,7 @@ function fire(h, G, o) {
 function grab(h, o) {   // grip pressed on hand h; o is the other hand
   const G = gunIn(h); if (G) { G.where = 'holster'; h.item = null; o.support = false; o.rackG = null; sfx.click(); return; }
   if (h.item) return;
+  if (shieldOn() && !S.me.holding) { const n = nearestHostage(h.pos, 0.75); if (n != null) { h.shield = true; buzz(h, 0.6, 60); return net.send({ t: 'hold', n }); } }   // free hand on a hostage: take them as a shield
   const OG = gunIn(o), z = zoneFor(h, o);   // the same lookup that draws the highlight, so you grab exactly what is lit
   if (z) {
     buzz(h, 0.5, 30);
@@ -550,7 +558,7 @@ function useWorld(h) {
 function handVR(h, o, dt) {
   if (!h.active) return;
   if (press(h, 'grip')) grab(h, o);
-  if (released(h, 'grip')) { h.support = false; h.rackG = null; if (h.item === 'mag') { guns[h.magKind].mags++; h.item = null; }
+  if (released(h, 'grip')) { if (h.shield) { h.shield = false; net.send({ t: 'release' }); } h.support = false; h.rackG = null; if (h.item === 'mag') { guns[h.magKind].mags++; h.item = null; }
     else if (h.item === 'flash' || h.item === 'smoke') { net.send({ t: 'throw', k: h.item, o: [h.pos.x, h.pos.y, h.pos.z], v: [h.vel.x * 1.3, h.vel.y * 1.3 + 0.6, h.vel.z * 1.3] }); h.item = null; buzz(h, 0.7, 40); } }   // let go to throw: it leaves with your hand's speed
   if (h.hold && !(h.in.grip > 0.5) && !(h.in.trig > 0.5)) h.hold = null;
   const G = gunIn(h), OG = gunIn(o);

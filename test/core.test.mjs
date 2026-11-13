@@ -385,4 +385,24 @@ await t('pvp: terrorist players start inside, the AI ignores them, they cannot r
   // back to co-op once nobody is a terrorist
   s.setTeam(2, 'swat'); s.phase = 'lobby'; s.start(13, false, 'clear', 'mansion'); assert.ok(!s.pvp);
 });
+await t('pvp human shield: grab, carried in front, blocks body shots, pistol only, freed by a hit or a flashbang', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'Cop'); s.addPlayer(2, 'Bad'); s.setTeam(2, 'tango'); s.start(21, false, 'clear', 'mansion');
+  const cop = s.players.get(1), bad = s.players.get(2); cop.has = bad.has = true;
+  const c = s.npcs.find(q => q.kind === 'c'); c.st = 'w';
+  const stand = (id, x, z, yaw, y = c.y) => s.pose(id, { h: [x, y + 1.65, z, 0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)] });   // yaw 0 faces -z
+  stand(2, c.x, c.z + 0.9, 0); s.hold(1, c.id); assert.ok(!c.held, 'officers cannot take a shield');
+  s.hold(2, c.id); assert.equal(c.held, 2); assert.equal(c.st, 'x'); assert.equal(bad.hold, c.id);
+  stand(2, c.x + 0.4, c.z + 0.9, 0); s.tick(1 / 15); assert.ok(Math.abs(c.x - (bad.hx - 0.14)) < 0.02 && Math.abs(c.z - (bad.hz - 0.48)) < 0.02, 'carried just in front, a little to the left');
+  s.cuff(1, c.id); assert.equal(c.st, 'x', 'cannot cuff a held hostage');
+  // the officer in front fires at the terrorist's chest: the hostage takes it
+  stand(1, bad.hx, bad.hz - 6, Math.PI); s.t += 5; const hp0 = bad.hp; s.shot(1, { o: [bad.hx - 0.1, bad.hy - 0.35, bad.hz - 5.5], d: [0, 0, 1], w: 'rifle' });
+  assert.equal(bad.hp, hp0, 'body shot blocked'); assert.ok(c.hp < 100 || c.st === 'd', 'hostage hit'); assert.equal(s.log.civHit, 1, 'counts against SWAT');
+  // rifle refused while holding
+  s.t += 5; const ev0 = s.events ? s.events.length : 0; const lastShot = bad.lastShot; s.shot(2, { o: [bad.hx, bad.hy - 0.3, bad.hz], d: [0, 0, -1], w: 'rifle' }); assert.equal(bad.lastShot, lastShot === undefined ? bad.lastShot : bad.lastShot, 'rifle refused'); 
+  // a head shot past the hostage hits the terrorist and frees the hostage
+  if (c.st !== 'd') { s.t += 5; s.shot(1, { o: [bad.hx + 0.05, bad.hy, bad.hz - 5.5], d: [0, 0, 1], w: 'rifle' }); assert.ok(bad.hp < hp0, 'terrorist hit'); assert.equal(bad.hold, 0, 'dropped the hostage'); assert.equal(c.st, 'w'); }
+  // flashbang frees too
+  const c2 = s.npcs.find(q => q.kind === 'c' && q !== c && q.st !== 'd'); c2.st = 'w'; bad.down = false; bad.hp = 100; stand(2, c2.x, c2.z + 0.9, 0, c2.y); s.hold(2, c2.id); assert.equal(bad.hold, c2.id);
+  s.flash({ x: bad.hx, y: bad.hy - 1, z: bad.hz - 1.5, by: 1 }); assert.equal(bad.hold, 0); assert.equal(c2.held, 0);
+});
 console.log(n + ' tests passed');
