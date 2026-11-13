@@ -10,6 +10,14 @@ export const M4 = { s: 0.01, oy: 0, oz: -0.143 };   // gun = (-x, y, -z) * s + (
 let promise = null;
 const inMag = (x, y, z) => y < 0.6 && z > -7.2 && z < 6.5;   // model units (cm): the magazine below the mag well
 
+// The sight's printed reticle is a small cut-out patch in the colour texture (pixels 456-494 x 461-495 of 512): clear it to
+// fully transparent so only the game's own reticle shows. Everything else in the texture (housing, glass tint) is kept.
+function eraseReticle(tex) {
+  const img = tex.image; if (!img || !img.width) return tex;
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+  const sx = img.width / 512, sy = img.height / 512; g.clearRect(456 * sx, 461 * sy, 38 * sx, 34 * sy);
+  const t = new THREE.CanvasTexture(c); t.flipY = tex.flipY; t.colorSpace = tex.colorSpace; t.wrapS = tex.wrapS; t.wrapT = tex.wrapT; t.channel = tex.channel; t.anisotropy = tex.anisotropy; return t;
+}
 export function loadM4() {
   return promise || (promise = new Promise((res, rej) => new GLTFLoader().load('models/m4/m4.glb', g => {
     const root = new THREE.Group(), body = new THREE.Group(), magParts = [];
@@ -18,7 +26,7 @@ export function loadM4() {
     const meshes = []; g.scene.traverse(o => { if (o.isMesh) meshes.push(o); });
     for (const o of meshes) {
       const m = o.material; m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.55; pbrMats.push(m);
-      if (m.emissiveMap) { m.emissiveMap = null; m.emissive.set(0); m.map = null; m.color.set(0x8a9aa8); m.transparent = true; m.opacity = 0.12; m.depthWrite = false; }   // sight glass: drop the baked reticle (glow and print), keep a faint tint
+      if (m.emissiveMap) { m.emissiveMap = null; m.emissive.set(0); m.opacity = Math.min(m.opacity, 1); if (m.map) m.map = eraseReticle(m.map); }   // sight: drop the baked reticle (its glow, and the printed ring in the colour texture); housing and glass stay
       const geo = o.geometry.clone().applyMatrix4(o.matrixWorld), mesh = new THREE.Mesh(geo, m);
       if (m.name === 'lambert1') {   // split the magazine triangles out of the receiver
         const P = geo.attributes.position, I = geo.index.array, keep = [], mag = [];

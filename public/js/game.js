@@ -617,7 +617,7 @@ function doorCam(dt) {
   if (dcam.hand) { dcam.screen.position.copy(dcam.hand.pos).y += 0.14; dcam.screen.lookAt(head.pos); } else { dcam.screen.position.copy(head.pos).addScaledVector(head.fwd, 0.55).addScaledVector(v1.set(1, 0, 0).applyQuaternion(head.quat), 0.24).addScaledVector(v1.set(0, 1, 0).applyQuaternion(head.quat), -0.12); dcam.screen.quaternion.copy(head.quat); }
   if (dcam.n++ % 2) return;                                             // refresh every other frame
   const xe = renderer.xr.enabled, rt = renderer.getRenderTarget(); renderer.xr.enabled = false; dcam.screen.visible = false; myBody.g.visible = false;
-  renderer.setRenderTarget(dcam.rt); renderer.render(scene, dcam.cam); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; dcam.screen.visible = true; myBody.g.visible = !!S.mode;
+  renderer.setRenderTarget(dcam.rt); renderer.render(scene, dcam.cam); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; dcam.screen.visible = true; myBody.g.visible = S.mode === 'vr';
 }
 
 // ---------- finger pose from what the hand holds and what the controller senses ----------
@@ -684,7 +684,7 @@ function frame(t) {
   for (const h of hands) { if (h.active) { v1.copy(h.pos).sub(h.last).multiplyScalar(1 / dt); if (v1.lengthSq() < 900) h.vel.lerp(v1, 0.45); h.last.copy(h.pos); } }
   placeGuns(dt);
   for (const h of hands) h.pose = handPose(h, hands[1 - h.i]);
-  myBody.g.visible = !!S.mode; if (S.mode) myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY, head.quat);
+  myBody.g.visible = S.mode === 'vr'; if (S.mode === 'vr') myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY, head.quat);
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
   if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (!(P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
