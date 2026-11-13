@@ -18,7 +18,7 @@ export function loadM4() {
     const meshes = []; g.scene.traverse(o => { if (o.isMesh) meshes.push(o); });
     for (const o of meshes) {
       const m = o.material; m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.55; pbrMats.push(m);
-      if (m.emissiveMap) { m.emissiveMap = null; m.emissive.set(0); m.opacity = Math.min(m.opacity, 1); }   // sight: drop the baked reticle
+      if (m.emissiveMap) { m.emissiveMap = null; m.emissive.set(0); m.map = null; m.color.set(0x8a9aa8); m.transparent = true; m.opacity = 0.12; m.depthWrite = false; }   // sight glass: drop the baked reticle (glow and print), keep a faint tint
       const geo = o.geometry.clone().applyMatrix4(o.matrixWorld), mesh = new THREE.Mesh(geo, m);
       if (m.name === 'lambert1') {   // split the magazine triangles out of the receiver
         const P = geo.attributes.position, I = geo.index.array, keep = [], mag = [];

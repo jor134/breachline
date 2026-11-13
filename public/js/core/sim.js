@@ -58,7 +58,7 @@ export class Sim {
     this.doorLocked = this.level.doors.map((d, i) => d.pad !== undefined ? true : d.hidden ? false : d.exterior ? rnd() < 0.6 : !this.doorOpen[i] && rnd() < 0.3);   // containers are all padlocked
     // tripwires: a few closed inside doors are rigged; 1 or 2 = which side the wire is on
     this.doorTrap = this.level.doors.map(() => 0); pick(this.level.doors.filter((d, i) => !d.exterior && !this.doorOpen[i]).map(d => d.id), 3).forEach(i => { this.doorTrap[i] = rnd() < 0.5 ? 1 : 2; });
-    const bombAt = M.pads ? pads.slice(0, C.b).map(i => [M.pads[i].f, ...M.pads[i].bomb, 0.85]) : pick(M.spots.b, C.b);
+    const bombAt = M.pads ? pads.slice(0, C.b).map(i => [M.pads[i].f, ...M.pads[i].bomb, 0.85]) : M.bombMust ? [M.bombMust, ...pick(M.spots.b, C.b - 1)] : pick(M.spots.b, C.b);
     this.bombs = bombAt.map(([f, x, z, h]) => {
       const wires = pick([0, 1, 2, 3], 4), order = pick([0, 1, 2, 3], 2);
       const [bx, bz, yaw] = this.edgeSpot(x, z, f * H + h, f * H);

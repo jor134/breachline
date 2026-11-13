@@ -7,7 +7,8 @@ export const H = 3.6, DOOR_H = 2.1;
 export const FOOT = { x0: 0, z0: -4, x1: 54, z1: 16 };
 export const YARD = { x0: -60, z0: -40, x1: 116, z1: 42 };
 export const STAIR = { x0: 12.4, x1: 13.9, z0: 10.8, z1: 15.8 };   // climbs toward -z: bottom at the back wall, top beside the upper corridor
-export const PITWALL = { x0: -34, x1: 88, z0: -15.4, z1: -15, h: 1.1 };
+export const PITWALL = { x0: -34, x1: 88, z0: -15.4, z1: -15, h: 1.1, gate: [26, 28] };   // a marshals' gate across from the bomb on the far side
+export const FAR_BOMB = [0, 29.8, -29.55, 0.9];   // always one bomb here, on a marshal's flight case against the far barrier: cross the live track to reach it
 export const BREAKER = { x: 33, y: 1.4, z: 15.87 };
 export const SPAWN = [[24, 33], [25.5, 33], [27, 33], [28.5, 33]];
 export const EXIT = { x0: 20, x1: 32, z0: 31.5, z1: 42 };
@@ -65,6 +66,7 @@ F.push([1, 2, 1.5, 4.8, 2.4, 0.8, 'sofa', '-z'], [1, 2.2, -0.4, 4.6, 0.8, 0.45, 
   [1, 44, 11, 50, 12.2, 0.76, 'table'], [1, 53.2, 11, 53.8, 15.6, 1.9, 'shelf', '-x'], [1, 44, 15.2, 50, 15.8, 1.2, 'console', '-z']);
 // pit lane: tool trolleys and the pit-wall gantry stands
 for (const i of G) F.push([0, i * 9 + 1.2, -6.6, i * 9 + 2.2, -5.9, 1.0, 'cabinet', '+z']);
+F.push([0, 29, -29.95, 30.6, -29.15, 0.9, 'cabinet', '+z']);   // marshal's flight case on the far side of the track
 export const FURNITURE = F;
 
 export const SUSPECT_SPOTS = [
@@ -113,12 +115,12 @@ export const TRUCKS = [[10, 21.5, 16.5, 'z', 0, -1], [40.5, 21.5, 16.5, 'z', 1, 
 const CAR_COL = [0xb8bcc2, 0x1d1f24, 0xe8e8e6, 0x2c4f8a, 0x8a1f1f, 0x4a4d52, 0x3f5e3a, 0xc9b98f];
 export const PARKED = [[14.8, 24.7, Math.PI], [17.6, 24.7, Math.PI], [20.4, 24.7, Math.PI], [31.6, 24.7, Math.PI], [34.4, 24.7, Math.PI], [37.2, 24.7, Math.PI],
   [14.8, 31.2, 0], [17.6, 31.2, 0], [34.4, 31.2, 0], [37.2, 31.2, 0],
-  [-6, 27.5, Math.PI], [-3.2, 27.5, Math.PI], [-0.4, 27.5, Math.PI], [2.4, 27.5, Math.PI], [5.2, 27.5, Math.PI], [46, 27.5, Math.PI], [48.8, 27.5, Math.PI], [51.6, 27.5, Math.PI], [54.4, 27.5, Math.PI], [57.2, 27.5, Math.PI]]
+  [-0.4, 27.5, Math.PI], [2.4, 27.5, Math.PI], [5.2, 27.5, Math.PI], [46, 27.5, Math.PI], [48.8, 27.5, Math.PI], [51.6, 27.5, Math.PI]]
   .map(([x, z, turn], i) => ({ x, z, turn, color: CAR_COL[(i * 5) % CAR_COL.length] }));
 // Solids that are not room walls: the pit wall, the barrier on the far side of the track, trucks, parked cars, the fence.
 function extra({ boxes }) {
   const box = (kind, x0, x1, y0, y1, z0, z1, o = {}) => boxes.push(Object.assign({ f: 0, kind, x0, x1, y0, y1, z0, z1 }, o));
-  box('pitwall', PITWALL.x0, PITWALL.x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1);
+  box('pitwall', PITWALL.x0, PITWALL.gate[0], 0, PITWALL.h, PITWALL.z0, PITWALL.z1); box('pitwall', PITWALL.gate[1], PITWALL.x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1);
   box('barrier', YARD.x0, YARD.x1, 0, 1.2, TRACK.z0 - 1.2, TRACK.z0 - 0.4);
   for (const t of TRUCKS) box('truck', t.x0, t.x1, 0, 4.1, t.z0, t.z1, { team: t.team });
   for (const c of PARKED) box('pcar', c.x - 0.95, c.x + 0.95, 0, 1.3, c.z - 2.2, c.z + 2.2);
@@ -129,9 +131,9 @@ export default {
   id: 'grandprix', name: 'GRAND PRIX', op: 'Operation CHEQUERED FLAG', H, DOOR_H, YARD, layers: 2, layerFloor: [0, 1], tods: ['day', 'night'],
   spawn: SPAWN, exit: EXIT, breaker: BREAKER, cars: [], parked: PARKED, rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
   spots: { s: SUSPECT_SPOTS, c: CIV_SPOTS, b: BOMB_SPOTS }, hvt: HVT, veg: null, counts: { s: 14, c: 7, b: 3 }, time: 900, patrolMax: 26,
-  stairs: [{ ...STAIR, yb: 0, n: 1 }], foot: FOOT, race: true,
+  stairs: [{ ...STAIR, yb: 0, n: 1 }], foot: FOOT, race: true, bombMust: FAR_BOMB,
   lobby: { x: 31.5, y: 1.5, z: 35.5, tx: 26, tz: 33 },
-  brief: ['Armed crew hold the pit building mid-race: 7 hostages, 3 bombs', 'in the garages and the VIP club upstairs. The race is still on:', 'stay off the track. The boss is in the race office with two guards.'],
+  brief: ['Armed crew hold the pit building mid-race: 7 hostages, 3 bombs', 'in the garages, the VIP club and one across the track. The race is still on:', "use the marshals' gate and time your crossing.", 'The boss is in the race office with two guards.'],
   surfaces, floorRay, solidFloor, terrainY: () => 0, floorAt, extra,
   indoor: (f, x, z) => inFoot(x, z), onStairs: inStair, inside: (x, z, y) => inFoot(x, z) && y < 2 * H, objective: (x, z) => inFoot(x, z) || (z < -4 && z > -15),
   roofY: (x, z) => inFoot(x, z) ? 2 * H + 0.3 : 0,

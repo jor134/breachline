@@ -11,13 +11,13 @@ const NAMES = ['VORTEX', 'HALCYON', 'KESTREL', 'ORBITA', 'NOVARA', 'SOLSTICE']; 
 let tod = 'day', floodMat = null, beams = [];
 const LAMPS = [[4.5, 3.3, 2, 9, 12], [22.5, 3.3, 2, 9, 12], [40.5, 3.3, 2, 9, 12], [27, 3.3, 9.2, 8, 22], [9, H + 3.1, 2, 8, 14], [27, H + 3.1, 2, 8, 14], [45, H + 3.1, 2, 8, 14], [27, H + 3.1, 13, 8, 24]];
 const DAY = {
-  sky: [[0, '#3f6fb3'], [0.3, '#7ea6d8'], [0.47, '#cfe0ee'], [0.5, '#e9eef0'], [0.53, '#6c6a62'], [1, '#3a3834']], skyR: 460, moon: [160, 140, -40],
-  fog: [0xbfd0de], fogD: [0.0022, 0.006], sunAt: [27, 4], sunFrom: [50, 90, -60], shadow: 52, sunCol: 0xfff1d8, sunK: 1.7, hemi: 1.35, hemiSky: 0xd6e4f4, hemiGround: 0x8a8274,
+  sky: [[0, '#3f6fb3'], [0.3, '#7ea6d8'], [0.45, '#b3cbe0'], [0.5, '#bfd0de'], [1, '#bfd0de']], skyR: 460, moon: [160, 140, -40],   // the horizon is the fog colour: distant ground melts into it
+  fog: [0xbfd0de], fogD: [0.0034, 0.006], sunAt: [27, 4], sunFrom: [50, 90, -60], shadow: 52, sunCol: 0xfff1d8, sunK: 1.7, hemi: 1.35, hemiSky: 0xd6e4f4, hemiGround: 0x8a8274,
   hillColor: 0x5d6f5a, lamps: LAMPS,
 };
 const NIGHT = {
-  sky: [[0, '#05070f'], [0.35, '#0d1428'], [0.47, '#2a2f4a'], [0.5, '#4a4458'], [0.53, '#14141a'], [1, '#0a0a0c']], skyR: 460, moon: [-150, 120, 80],
-  fog: [0x151a2a], fogD: [0.0035, 0.009], sunAt: [27, -10], sunFrom: [-20, 60, -70], shadow: 60, sunCol: 0xe8f0ff, sunK: 1.7, hemi: 1.0, hemiSky: 0x8a9ac0, hemiGround: 0x3a3a44,
+  sky: [[0, '#05070f'], [0.35, '#0d1428'], [0.46, '#1a2034'], [0.5, '#151a2a'], [1, '#151a2a']], skyR: 460, moon: [-150, 120, 80],
+  fog: [0x151a2a], fogD: [0.0042, 0.009], sunAt: [27, -10], sunFrom: [-20, 60, -70], shadow: 60, sunCol: 0xe8f0ff, sunK: 1.7, hemi: 1.0, hemiSky: 0x8a9ac0, hemiGround: 0x3a3a44,
   hillColor: 0x0b0d14, lamps: LAMPS,
 };
 const stripes = (a, b, n) => (g, s) => { for (let i = 0; i < n; i++) { g.fillStyle = i % 2 ? b : a; g.fillRect(i * s / n, 0, s / n, s); } };
@@ -62,7 +62,7 @@ export default {
     // ground: track, kerbs, run-off, pit lane, paddock
     flat('tarmac', VIS.x0 - 60, VIS.x1 + 60, TRACK.z0, TRACK.z1, 0.002, 0.08);
     flat('pitlane', -60, 116, TRACK.z1, 42, 0.001, 0.1);
-    flat('grass', VIS.x0 - 60, VIS.x1 + 60, -90, TRACK.z0 - 1.2, 0, 0.05);
+    flat('grass', -600, 660, -600, 640, -0.02, 0.05);   // countryside past the sky dome in every direction, fading into the fog: no edge to the world
     for (const z of [TRACK.z0, TRACK.z1 - 0.9]) b('kerb').quad([VIS.x0 - 60, 0.006, z], [VIS.x1 + 60, 0.006, z], [VIS.x1 + 60, 0.006, z + 0.9], [VIS.x0 - 60, 0.006, z + 0.9], [0, 1, 0], 0.5);
     for (const z of [TRACK.z0 + 1.0, TRACK.z1 - 1.0]) flat('gpline', VIS.x0 - 60, VIS.x1 + 60, z - 0.06, z + 0.06, 0.007);
     for (let k = 0; k < 10; k++) { const x = 70 - k * 8, z = TRACK.zc + (k % 2 ? 2.4 : -2.4); flat('gpline', x - 0.06, x + 0.06, z - 1.2, z + 1.2, 0.008); flat('gpline', x - 1.2, x, z - 1.2, z - 1.08, 0.008); flat('gpline', x - 1.2, x, z + 1.08, z + 1.2, 0.008); }   // grid boxes
@@ -70,10 +70,10 @@ export default {
     flat('gpline', -60, 116, -9.06, -8.94, 0.006);                 // fast lane / working lane
     for (let i = 0; i < 6; i++) { const x = i * 9; for (const [a, c, d, e] of [[x + 1, x + 1.12, -8.9, -4.2], [x + 7.88, x + 8, -8.9, -4.2], [x + 1, x + 8, -8.9, -8.78]]) b('team' + i).quad([a, 0.007, d], [c, 0.007, d], [c, 0.007, e], [a, 0.007, e], [0, 1, 0], 1); }
     // pit wall with its debris fence and timing gantry; far-side barrier and tyre wall
-    b('pitwallM').box(PITWALL.x0, PITWALL.x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1, 'xXYzZ', 0.5);
-    b('gpfence').box(PITWALL.x0, PITWALL.x1, PITWALL.h, 4.2, PITWALL.z0 + 0.15, PITWALL.z0 + 0.17, 'zZ', 0.5);
-    for (let x = PITWALL.x0; x <= PITWALL.x1; x += 6) b('mast').box(x - 0.05, x + 0.05, PITWALL.h, 4.3, PITWALL.z0 + 0.1, PITWALL.z0 + 0.2, 'xXzZ', 1);
-    for (const x of [8, 26, 44]) { b('gantry').box(x - 2.5, x + 2.5, 1.1, 2.4, PITWALL.z1, PITWALL.z1 + 1.2, 'xXyYzZ', 1); b('gantry').box(x - 2.4, x + 2.4, 2.4, 2.5, PITWALL.z1 - 0.2, PITWALL.z1 + 1.6, 'xXyYzZ', 1); }
+    for (const [x0, x1] of [[PITWALL.x0, PITWALL.gate[0]], [PITWALL.gate[1], PITWALL.x1]]) { b('pitwallM').box(x0, x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1, 'xXYzZ', 0.5); b('gpfence').box(x0, x1, PITWALL.h, 4.2, PITWALL.z0 + 0.15, PITWALL.z0 + 0.17, 'zZ', 0.5); }
+    for (const x of PITWALL.gate) b('mast').box(x - 0.06, x + 0.06, 0, 4.3, PITWALL.z0 + 0.1, PITWALL.z0 + 0.2, 'xXzZ', 1);   // gate posts
+    for (let x = PITWALL.x0; x <= PITWALL.x1; x += 6) if (x < PITWALL.gate[0] - 0.5 || x > PITWALL.gate[1] + 0.5) b('mast').box(x - 0.05, x + 0.05, PITWALL.h, 4.3, PITWALL.z0 + 0.1, PITWALL.z0 + 0.2, 'xXzZ', 1);
+    for (const x of [8, 40, 60]) { b('gantry').box(x - 2.5, x + 2.5, 1.1, 2.4, PITWALL.z1, PITWALL.z1 + 1.2, 'xXyYzZ', 1); b('gantry').box(x - 2.4, x + 2.4, 2.4, 2.5, PITWALL.z1 - 0.2, PITWALL.z1 + 1.6, 'xXyYzZ', 1); }
     b('barrier').box(VIS.x0 - 60, VIS.x1 + 60, 0, 1.2, TRACK.z0 - 1.2, TRACK.z0 - 0.4, 'xXYzZ', 0.5);
     b('gpfence').box(VIS.x0 - 60, VIS.x1 + 60, 1.2, 4.5, TRACK.z0 - 0.82, TRACK.z0 - 0.8, 'zZ', 0.5);
     // grandstands across the track: stepped concrete with blue seats, a roof on columns
@@ -103,7 +103,7 @@ export default {
       if (kind === 'racecar') { const i = Math.floor(x0 / 9), g = raceCar(TEAMS[i]); g.position.set((x0 + x1) / 2, f * H, (z0 + z1) / 2); g.rotation.y = face === '-z' ? Math.PI : 0; root.add(g); }
     }
     // car park: bay lines, lamp posts, and the team transporters (cab + trailer in team colours, the team's name on both sides)
-    for (const [z0, z1] of [[22.3, 27.1], [28.8, 33.6], [25.1, 29.9]]) for (let x = -7.4; x < 60; x += 2.8) { if (z0 === 25.1 ? x > 9 && x < 44 : x < 13 || x > 39) continue; flat('gpline', x - 0.05, x + 0.05, z0, z1, 0.006); }
+    for (const [z0, z1] of [[22.3, 27.1], [28.8, 33.6], [25.1, 29.9]]) for (let x = -7.4; x < 60; x += 2.8) { if (z0 === 25.1 ? (x > 9 && x < 44) || x < -2 || x > 53 : x < 13 || x > 39) continue; flat('gpline', x - 0.05, x + 0.05, z0, z1, 0.006); }
     for (const [x, z] of [[2, 34], [26, 22], [50, 34], [26, 38]]) { b('mast').box(x - 0.1, x + 0.1, 0, 7, z - 0.1, z + 0.1, 'xXzZ', 1); b('gantry').box(x - 0.5, x + 0.5, 7, 7.2, z - 0.25, z + 0.25, 'xXyYzZ', 1); b('flood').box(x - 0.45, x + 0.45, 6.98, 7, z - 0.2, z + 0.2, 'y', 1); }
     for (const t of TRUCKS) {
       const alongX = t.along === 'x', L = alongX ? t.x1 - t.x0 : t.z1 - t.z0, cabAtEnd = t.cab > 0, cab = 2.6;

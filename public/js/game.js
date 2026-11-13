@@ -107,7 +107,8 @@ const buzz = (h, s, ms) => { try { h.pad && h.pad.hapticActuators && h.pad.hapti
 const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(kind), mesh, ud: mesh.userData, where: 'holster', mags: GUNS[kind].mags, kick: 0, flashT: 0 }; };
 const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol(true, true)) };
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
-const HOLSTER = RIG;   // grab zones sit exactly where the holders are drawn on the vest and belt
+const PISTOL_TILT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.3);
+const HOLSTER = RIG, HOLSTER_ROT = { rifle: [-1.0, 0.6, 0.3], pistol: [-1.5, 0, 0] }, _he = new THREE.Euler();   // grab zones sit exactly where the holders are drawn on the vest and belt
 const bodyPt = (off, out) => out.set(off[0], 0, off[2]).applyAxisAngle(UP, S.bodyYaw).add(head.pos).setY(head.pos.y + off[1]);
 const myBody = new Body(true); myBody.g.visible = false; scene.add(myBody.g);
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
@@ -442,11 +443,11 @@ function placeGuns(dt) {
   for (const k in guns) {
     const G = guns[k], m = G.mesh; G.kick *= Math.exp(-14 * dt);
     if (G.where === 'holster') {
-      m.visible = S.mode === 'vr'; bodyPt(HOLSTER[k], m.position); q1.setFromAxisAngle(UP, head.yaw); m.quaternion.copy(q1).multiply(q1.setFromEuler(new THREE.Euler(k === 'rifle' ? -1.15 : -1.5, 0, k === 'rifle' ? 0.5 : 0)));
+      m.visible = S.mode === 'vr'; bodyPt(HOLSTER[k], m.position); q1.setFromAxisAngle(UP, head.yaw); m.quaternion.copy(q1).multiply(q1.setFromEuler(_he.set(...HOLSTER_ROT[k])));
     } else {
       const h = hands[G.where], o = hands[1 - G.where]; m.visible = true; m.position.copy(h.pos);
       if (k === 'rifle' && o.support) { v1.set(0, 1, 0).applyQuaternion(h.quat); m1.lookAt(h.pos, v2.copy(o.pos).addScaledVector(v1, -0.02), v1); m.quaternion.setFromRotationMatrix(m1); }
-      else m.quaternion.copy(h.quat);
+      else { m.quaternion.copy(h.quat); if (k === 'pistol' && S.mode === 'vr') m.quaternion.multiply(PISTOL_TILT); }   // a controller is held at a steeper angle than a pistol grip
       const sh = armShake(); if (sh) { const t = S.now; m.quaternion.multiply(q1.setFromEuler(new THREE.Euler(sh * (Math.sin(t * 2.3) + 0.6 * Math.sin(t * 5.3 + 1)), sh * (Math.sin(t * 1.9 + 2) + 0.6 * Math.sin(t * 4.7)), 0))); }
       m.quaternion.multiply(q1.setFromAxisAngle(v1.set(1, 0, 0), G.kick)); m.position.addScaledVector(v1.set(0, 0, 1).applyQuaternion(m.quaternion), G.kick * 0.25);
     }
@@ -773,5 +774,5 @@ $('tplay').onclick = () => { initAudio(); connect($('solo').checked); begin('des
 let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('install').style.display = 'inline-block'; });
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
-window.__bl = { myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { HOLSTER_ROT, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

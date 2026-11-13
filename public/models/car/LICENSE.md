@@ -7,4 +7,4 @@
 Licensed under Creative Commons Attribution 4.0 International (CC-BY 4.0): https://creativecommons.org/licenses/by/4.0/
 Changes made: see `tools/bake_car.py`.
 
-`car_lite.bin`: a lighter copy (tools/lite_car.py, about 11k triangles, body paint white so each parked copy is tinted) for the Grand Prix car park.
+`car_lite.bin`: a lighter copy (tools/lite_car.py, about 5k triangles, body paint white so each parked copy is tinted) for the Grand Prix car park.
