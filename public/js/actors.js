@@ -230,7 +230,8 @@ const POSE = {
 
 // ---------- officer body: vest, belt, holders, legs, and arms that reach to the hands ----------
 // Offsets are from the head, with -z forward. These are also the grab zones used by the game.
-export const SELF_BACK = { d: 0.02, tilt: 0.25, wide: 7 / 6 };   // your own body sits this far behind your eyes, and is this much broader and deeper
+export const HAND_BACK = [0.85, 0.5, -0.1], HAND_KN = [0.018, -0.012, -0.01];   // back-of-hand direction and knuckle point in the controller's frame (x mirrored for the left hand)
+export const SELF_BACK = { d: 0.02, tilt: 0.25, wide: 7 / 6, up: 0 };   // up: BODY FIT height offset   // your own body sits this far behind your eyes, and is this much broader and deeper
 // Looking down, real eyes swing forward over the chest; the body here follows the eyes, so it is pushed back by up to
 // SELF_BACK.tilt more as the head tilts down: you see your chest and gear, not the tops of your shoulders and the collar.
 export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.0, -0.76, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
@@ -329,7 +330,7 @@ export class Body {
     const wd = this.detailed ? SELF_BACK.wide : 1; hd.scale.set(wd, 1, wd); hd.rotation.set(down ? -HP : 0, yaw + Math.PI, 0); hd.updateMatrix(); const hq = hd.quaternion, ihq = _q1.copy(hq).invert();
     const e = this.eye, fwd = a1.set(0, 0, 1).applyQuaternion(hq), pitch0 = headQ ? Math.asin(Math.max(-1, Math.min(1, a4.set(0, 0, -1).applyQuaternion(headQ).y))) : 0;
     if (down) hd.position.copy(headPos).addScaledVector(fwd, -e.y * wd).setY(headPos.y - 0.12);
-    else { const off = a2.set(e.x * wd, 0, e.z * wd + (this.back = this.detailed ? SELF_BACK.d + SELF_BACK.tilt * Math.max(0, Math.sin(-pitch0)) : 0)).applyQuaternion(hq); hd.position.set(headPos.x - off.x, feetY, headPos.z - off.z); }   // your own body: 13 cm behind the eyes
+    else { const off = a2.set(e.x * wd, 0, e.z * wd + (this.back = this.detailed ? SELF_BACK.d + SELF_BACK.tilt * Math.max(0, Math.sin(-pitch0)) : 0)).applyQuaternion(hq); hd.position.set(headPos.x - off.x, feetY + (this.detailed ? SELF_BACK.up : 0), headPos.z - off.z); }   // your own body: 13 cm behind the eyes
     hd.updateMatrixWorld(true);
     const drop = down ? 0 : Math.max(0, Math.min(0.85, e.y - (headPos.y - feetY))); sk.hipsOff.set(0, -drop, 0);
     // head: the headset's rotation in the model's frame; chest and spine take part of the pitch, and lean in a crouch
@@ -341,8 +342,9 @@ export class Body {
     for (const [S, k] of [['L', 0], ['R', 1]]) {
       const H = this.H[S], h = hands[k]; H.on = !!h && !down;
       if (H.on) {
-        H.wq.copy(ihq).multiply(h.quat); const f1 = a3.set(0, -0.25, -1).normalize().applyQuaternion(H.wq), b1 = a4.set(0, 1, -0.25).normalize().applyQuaternion(H.wq);
-        const knuckle = hd.worldToLocal(a2.set(0, -0.015, -0.005).applyQuaternion(h.quat).add(h.pos)); H.wp.copy(knuckle).addScaledVector(f1, -H.palm);
+        // a hand round a controller (or a grip) is a fist on its side: back of the hand faces out and a little up, knuckles forward
+        const sx = S === 'R' ? 1 : -1; H.wq.copy(ihq).multiply(h.quat); const f1 = a3.set(0, -0.25, -1).normalize().applyQuaternion(H.wq), b1 = a4.set(sx * HAND_BACK[0], HAND_BACK[1], HAND_BACK[2]).normalize().applyQuaternion(H.wq);
+        const knuckle = hd.worldToLocal(a2.set(sx * HAND_KN[0], HAND_KN[1], HAND_KN[2]).applyQuaternion(h.quat).add(h.pos)); H.wp.copy(knuckle).addScaledVector(f1, -H.palm);
         W.set(r.hand[S], align2(H.f0, H.b0, f1, b1, new THREE.Quaternion()).multiply(sk.restQ[r.hand[S]]));
         W.set(r.up[S], this.fns['up' + S]); W.set(r.fore[S], this.fns['fo' + S]);
         const want = h.pose || GRIP, c = H.cur, kk = Math.min(1, dt * 22); c.i += (want.i - c.i) * kk; c.g += (want.g - c.g) * kk; c.t += (want.t - c.t) * kk;
@@ -357,10 +359,10 @@ export class Body {
   update(headPos, yaw, hands, feetY, headQ) {
     const s = Math.sin(yaw), c = Math.cos(yaw), now = performance.now(), dt = Math.min(0.1, (now - this.lastT) / 1000); this.lastT = now;
     if (this.skin) this.poseSkin(headPos, yaw, hands, feetY, headQ, dt);
-    const tb = 0.05 + (this.back || 0); this.torso.position.set(headPos.x + s * tb, headPos.y, headPos.z + c * tb);   // vest gear moves back with the body, matching the grab zones (bodyPt) this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;
+    const tb = 0.05 + (this.back || 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up : 0), headPos.z + c * tb);   // vest gear moves back with the body, matching the grab zones (bodyPt) this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;
     this.arms.forEach((a, i) => {
       if (a.off) return; const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
-      const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat); if (this.detailed && h.pose) poseHand(a.glove, h.pose, dt);
+      const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat).multiply(_q2.setFromAxisAngle(a4.set(0, 0, 1), -a.sx * 1.05)); if (this.detailed && h.pose) poseHand(a.glove, h.pose, dt);
       const wrist = a2.set(0, -0.012, 0.13).applyQuaternion(h.quat).add(h.pos), dir = a3.copy(wrist).sub(sh), d = Math.max(0.05, dir.length()); dir.multiplyScalar(1 / d);
       const L1 = 0.3, L2 = 0.29, dd = Math.min(d, L1 + L2 - 0.005), along = (L1 * L1 - L2 * L2 + dd * dd) / (2 * dd), out = Math.sqrt(Math.max(0, L1 * L1 - along * along));
       const pole = a4.set(a.sx * 0.55 * c + 0.35 * s, -0.8, -a.sx * 0.55 * s + 0.35 * c); pole.addScaledVector(dir, -pole.dot(dir)).normalize();

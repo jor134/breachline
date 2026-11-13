@@ -1,7 +1,7 @@
 // BREACHLINE client: WebXR rig, manual weapon handling, interactions, networking, HUD.
 import * as THREE from '../vendor/three.module.min.js';
 import { buildWorld, label } from './gfx.js';
-import { Human, Officer, Bomb, Body, RIG, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
+import { Human, Officer, Bomb, Body, RIG, SELF_BACK, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
 import { loadCar, loadParkedCars } from './car.js';
 import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
@@ -111,7 +111,7 @@ const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : 
 const PISTOL_TILT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.3);
 const HOLSTER = RIG, HOLSTER_ROT = { rifle: [-1.3, 0, 0.5], pistol: [-1.5, 0, 0] }, _he = new THREE.Euler();   // grab zones sit exactly where the holders are drawn on the vest and belt
 const bodyPt = (off, out) => out.set(off[0], 0, off[2] + (S.mode === 'vr' ? myBody.back || 0 : 0)).applyAxisAngle(UP, S.bodyYaw)   // gear moves back with your body as you look down
-  .add(head.pos).setY(head.pos.y + off[1]);
+  .add(head.pos).setY(head.pos.y + off[1] + (S.mode === 'vr' ? SELF_BACK.up : 0));
 const myBody = new Body(true); myBody.g.visible = false; scene.add(myBody.g);
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 const torch = new THREE.SpotLight(0xfff2dd, 16, 30, 0.44, 0.8, 1.6); torch.visible = false; scene.add(torch, torch.target);
@@ -187,7 +187,7 @@ function wheelPick(h) {
   const p = wheel.mesh.worldToLocal(v1.copy(h.pos)); if (Math.hypot(p.x, p.y) < 0.04) return null;
   const a = Math.atan2(-p.y, p.x) * 180 / Math.PI; let best = null, bd = 999; for (const [k, , deg] of wheel.items) { let d = Math.abs(a - deg) % 360; if (d > 180) d = 360 - d; if (d < bd) { bd = d; best = k; } } return best;
 }
-function closeWheel(h) { const k = wheelPick(h); wheel.open = false; wheel.mesh.visible = false; if (wheel.kind === 'orders') { orderMark.visible = false; if (k) { giveOrder(k, wheel.target); buzz(h, 0.6, 30); } return; } if (k === 'nvg') toggleNVG(); else if (k === 'med') useMed(); else if (k) { S.tool = k; sfx.click(); buzz(h, 0.6, 30); } }
+function closeWheel(h) { const k = wheelPick(h); wheel.open = false; wheel.mesh.visible = false; if (wheel.kind === 'orders') { hideOrderAim(); if (k) { giveOrder(k, wheel.target); buzz(h, 0.6, 30); } return; } if (k === 'nvg') toggleNVG(); else if (k === 'med') useMed(); else if (k) { S.tool = k; sfx.click(); buzz(h, 0.6, 30); } }
 
 // ---------- squad orders (SWAT bots) ----------
 // Point at something (free hand in VR, crosshair otherwise) and open the order wheel: the orders that fit what you point at, plus
@@ -196,12 +196,31 @@ const ORD = { follow: 'FOLLOW ME', hold: 'HOLD', move: 'MOVE THERE', open: 'OPEN
 const BOT_ST = ['FOLLOW', 'HOLD', 'MOVING', 'DOOR', 'BOMB', 'DETAIN', 'REVIVE', 'FIGHT'];
 const BSAY = { follow: ['ON YOU', 'Moving with you'], hold: ['HOLDING', 'Holding here'], onit: ['COPY', 'Copy'], contact: ['CONTACT!', 'Contact!'], up: ["YOU'RE GOOD", 'Get up, you are good'], cuffed: ['RESTRAINED', 'Restrained'], bomb: ['ON THE BOMB', 'Working the bomb'], defused: ['BOMB SAFE', 'Bomb is safe'], wire: ['WIRE ON THE DOOR', 'Tripwire, cutting it'], nowire: ['NO WIRE', 'Door is clean'], locked: ['LOCKED', 'It is locked'], flash: ['FLASHBANG OUT', 'Flashbang out'], clear: ['CLEAR', 'Room clear'], leave: ['HANDING OVER', ''] };
 const botsUp = () => S.phase === 'active' && !M.training && S.me.team !== 'tango' && [...S.officers.values()].some(o => o.bot && !o.down);
-const orderMark = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.025, 6, 24), new THREE.MeshBasicMaterial({ color: 0x40ff80, depthTest: false, fog: false })); orderMark.rotation.x = Math.PI / 2; orderMark.renderOrder = 996; orderMark.visible = false; scene.add(orderMark);
+const orderMark = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.03, 6, 28), new THREE.MeshBasicMaterial({ color: 0x40ff80, depthTest: false, fog: false, transparent: true })); orderMark.renderOrder = 996; orderMark.visible = false; scene.add(orderMark);
+// while Y/B is held: a green laser from the hand and a ring on whatever it points at, with its name; let go to lock it and open the wheel
+const orderLaser = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0x40ff80, depthTest: false, fog: false, transparent: true, opacity: 0.8 })); orderLaser.renderOrder = 996; orderLaser.visible = false; orderLaser.frustumCulled = false; scene.add(orderLaser);
+const orderTag = (() => { const c = document.createElement('canvas'); c.width = 256; c.height = 64; const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, fog: false })); sp.scale.set(0.5, 0.125, 1); sp.renderOrder = 997; sp.visible = false; scene.add(sp); sp.userData = { c, t, txt: '' }; return sp; })();
+function markOrder(T) {
+  if (!T || T.kind === 'none') { orderMark.visible = orderTag.visible = false; return; }
+  const far = Math.max(1, head.pos.distanceTo(v1.set(T.x, T.y, T.z)) / 4), sc = (T.kind === 'door' ? 1.7 : T.kind === 'bomb' ? 0.8 : T.kind === 'spot' ? 1 : 1.3); orderMark.scale.setScalar(sc * far); orderMark.visible = true;   // bigger with distance so it stays easy to see
+  orderMark.position.set(T.x, T.kind === 'spot' ? T.y + 0.05 : T.y, T.z); if (T.kind === 'spot') orderMark.rotation.set(-Math.PI / 2, 0, 0); else orderMark.lookAt(head.pos);
+  const u = orderTag.userData, txt = T.kind === 'door' ? (S.doorOpen[T.d] ? 'OPEN DOOR' : S.doorLocked[T.d] ? 'LOCKED DOOR' : 'DOOR') : T.name;
+  if (u.txt !== txt) { u.txt = txt; const g = u.c.getContext('2d'); g.clearRect(0, 0, 256, 64); g.fillStyle = 'rgba(8,20,12,0.75)'; g.fillRect(0, 8, 256, 48); g.fillStyle = '#7dffa0'; g.font = 'bold 30px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 128, 33); u.t.needsUpdate = true; }
+  orderTag.scale.set(0.9 * far, 0.225 * far, 1); orderTag.position.set(T.x, T.y + (0.32 * sc + 0.12) * far, T.z); orderTag.visible = true;
+}
+function aimOrders(h) {   // the live pointer, every frame the button is held
+  const o = h.pos, d = v2.set(0, 0, -1).applyQuaternion(h.quat).clone(), T = orderTarget(o.clone(), d); wheel.target = T; markOrder(T);
+  const end = T.kind === 'none' ? o.clone().addScaledVector(d, 8) : new THREE.Vector3(T.x, T.y, T.z), pa = orderLaser.geometry.attributes.position;
+  pa.setXYZ(0, o.x, o.y, o.z); pa.setXYZ(1, end.x, end.y, end.z); pa.needsUpdate = true; orderLaser.visible = true; return T;
+}
+function hideOrderAim() { orderLaser.visible = false; orderMark.visible = false; orderTag.visible = false; }
 function orderTarget(o, d) {   // o, d: THREE.Vector3 ray
   let best = null, bs = 1e9; const v = new THREE.Vector3();
-  const consider = (T, x, y, z, maxAng, maxD) => { v.set(x - o.x, y - o.y, z - o.z); const dist = v.length(); if (dist > maxD || dist < 0.2) return; const a = v.normalize().angleTo(d); if (a > maxAng) return; const sc = a + dist * 0.004; if (sc < bs) { bs = sc; best = Object.assign(T, { x, y, z }); } };
+  const consider = (T, x, y, z, maxAng, maxD) => { v.set(x - o.x, y - o.y, z - o.z); const dist = v.length(); if (dist > maxD || dist < 0.2) return; v.normalize(); const a = v.angleTo(d); if (a > maxAng) return; const sc = a + dist * 0.004; if (sc >= bs) return;
+    if (rayStatic(level, S.doorOpen, o.x, o.y, o.z, v.x, v.y, v.z, dist) < dist - 0.6) return;   // only what you can see: not a door behind a wall
+    bs = sc; best = Object.assign(T, { x, y, z }); };
   S.bombs.forEach((b, i) => { if (!b.defused) consider({ kind: 'bomb', b: i, name: 'BOMB' }, b.g.position.x, b.g.position.y, b.g.position.z, 0.18, 20); });
-  level.doors.forEach((D, i) => { if (!D.hidden && Math.abs(D.y - (head.pos.y - 1.6)) < 2) consider({ kind: 'door', d: i, name: 'DOOR' }, D.cx, D.y + 1.1, D.cz, 0.2, 18); });
+  level.doors.forEach((D, i) => { if (!D.hidden && Math.abs(D.y - (head.pos.y - 1.6)) < 2) consider({ kind: 'door', d: i, name: 'DOOR' }, D.cx, D.y + 1.1, D.cz, 0.26, 18); });
   for (const [id, a] of S.actors) { const st = a.st; if (a.kind === 'c' ? (st === 'u' || st === 'd' || st === 'x') : !(st === 's' || st === 'k' || st === 'i')) continue; const p = a.g.position; consider({ kind: 'npc', n: id, name: a.kind === 'c' ? 'HOSTAGE' : 'SUSPECT' }, p.x, p.y + (st === 'i' ? 0.3 : 1.0), p.z, 0.16, 20); }
   for (const [id, of] of S.officers) if (of.down && of.team !== 'tango') { const p = of.head.position; consider({ kind: 'down', p: id, name: of.name }, p.x, p.y, p.z, 0.2, 20); }
   if (best) return best;
@@ -212,7 +231,7 @@ function orderList(T) {
   const k = T.kind === 'door' ? (S.doorOpen[T.d] ? ['breach'] : [...(S.doorTrap[T.d] ? ['unwire'] : []), 'open', ...(S.doorLocked[T.d] ? ['pick'] : []), 'kick', 'breach']) : T.kind === 'bomb' ? ['defuse'] : T.kind === 'npc' ? ['detain'] : T.kind === 'down' ? ['revive'] : T.kind === 'spot' ? ['move'] : [];
   const all = ['follow', 'hold', ...k], n = all.length; return all.map((key, i) => [key, ORD[key], -90 + i * 360 / n]);
 }
-function openOrders(h) { const o = h ? h.pos.clone() : head.pos.clone(), d = h ? new THREE.Vector3(0, 0, -1).applyQuaternion(h.quat) : head.fwd.clone(); const T = orderTarget(o, d); wheel.target = T; if (T.kind !== 'none') { orderMark.position.set(T.x, T.kind === 'spot' ? T.y + 0.05 : T.y, T.z); orderMark.visible = true; } return T; }
+function openOrders(h) { const o = h ? h.pos.clone() : head.pos.clone(), d = h ? new THREE.Vector3(0, 0, -1).applyQuaternion(h.quat) : head.fwd.clone(); const T = orderTarget(o, d); wheel.target = T; markOrder(T); return T; }
 function giveOrder(k, T) { if (!k || !T) return; net.send({ t: 'order', k, d: T.d, b: T.b, n: T.n, p: T.p, x: T.x, y: T.y, z: T.z }); sfx.click(); }
 // desktop / phone: the same wheel drawn as a ring of buttons over the screen
 const OW = { open: false, mx: 0, my: 0, sel: null, items: [], T: null };
@@ -225,7 +244,7 @@ function openOW() {
   el.style.display = 'block';
 }
 function owMove(dx, dy) { OW.mx += dx; OW.my += dy; if (Math.hypot(OW.mx, OW.my) < 30) OW.sel = null; else { const a = Math.atan2(OW.my, OW.mx) * 180 / Math.PI; let bd = 999; for (const [k, , deg] of OW.items) { let d = Math.abs(a - deg) % 360; if (d > 180) d = 360 - d; if (d < bd) { bd = d; OW.sel = k; } } } for (const b of $('ow').querySelectorAll('.owb')) b.classList.toggle('on', b.dataset.k === OW.sel); }
-function closeOW(pick) { if (!OW.open) return; OW.open = false; $('ow').style.display = 'none'; orderMark.visible = false; if (pick && OW.sel) giveOrder(OW.sel, OW.T); }
+function closeOW(pick) { if (!OW.open) return; OW.open = false; $('ow').style.display = 'none'; hideOrderAim(); if (pick && OW.sel) giveOrder(OW.sel, OW.T); }
 function botSay(e) { const o = S.officers.get(e.p), L = BSAY[e.k]; if (!o || !L) return; const p = o.head.position; sayAt(p.x, p.y + 0.5, p.z, o.name + ': ' + L[0], '#a8ffb8'); if (L[1] && (e.k !== 'contact' || p.distanceTo(head.pos) < 25)) sfx.say(L[1], 0.9 + (o.slot || 0) * 0.08); }
 
 // ---------- panels ----------
@@ -266,9 +285,9 @@ const pvpOn = () => (S.squadT || []).some(t => t === 'tango');
 const teamBtn = () => ['TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT'), 'team'];
 const squadLine = () => (pvpOn() ? 'PvP  -  ' : 'Squad: ') + ((S.squad || []).map((n, i) => n + ((S.squadT || [])[i] === 'tango' ? ' (T)' : pvpOn() ? ' (SWAT)' : '')).join(', ') || '-');
 function showLobbyPanel() {
-  if (S.menu) return; if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
+  if (S.menu) return; if (S.panel === 'fit' && M.training) return showFit(false); if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
   panel.draw('BREACHLINE', M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
-    [squadLine(), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, B/Y = SHOUT. Helmet = NVG.',
+    [squadLine(), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, tap B/Y = SHOUT, hold = SQUAD. Helmet = NVG.',
       'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 function showBoard() {   // the mission board in the training lobby: pick where the squad goes next, see how the range went
@@ -277,7 +296,21 @@ function showBoard() {   // the mission board in the training lobby: pick where 
     [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
       'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', 'Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
       'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'],
-    [['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+}
+// BODY FIT (training board, VR): slide your own body forward/back and up/down under the headset; kept on this device
+const FIT0 = { d: SELF_BACK.d, up: 0 };
+try { const f = JSON.parse(localStorage.getItem('bl_fit') || 'null'); if (f && Number.isFinite(f.d) && Number.isFinite(f.up)) { SELF_BACK.d = f.d; SELF_BACK.up = f.up; } } catch (e) { }
+function fitStep(k) {
+  if (k === 'reset') { SELF_BACK.d = FIT0.d; SELF_BACK.up = FIT0.up; }
+  else { const [key, dv] = { fwd: ['d', -0.02], back: ['d', 0.02], up: ['up', 0.02], down: ['up', -0.02] }[k]; SELF_BACK[key] = Math.round(Math.max(-0.2, Math.min(0.3, SELF_BACK[key] + dv)) * 100) / 100; }
+  try { localStorage.setItem('bl_fit', JSON.stringify({ d: SELF_BACK.d, up: SELF_BACK.up })); } catch (e) { } sfx.click();
+}
+function showFit(place = true) {
+  S.panel = 'fit'; panel.mesh.visible = true; if (place) frontOfHead(1.1);
+  const cm = v => (v >= 0 ? '+' : '') + Math.round(v * 100) + ' cm';
+  panel.draw('BODY FIT', 'Look down at yourself, then nudge the body until it sits right', ['Back / forward: ' + cm(SELF_BACK.d - FIT0.d) + '   (more BACK hides your shoulders and neck)', 'Up / down: ' + cm(SELF_BACK.up) + '   (DOWN lowers the chest and gear)', 'Saved on this headset. RESET goes back to the default.'],
+    [['BODY BACK', 'fit:back'], ['BODY FORWARD', 'fit:fwd'], ['BODY UP', 'fit:up'], ['BODY DOWN', 'fit:down'], ['RESET', 'fit:reset'], ['DONE', 'fit:done']]);
 }
 function showEndPanel() {
   const R = S.report; if (!R || S.menu) return; S.panel = 'end'; panel.mesh.visible = true; frontOfHead(1.9);
@@ -294,6 +327,7 @@ function tryPanel(o, d) {
   const act = panel.probe(o, d, false); if (!act) return act === '';   // a pull on the panel background is swallowed, not fired
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
   if (act === 'tod') { cycleTod(); showLobbyPanel(); return true; }
+  if (act.startsWith('fit:')) { const k = act.slice(4); if (k === 'done') { sfx.click(); S.panel = 'lobby'; showLobbyPanel(); } else { if (k !== 'open') fitStep(k); showFit(k === 'open'); } return true; }
   if (act === 'team') { pickTeam(); return true; }
   if (act === 'map') { cycleMap(); return true; }
   if (act === 'end') { net.send({ t: 'end' }); toggleMenu(false); return true; }
@@ -304,6 +338,7 @@ function tryPanel(o, d) {
 
 // wrist display (VR) + DOM HUD (desktop)
 const wc = document.createElement('canvas'); wc.width = 512; wc.height = 352; const wtex = new THREE.CanvasTexture(wc); wtex.anisotropy = 4;
+const WRIST_Q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2));   // face +x (the palm side of a left hand), text up toward the fingers
 const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.11), new THREE.MeshBasicMaterial({ map: wtex, fog: false, toneMapped: false })); wrist.visible = false; scene.add(wrist);
 let hudT = 0;
 function hudText() {
@@ -622,16 +657,19 @@ function handVR(h, o, dt) {
   const G = gunIn(h), OG = gunIn(o);
   if (G) fire(h, G, o);
   else {
-    if (press(h, 'trig')) {
+    // order wheel open on this hand: trigger or Y/B picks the order under the hand (or cancels from the middle)
+    const confirm = wheel.open && wheel.hand === h && wheel.kind === 'orders' && (press(h, 'trig') || press(h, 'b')); if (confirm) { closeWheel(h); h.bLock = true; }
+    if (!confirm && press(h, 'trig')) {
       let cut = null, cd = 0.07;   // nearest wire to the hand, so neighbouring wires are not cut by mistake
       const tip = v2.set(0, 0, -0.09).applyQuaternion(h.quat).add(h.pos);   // the cutter jaws reach past the hand
       if (!S.me.down) for (let i = 0; i < S.bombs.length; i++) { const b = S.bombs[i]; if (b.defused) continue; for (let w = 0; w < 4; w++) if (b.wires[w].visible) { b.wirePos(w, v1); const d = Math.min(v1.distanceTo(h.pos), v1.distanceTo(tip)); if (d < cd) { cd = d; cut = { t: 'cut', b: i, w }; } } }
       if (cut) { if (S.tool === 'cutters') { net.send(cut); buzz(h, 0.8, 40); } else { const p = S.bombs[cut.b].g.position; hint(p.x, p.y + 0.4, p.z, 'SELECT CUTTERS'); } }
       else { v2.set(0, 0, -1).applyQuaternion(h.quat); if (!tryPanel(h.pos, v2) && !h.item && !h.hold) useWorld(h); }
     }
-    if (press(h, 'b')) h.bT = 0;
-    if (h.in.b > 0.5) { h.bT += dt; if (h.bT > 0.25 && !wheel.open && !h.bW && botsUp()) { h.bW = true; const T = openOrders(h); openWheel(h, orderList(T), 'orders', T.name); } }
-    if (released(h, 'b')) { if (h.bW) { h.bW = false; if (wheel.open && wheel.hand === h && wheel.kind === 'orders') closeWheel(h); } else doShout(); }
+    // Y/B: tap = shout; hold = point (green laser and ring on the target), let go = lock it and open the order wheel
+    if (press(h, 'b') && !confirm) { h.bT = 0; h.bAim = false; }
+    if (h.in.b > 0.5 && !h.bLock) { h.bT += dt; if (!h.bAim && h.bT > 0.25 && !wheel.open && botsUp()) h.bAim = true; if (h.bAim) aimOrders(h); }
+    if (released(h, 'b')) { if (h.bLock) h.bLock = false; else if (h.bAim) { h.bAim = false; orderLaser.visible = false; const T = wheel.target || { kind: 'none', name: '' }; markOrder(T); openWheel(h, orderList(T), 'orders', T.kind === 'door' ? orderTag.userData.txt : T.name); } else if (!wheel.open) doShout(); }
     if (press(h, 'a')) h.aT = 0;
     if (h.in.a > 0.5) { h.aT += dt; if (h.aT > 0.22 && !wheel.open) openWheel(h); }
     if (released(h, 'a')) { if (wheel.open && wheel.hand === h && wheel.kind === 'tools') closeWheel(h); else S.light = !S.light; }
@@ -819,7 +857,7 @@ function frame(t) {
   veil.visible = vm.opacity > 0.01; downTag.visible = S.me.down && S.phase === 'active';
   // wrist display on the left forearm, floating 7 cm above it so the sleeve doesn't cut into it
   wrist.visible = S.mode === 'vr' && hands[0].active;
-  if (wrist.visible) { const h = hands[0]; wrist.position.copy(v1.set(0, 0.075, 0.11).applyQuaternion(h.quat).add(h.pos)); wrist.quaternion.copy(h.quat).multiply(q1.setFromAxisAngle(v1.set(1, 0, 0), -Math.PI / 2)); }
+  if (wrist.visible) { const h = hands[0]; wrist.position.copy(v1.set(0.07, -0.01, 0.12).applyQuaternion(h.quat).add(h.pos)); wrist.quaternion.copy(h.quat).multiply(WRIST_Q); }   // inside of the wrist: turn the palm up to read it
   if ((hudT -= dt) < 0) { hudT = 0.25; drawHud(); if (S.figT > 0) drawFig(); }
   S.figT = Math.max(0, S.figT - dt); fig.mesh.visible = S.figT > 0 && !!S.mode; fig.mesh.material.opacity = Math.min(1, S.figT);
   weather.update(dt, head.pos, () => sfx.thunder());
@@ -881,9 +919,9 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v32';
+const BUILD = 'v33';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { get wheel() { return wheel; }, OW, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { get wheel() { return wheel; }, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }
