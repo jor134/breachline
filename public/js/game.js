@@ -174,20 +174,59 @@ const tangoTools = () => S.pvp && S.me.team === 'tango';
 const toolLabel = (k, text) => !tangoTools() ? text : k === 'pick' ? 'LOCK (' + (S.me.locks || 0) + ')' : k === 'cutters' ? 'TRAP (' + (S.me.traps || 0) + ')' : text;
 const WEDGE = [['pick', 'LOCKPICK', -90], ['cutters', 'CUTTERS', -30], ['cam', 'DOOR CAM', 30], ['med', 'MED KIT', 90], ['hands', 'HANDS', 150], ['nvg', 'NVG', 210]];
 const wheel = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, fog: false })); mesh.renderOrder = 995; mesh.visible = false; scene.add(mesh); return { c, tex, mesh, open: false, hand: null, sel: undefined }; })();
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, fog: false })); mesh.renderOrder = 995; mesh.visible = false; scene.add(mesh); return { c, tex, mesh, open: false, hand: null, sel: undefined, items: WEDGE, kind: 'tools', title: '' }; })();
 function drawWheel(sel) {
   if (sel === wheel.sel) return; wheel.sel = sel; const g = wheel.c.getContext('2d'); g.clearRect(0, 0, 256, 256);
-  for (const [k, text, deg] of WEDGE) { const a = deg * Math.PI / 180, on = k === sel, cur = k === S.tool || (k === 'nvg' && S.nvg), used = k === 'med' && S.me.med;
-    g.beginPath(); g.moveTo(128, 128); g.arc(128, 128, 124, a - 0.5, a + 0.5); g.closePath(); g.fillStyle = on ? (used ? '#5a2a2a' : '#1f7a3d') : 'rgba(12,17,24,0.86)'; g.fill(); g.strokeStyle = cur ? '#7dffa0' : '#3a6ea5'; g.lineWidth = cur ? 5 : 2; g.stroke();
-    g.fillStyle = used ? '#8a8f96' : '#fff'; g.font = 'bold 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(used ? 'USED' : toolLabel(k, text), 128 + Math.cos(a) * 82, 128 + Math.sin(a) * 82); }
-  g.beginPath(); g.arc(128, 128, 26, 0, 7); g.fillStyle = '#0c1118'; g.fill(); wheel.tex.needsUpdate = true;
+  const tools = wheel.kind === 'tools'; for (const [k, text, deg] of wheel.items) { const a = deg * Math.PI / 180, on = k === sel, cur = tools && (k === S.tool || (k === 'nvg' && S.nvg)), used = tools && k === 'med' && S.me.med, span = Math.min(0.5, Math.PI / wheel.items.length - 0.02);
+    g.beginPath(); g.moveTo(128, 128); g.arc(128, 128, 124, a - span, a + span); g.closePath(); g.fillStyle = on ? (used ? '#5a2a2a' : '#1f7a3d') : 'rgba(12,17,24,0.86)'; g.fill(); g.strokeStyle = cur ? '#7dffa0' : '#3a6ea5'; g.lineWidth = cur ? 5 : 2; g.stroke();
+    g.fillStyle = used ? '#8a8f96' : '#fff'; g.font = 'bold 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold ' + (wheel.items.length > 6 ? 13 : 15) + 'px sans-serif'; const words = (used ? 'USED' : tools ? toolLabel(k, text) : text).split(' & '); words.forEach((w, i) => g.fillText(w + (i < words.length - 1 ? ' &' : ''), 128 + Math.cos(a) * 84, 128 + Math.sin(a) * 84 + (i - (words.length - 1) / 2) * 16)); }
+  g.beginPath(); g.arc(128, 128, 30, 0, 7); g.fillStyle = '#0c1118'; g.fill(); if (wheel.title) { g.fillStyle = '#7dffa0'; g.font = 'bold 11px sans-serif'; g.textAlign = 'center'; g.fillText(wheel.title, 128, 129); } wheel.tex.needsUpdate = true;
 }
-function openWheel(h) { wheel.open = true; wheel.hand = h; wheel.mesh.position.copy(h.pos); wheel.mesh.lookAt(head.pos); wheel.mesh.updateMatrixWorld(true); wheel.mesh.visible = true; wheel.sel = undefined; drawWheel(null); buzz(h, 0.4, 20); }
+function openWheel(h, items = WEDGE, kind = 'tools', title = '') { wheel.items = items; wheel.kind = kind; wheel.title = title; wheel.open = true; wheel.hand = h; wheel.mesh.position.copy(h.pos); wheel.mesh.lookAt(head.pos); wheel.mesh.updateMatrixWorld(true); wheel.mesh.visible = true; wheel.sel = undefined; drawWheel(null); buzz(h, 0.4, 20); }
 function wheelPick(h) {
   const p = wheel.mesh.worldToLocal(v1.copy(h.pos)); if (Math.hypot(p.x, p.y) < 0.04) return null;
-  const a = Math.atan2(-p.y, p.x) * 180 / Math.PI; let best = null, bd = 999; for (const [k, , deg] of WEDGE) { let d = Math.abs(a - deg) % 360; if (d > 180) d = 360 - d; if (d < bd) { bd = d; best = k; } } return best;
+  const a = Math.atan2(-p.y, p.x) * 180 / Math.PI; let best = null, bd = 999; for (const [k, , deg] of wheel.items) { let d = Math.abs(a - deg) % 360; if (d > 180) d = 360 - d; if (d < bd) { bd = d; best = k; } } return best;
 }
-function closeWheel(h) { const k = wheelPick(h); wheel.open = false; wheel.mesh.visible = false; if (k === 'nvg') toggleNVG(); else if (k === 'med') useMed(); else if (k) { S.tool = k; sfx.click(); buzz(h, 0.6, 30); } }
+function closeWheel(h) { const k = wheelPick(h); wheel.open = false; wheel.mesh.visible = false; if (wheel.kind === 'orders') { orderMark.visible = false; if (k) { giveOrder(k, wheel.target); buzz(h, 0.6, 30); } return; } if (k === 'nvg') toggleNVG(); else if (k === 'med') useMed(); else if (k) { S.tool = k; sfx.click(); buzz(h, 0.6, 30); } }
+
+// ---------- squad orders (SWAT bots) ----------
+// Point at something (free hand in VR, crosshair otherwise) and open the order wheel: the orders that fit what you point at, plus
+// FOLLOW ME and HOLD. VR: hold Y/B (a tap still shouts). Desktop: hold G, move the mouse toward an order, let go. Phone: SQUAD.
+const ORD = { follow: 'FOLLOW ME', hold: 'HOLD', move: 'MOVE THERE', open: 'OPEN', pick: 'PICK LOCK', kick: 'KICK', breach: 'BREACH & CLEAR', unwire: 'CUT WIRE', defuse: 'DEFUSE', detain: 'DETAIN', revive: 'REVIVE' };
+const BOT_ST = ['FOLLOW', 'HOLD', 'MOVING', 'DOOR', 'BOMB', 'DETAIN', 'REVIVE', 'FIGHT'];
+const BSAY = { follow: ['ON YOU', 'Moving with you'], hold: ['HOLDING', 'Holding here'], onit: ['COPY', 'Copy'], contact: ['CONTACT!', 'Contact!'], up: ["YOU'RE GOOD", 'Get up, you are good'], cuffed: ['RESTRAINED', 'Restrained'], bomb: ['ON THE BOMB', 'Working the bomb'], defused: ['BOMB SAFE', 'Bomb is safe'], wire: ['WIRE ON THE DOOR', 'Tripwire, cutting it'], nowire: ['NO WIRE', 'Door is clean'], locked: ['LOCKED', 'It is locked'], flash: ['FLASHBANG OUT', 'Flashbang out'], clear: ['CLEAR', 'Room clear'], leave: ['HANDING OVER', ''] };
+const botsUp = () => S.phase === 'active' && !M.training && S.me.team !== 'tango' && [...S.officers.values()].some(o => o.bot && !o.down);
+const orderMark = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.025, 6, 24), new THREE.MeshBasicMaterial({ color: 0x40ff80, depthTest: false, fog: false })); orderMark.rotation.x = Math.PI / 2; orderMark.renderOrder = 996; orderMark.visible = false; scene.add(orderMark);
+function orderTarget(o, d) {   // o, d: THREE.Vector3 ray
+  let best = null, bs = 1e9; const v = new THREE.Vector3();
+  const consider = (T, x, y, z, maxAng, maxD) => { v.set(x - o.x, y - o.y, z - o.z); const dist = v.length(); if (dist > maxD || dist < 0.2) return; const a = v.normalize().angleTo(d); if (a > maxAng) return; const sc = a + dist * 0.004; if (sc < bs) { bs = sc; best = Object.assign(T, { x, y, z }); } };
+  S.bombs.forEach((b, i) => { if (!b.defused) consider({ kind: 'bomb', b: i, name: 'BOMB' }, b.g.position.x, b.g.position.y, b.g.position.z, 0.18, 20); });
+  level.doors.forEach((D, i) => { if (!D.hidden && Math.abs(D.y - (head.pos.y - 1.6)) < 2) consider({ kind: 'door', d: i, name: 'DOOR' }, D.cx, D.y + 1.1, D.cz, 0.2, 18); });
+  for (const [id, a] of S.actors) { const st = a.st; if (a.kind === 'c' ? (st === 'u' || st === 'd' || st === 'x') : !(st === 's' || st === 'k' || st === 'i')) continue; const p = a.g.position; consider({ kind: 'npc', n: id, name: a.kind === 'c' ? 'HOSTAGE' : 'SUSPECT' }, p.x, p.y + (st === 'i' ? 0.3 : 1.0), p.z, 0.16, 20); }
+  for (const [id, of] of S.officers) if (of.down && of.team !== 'tango') { const p = of.head.position; consider({ kind: 'down', p: id, name: of.name }, p.x, p.y, p.z, 0.2, 20); }
+  if (best) return best;
+  const t = rayStatic(level, S.doorOpen, o.x, o.y, o.z, d.x, d.y, d.z, 30); if (t < 30) { const x = o.x + d.x * (t - 0.3), z = o.z + d.z * (t - 0.3), y = level.groundY(x, z, o.y + d.y * t + 0.3); return { kind: 'spot', name: 'HERE', x, y, z }; }
+  return { kind: 'none', name: '' };
+}
+function orderList(T) {
+  const k = T.kind === 'door' ? (S.doorOpen[T.d] ? ['breach'] : [...(S.doorTrap[T.d] ? ['unwire'] : []), 'open', ...(S.doorLocked[T.d] ? ['pick'] : []), 'kick', 'breach']) : T.kind === 'bomb' ? ['defuse'] : T.kind === 'npc' ? ['detain'] : T.kind === 'down' ? ['revive'] : T.kind === 'spot' ? ['move'] : [];
+  const all = ['follow', 'hold', ...k], n = all.length; return all.map((key, i) => [key, ORD[key], -90 + i * 360 / n]);
+}
+function openOrders(h) { const o = h ? h.pos.clone() : head.pos.clone(), d = h ? new THREE.Vector3(0, 0, -1).applyQuaternion(h.quat) : head.fwd.clone(); const T = orderTarget(o, d); wheel.target = T; if (T.kind !== 'none') { orderMark.position.set(T.x, T.kind === 'spot' ? T.y + 0.05 : T.y, T.z); orderMark.visible = true; } return T; }
+function giveOrder(k, T) { if (!k || !T) return; net.send({ t: 'order', k, d: T.d, b: T.b, n: T.n, p: T.p, x: T.x, y: T.y, z: T.z }); sfx.click(); }
+// desktop / phone: the same wheel drawn as a ring of buttons over the screen
+const OW = { open: false, mx: 0, my: 0, sel: null, items: [], T: null };
+function openOW() {
+  if (!botsUp()) { hint(head.pos.x + head.fwd.x * 1.5, head.pos.y, head.pos.z + head.fwd.z * 1.5, 'NO SQUAD BOTS'); return; }
+  const T = openOrders(null), el = $('ow'); OW.T = T; OW.items = orderList(T); OW.open = true; OW.mx = OW.my = 0; OW.sel = null; el.innerHTML = '';
+  const c = document.createElement('div'); c.className = 'owc'; c.textContent = T.name || 'SQUAD'; el.appendChild(c); c.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeOW(false); });
+  for (const [k, text, deg] of OW.items) { const b = document.createElement('div'), a = deg * Math.PI / 180; b.className = 'owb'; b.textContent = text; b.dataset.k = k; b.style.left = (150 + Math.cos(a) * 112 - 52) + 'px'; b.style.top = (150 + Math.sin(a) * 112 - 22) + 'px';
+    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); OW.sel = k; closeOW(true); }); el.appendChild(b); }
+  el.style.display = 'block';
+}
+function owMove(dx, dy) { OW.mx += dx; OW.my += dy; if (Math.hypot(OW.mx, OW.my) < 30) OW.sel = null; else { const a = Math.atan2(OW.my, OW.mx) * 180 / Math.PI; let bd = 999; for (const [k, , deg] of OW.items) { let d = Math.abs(a - deg) % 360; if (d > 180) d = 360 - d; if (d < bd) { bd = d; OW.sel = k; } } } for (const b of $('ow').querySelectorAll('.owb')) b.classList.toggle('on', b.dataset.k === OW.sel); }
+function closeOW(pick) { if (!OW.open) return; OW.open = false; $('ow').style.display = 'none'; orderMark.visible = false; if (pick && OW.sel) giveOrder(OW.sel, OW.T); }
+function botSay(e) { const o = S.officers.get(e.p), L = BSAY[e.k]; if (!o || !L) return; const p = o.head.position; sayAt(p.x, p.y + 0.5, p.z, o.name + ': ' + L[0], '#a8ffb8'); if (L[1] && (e.k !== 'contact' || p.distanceTo(head.pos) < 25)) sfx.say(L[1], 0.9 + (o.slot || 0) * 0.08); }
 
 // ---------- panels ----------
 class Panel {
@@ -272,7 +311,8 @@ function hudText() {
   if (M.training) { const T = trainLine(); return { mm: 'RANGE', hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'HITS ' + T.hits + '/' + T.shots + '  NO-SHOOT ' + T.ns + '  HOUSE ' + T.run + ' (best ' + T.best + ')', mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() }; }
   if (S.spec) return { mm, hp: S.me.hp, err: '', obj: 'DOWN - SPECTATING ' + S.spec, mags: S.me.team === 'tango' ? 'TERRORIST' : 'SWAT' };
   if (S.pvp && S.me.team === 'tango') return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'TERRORIST  HOSTAGES RESCUED ' + S.secured + '/' + S.civs + '  BOMBS LIVE ' + (S.bombs.length - S.defused) + '  LOCKS ' + (S.me.locks || 0) + '  TRAPS ' + (S.me.traps || 0), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() };
-  return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: (S.pvp ? 'SWAT  ' : '') + 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
+  const squad = [...S.officers.values()].filter(o => o.bot).map(o => o.name + ' ' + (o.down ? 'DOWN' : BOT_ST[o.bst] || '')).join('  ');
+  return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: (S.pvp ? 'SWAT  ' : '') + (squad ? squad + '  ' : '') + 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
 }
 function drawHud() {
   const h = hudText();
@@ -291,7 +331,7 @@ function drawHud() {
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
-    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = tangoTools() && (S.tool === 'pick' || S.tool === 'cutters') ? toolLabel(S.tool, '') : ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); { const nx = M.training ? MAPS[S.nextMap] : M; $('bTod').style.display = $('tstart').style.display !== 'none' && nx && nx.tods ? 'flex' : 'none'; $('bTod').textContent = 'TIME: ' + S.todPick.toUpperCase(); } $('bTeam').style.display = $('tstart').style.display; $('bTeam').textContent = 'TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT');  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
+    if (S.touch) { $('bOrd').style.display = botsUp() ? '' : 'none'; $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = tangoTools() && (S.tool === 'pick' || S.tool === 'cutters') ? toolLabel(S.tool, '') : ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); { const nx = M.training ? MAPS[S.nextMap] : M; $('bTod').style.display = $('tstart').style.display !== 'none' && nx && nx.tods ? 'flex' : 'none'; $('bTod').textContent = 'TIME: ' + S.todPick.toUpperCase(); } $('bTeam').style.display = $('tstart').style.display; $('bTeam').textContent = 'TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT');  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
   }
 }
 
@@ -323,8 +363,8 @@ function applySnap(m) {
   nadeView(m.G || [], m.SM || []);
   for (const [id, name, , hp, down, h, l, r, g, w] of m.P) {
     if (id === S.me.id) { const tm = w & 2048 ? 'tango' : 'swat'; if (tm !== S.me.team) { S.me.team = tm; myBody.setTeam(tm); } S.me.locks = w >> 13 & 3; S.me.traps = w >> 15 & 3; const hd = !!(w & 4096); if (hd !== !!S.me.holding) { S.me.holding = hd; if (!hd) for (const q of hands) q.shield = false; } S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
-    seen.add(id); let o = S.officers.get(id); if (!o) { o = new Officer(name, label(name, '#9fd0ff')); scene.add(o.g); S.officers.set(id, o); }
-    o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team);
+    seen.add(id); let o = S.officers.get(id); const bot = !!(w & 1 << 17); if (!o) { o = new Officer(name, label(bot ? name + ' (AI)' : name, bot ? '#a8ffb8' : '#9fd0ff')); scene.add(o.g); S.officers.set(id, o); }
+    o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team); o.bot = bot; o.bst = w >> 18 & 7; o.slot = id - 900;
   }
   for (const [id, o] of S.officers) if (!seen.has(id)) { scene.remove(o.g); S.officers.delete(id); }
   if (m.R) S.report = m.R;
@@ -348,6 +388,7 @@ function onEvent(e) {
     case 'heal': if (e.p === S.me.id) { sfx.ok(); S.lastPart = ''; S.figT = 2.5; } break;
     case 'down': if (e.p === S.me.id) sfx.hurt(); break;
     case 'tlock': case 'ttrap': { const d = level.doors[e.d]; if (e.p === S.me.id && d) { hint(d.cx, d.y + 1.3, d.cz, (e.e === 'tlock' ? 'DOOR LOCKED' : 'WIRE SET') + ' - ' + e.left + ' LEFT'); sfx.click(); } break; }
+    case 'bsay': botSay(e); break;
     case 'hvtrun': { const a = S.actors.get(e.n); if (a) sayAt(a.g.position.x, a.g.position.y + 2.2, a.g.position.z, S.pvp && S.me.team === 'tango' ? 'THE BOSS IS HEADING FOR THE JET' : 'HVT IS RUNNING FOR THE JET', '#ff8040'); break; }
     case 'grab': { const a = S.actors.get(e.n); if (e.p === S.me.id && a) { hint(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, 'SHIELD: PISTOL ONLY'); if (S.mode !== 'vr' && hands[1].item === 'rifle') deskKey('Digit2'); } break; }   // phone / desktop: switch to the pistol for you
     case 'drop': { const a = S.actors.get(e.n); if (a && e.why !== 'let go') sayAt(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, e.why === 'flash' ? 'HOSTAGE BROKE FREE (FLASHED)' : e.why === 'shot' ? 'HOSTAGE BROKE FREE (SHOT)' : 'HOSTAGE FREE', '#80d0ff'); break; }
@@ -376,11 +417,11 @@ function onEvent(e) {
 // ---------- input ----------
 const keys = {}; let mouseL = false, mouseLPrev = false;
 addEventListener('keydown', e => { if (S.mode !== 'desktop') return; keys[e.code] = true; if (!e.repeat) deskKey(e.code); });
-addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyG' && OW.open && !S.touch) closeOW(true); });
 renderer.domElement.addEventListener('mousedown', e => { if (S.mode !== 'desktop' || S.touch) return; initAudio(); if (document.pointerLockElement !== renderer.domElement) { renderer.domElement.requestPointerLock?.(); } if (e.button === 0) mouseL = true; if (e.button === 2) S.ads = true; });
 addEventListener('mouseup', e => { if (e.button === 0) mouseL = false; if (e.button === 2) S.ads = false; });
 addEventListener('contextmenu', e => e.preventDefault());
-addEventListener('mousemove', e => { if (S.mode === 'desktop' && document.pointerLockElement === renderer.domElement) { S.yaw -= e.movementX * 0.0022; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch - e.movementY * 0.0022)); } });
+addEventListener('mousemove', e => { if (OW.open && !S.touch) { owMove(e.movementX, e.movementY); return; } if (S.mode === 'desktop' && document.pointerLockElement === renderer.domElement) { S.yaw -= e.movementX * 0.0022; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch - e.movementY * 0.0022)); } });
 function deskKey(code) {
   const G = gunIn(hands[1]);
   if (code === 'Enter' && (S.phase !== 'active' || M.training)) net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() });
@@ -394,6 +435,7 @@ function deskKey(code) {
   else if (code === 'KeyV' && G) { toggleMode(G.st); sfx.selector(); }
   else if (code === 'KeyL' && S.phase === 'active') net.send({ t: 'end' });
   else if (code === 'KeyE') deskInteract();
+  else if (code === 'KeyG') openOW();
   else if (code === 'KeyQ') doKick();
   else if (code === 'KeyN') toggleNVG();
   else if (code === 'KeyH') useMed();
@@ -587,10 +629,12 @@ function handVR(h, o, dt) {
       if (cut) { if (S.tool === 'cutters') { net.send(cut); buzz(h, 0.8, 40); } else { const p = S.bombs[cut.b].g.position; hint(p.x, p.y + 0.4, p.z, 'SELECT CUTTERS'); } }
       else { v2.set(0, 0, -1).applyQuaternion(h.quat); if (!tryPanel(h.pos, v2) && !h.item && !h.hold) useWorld(h); }
     }
-    if (press(h, 'b')) doShout();
+    if (press(h, 'b')) h.bT = 0;
+    if (h.in.b > 0.5) { h.bT += dt; if (h.bT > 0.25 && !wheel.open && !h.bW && botsUp()) { h.bW = true; const T = openOrders(h); openWheel(h, orderList(T), 'orders', T.name); } }
+    if (released(h, 'b')) { if (h.bW) { h.bW = false; if (wheel.open && wheel.hand === h && wheel.kind === 'orders') closeWheel(h); } else doShout(); }
     if (press(h, 'a')) h.aT = 0;
     if (h.in.a > 0.5) { h.aT += dt; if (h.aT > 0.22 && !wheel.open) openWheel(h); }
-    if (released(h, 'a')) { if (wheel.open && wheel.hand === h) closeWheel(h); else S.light = !S.light; }
+    if (released(h, 'a')) { if (wheel.open && wheel.hand === h && wheel.kind === 'tools') closeWheel(h); else S.light = !S.light; }
     if (wheel.open && wheel.hand === h) drawWheel(wheelPick(h));
     if (press(h, 'stick')) doKick();
   }
@@ -818,7 +862,7 @@ function initTouch() {
   S.touch = true; $('touch').style.display = 'block'; document.body.classList.add('touching');
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
-  bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
+  bind('bOrd', () => { if (OW.open) closeOW(false); else openOW(); }); bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
   bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; }); bind('bTod', () => { cycleTod(); hudT = 0; }); bind('bTeam', () => { pickTeam(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
@@ -837,9 +881,9 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v31';
+const BUILD = 'v32';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { get wheel() { return wheel; }, OW, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

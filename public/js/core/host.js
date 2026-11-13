@@ -3,7 +3,7 @@ import { Sim, MAP_IDS } from './sim.js';
 export const TICK = 1 / 15;
 export class RoomHost {
   constructor(send) { this.send = send; this.sim = new Sim('training'); }   // send(idOrNull, object)
-  get count() { return this.sim.players.size; }
+  get count() { let n = 0; for (const p of this.sim.players.values()) if (!p.bot) n++; return n; }   // humans: bots give their place up
   join(id, name) {
     if (this.count >= 4) { this.send(id, { t: 'full' }); return false; }
     const p = this.sim.addPlayer(id, name);
@@ -35,6 +35,7 @@ export class RoomHost {
       case 'release': s.release(id); break;
       case 'lockdoor': s.lockdoor(id, m.d); break;
       case 'trapdoor': s.trapdoor(id, m.d); break;
+      case 'order': s.order(id, m); break;
       case 'map': if ((s.phase !== 'active' || s.M.training) && MAP_IDS.includes(m.m) && m.m !== s.mapId) { s.setMap(m.m); s.reset(s.seed); this.send(null, { t: 'init', init: s.init() }); } break;   // lobby only: everyone loads the same map
       case 'restart':
       case 'start': if (m.t === 'restart' || s.phase !== 'active' || s.M.training) { s.start((Date.now() ^ (Math.random() * 1e9)) >>> 0, false, m.wx, MAP_IDS.includes(m.map) ? m.map : s.M.training ? s.nextMap : s.mapId, m.tod); this.send(null, { t: 'init', init: s.init() }); } break;

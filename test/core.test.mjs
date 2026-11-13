@@ -5,6 +5,7 @@ import { RoomHost } from '../public/js/core/host.js';
 import * as W from '../public/js/core/weapon.js';
 let n = 0; const t = async (name, fn) => { await fn(); n++; console.log('ok', name); };
 const L = buildLevel();
+Sim.BOTS = false;   // the bot tests at the end switch them back on
 
 await t('level builds walls and 14 doors', () => { assert.ok(L.boxes.filter(b => b.kind === 'wall').length > 30); assert.equal(L.doors.length, 23); assert.ok(L.boxes.filter(b => b.kind === 'glass').length >= 8); });
 await t('every spot is walkable and reachable from spawn', () => {
@@ -447,5 +448,55 @@ await t('airport HVT runs for the jet once he hears the squad, then digs in ther
   const evs = []; for (let i = 0; i < 15 * 90 && Math.hypot(h.x - fx, h.z - fz) > 1.6; i++) { s.tick(1 / 15); evs.push(...s.events.splice(0)); }
   assert.ok(evs.some(e => e.e === 'hvtrun'), 'announced'); assert.ok(Math.hypot(h.x - fx, h.z - fz) < 1.6, 'reached the jet: ' + h.x.toFixed(1) + ',' + h.z.toFixed(1)); assert.ok(Math.abs(h.y - 1.615 * 1.25) < 0.05, 'in the cabin');
   for (let i = 0; i < 15; i++) s.tick(1 / 15); assert.ok(!h.fleeing && h.st !== 'g', 'holding there');
+});
+Sim.BOTS = true;
+const run = (s, sec, until) => { const ev = []; for (let i = 0; i < sec * 15; i++) { s.tick(1 / 15); ev.push(...s.events.splice(0)); if (until && until()) break; } return ev; };
+await t('bots: three fill a solo squad, two with a friend, a joiner takes a bot place, none in training; rooms count humans', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'A'); s.start(3, false, 'clear', 'mansion');
+  assert.equal(s.bots().length, 3); assert.deepEqual(s.bots().map(p => p.name), ['ALPHA', 'BRAVO', 'CHARLIE']);
+  const P = s.snapshot().P; assert.equal(P.length, 4); assert.ok(P.filter(q => q[9] & 1 << 17).length === 3, 'bot flag');
+  s.addPlayer(2, 'B'); assert.equal(s.bots().length, 2, 'a friend joining mid-mission replaces a bot');
+  s.start(4, false, 'clear', 'mansion'); assert.equal(s.bots().length, 2);
+  const t2 = new Sim('training'); t2.addPlayer(1, 'A'); t2.start(1, false, 'clear', 'training'); assert.equal(t2.bots().length, 0);
+  const h = new RoomHost(() => {}); for (let i = 1; i <= 4; i++) assert.ok(h.join(i, 'P' + i)); h.sim.start(5, false, 'clear', 'mansion'); assert.equal(h.count, 4); assert.equal(h.sim.bots().length, 0);
+});
+await t('bots follow the leader through the house, and hold when told', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'A'); s.start(6, false, 'clear', 'mansion'); for (const n of s.npcs) if (n.kind === 's') { n.st = 'u'; n.armed = false; }
+  const me = s.players.get(1), [sx, sz] = s.M.spawn[0];
+  const at = (x, z, y = 0) => { s.pose(1, { h: [x, y + 1.65, z, 0, 0, 0, 1] }); };
+  at(sx, sz); run(s, 1);
+  const goal = s.M.spots.c[0]; at(goal[1], goal[2], goal[0] * s.M.H);
+  run(s, 60, () => s.bots().every(p => Math.hypot(p.bot.x - goal[1], p.bot.z - goal[2]) < 5 && Math.abs(p.bot.y - goal[0] * s.M.H) < 0.5));
+  for (const p of s.bots()) assert.ok(Math.hypot(p.bot.x - goal[1], p.bot.z - goal[2]) < 5, p.name + ' followed: ' + p.bot.x.toFixed(1) + ',' + p.bot.z.toFixed(1) + ' to ' + goal);
+  s.order(1, { k: 'hold' }); const held = s.bots().map(p => [p.bot.x, p.bot.z]); at(sx, sz); run(s, 6);
+  s.bots().forEach((p, i) => assert.ok(Math.hypot(p.bot.x - held[i][0], p.bot.z - held[i][1]) < 0.8, 'held'));
+});
+await t('bot orders: open and pick a door, cut its wire, defuse a bomb, detain a hostage, revive an officer', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'A'); s.start(7, false, 'clear', 'mansion'); for (const n of s.npcs) if (n.kind === 's') { n.st = 'u'; n.armed = false; }
+  const me = s.players.get(1), [sx, sz] = s.M.spawn[0]; s.pose(1, { h: [sx, 1.65, sz, 0, 0, 0, 1] }); run(s, 0.5);
+  // a closed inside door on the ground floor: lock it, rig it, then order a pick: the bot spots the wire, cuts it, picks the lock and opens
+  const di = s.level.doors.findIndex((d, i) => !d.exterior && d.y === 0 && !s.doorOpen[i]); s.doorLocked[di] = true; s.doorTrap[di] = 1;
+  const pb = s.bots()[0]; pb.bot.seen[di] = true;
+  s.order(1, { k: 'pick', d: di }); const busy = s.bots().find(p => p.bot.task); assert.ok(busy, 'someone took it');
+  const ev = run(s, 90, () => s.doorOpen[di]); assert.ok(s.doorOpen[di], 'door opened'); assert.equal(s.doorTrap[di], 0, 'wire cut first'); assert.ok(!ev.some(e => e.e === 'trip'), 'no tripped wire');
+  const bi = 0, bm = s.bombs[bi]; s.order(1, { k: 'defuse', b: bi }); run(s, 120, () => bm.defused); assert.ok(bm.defused, 'bomb defused');
+  const c = s.npcs.find(n => n.kind === 'c' && n.y === 0); s.order(1, { k: 'detain', n: c.id }); run(s, 120, () => c.st === 'u'); assert.equal(c.st, 'u', 'hostage detained');
+  me.down = true; me.hp = 0; run(s, 60, () => !me.down); assert.ok(!me.down, 'a bot revived the downed officer unasked');
+});
+await t('bots fight back: a suspect who opens fire gets shot, an unaware one is challenged first', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'A'); s.start(8, false, 'clear', 'mansion');
+  const [sx, sz] = s.M.spawn[0]; s.pose(1, { h: [sx, 1.65, sz, 0, 0, 0, 1] }); for (const n of s.npcs) if (n.kind === 's') { n.st = 'u'; n.armed = false; }
+  const b = s.bots()[0], n = s.npcs.find(q => q.kind === 's'); n.st = 'g'; n.armed = true; n.resolve = 1; n.x = b.bot.x + Math.sin(b.bot.yaw) * 6; n.z = b.bot.z + Math.cos(b.bot.yaw) * 6; n.y = b.bot.y; n.path = null; n.patrol = null; n.yaw = b.bot.yaw; n.sweep = 0;
+  if (!s.clear(b.bot.x, 1.6, b.bot.z, n.x, 1.3, n.z)) { n.x = b.bot.x; n.z = b.bot.z + 4; }
+  const ev = run(s, 20, () => n.st === 'd' || n.st === 'i' || n.st === 's' || n.st === 'k');
+  assert.ok(ev.some(e => e.e === 'shout' && s.players.get(e.p) && s.players.get(e.p).bot), 'challenged'); assert.ok(n.st === 'd' || n.st === 'i' || n.st === 's' || n.st === 'k', 'dealt with: ' + n.st);
+  assert.equal(s.log.unauth, 0, 'no unauthorised force');
+});
+await t('solo terrorist: with no SWAT human the bots run the mission themselves', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'T'); s.setTeam(1, 'tango'); s.start(9, false, 'clear', 'mansion'); assert.ok(s.pvp); assert.equal(s.bots().length, 3);
+  const me = s.players.get(1); s.pose(1, { h: [me.hx, me.y + 1.65, me.hz, 0, 0, 0, 1] });
+  for (const n of s.npcs) if (n.kind === 's') { n.st = 'u'; n.armed = false; }
+  const sec = () => s.npcs.filter(n => n.kind === 'c' && n.st === 'u').length + s.bombs.filter(b => b.defused).length;
+  run(s, 150, () => sec() >= 2 || s.phase !== 'active'); assert.ok(sec() >= 2, 'bots secured ' + sec() + ' objectives on their own');
 });
 console.log(n + ' tests passed');
