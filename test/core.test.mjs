@@ -405,4 +405,22 @@ await t('pvp human shield: grab, carried in front, blocks body shots, pistol onl
   const c2 = s.npcs.find(q => q.kind === 'c' && q !== c && q.st !== 'd'); c2.st = 'w'; bad.down = false; bad.hp = 100; stand(2, c2.x, c2.z + 0.9, 0, c2.y); s.hold(2, c2.id); assert.equal(bad.hold, c2.id);
   s.flash({ x: bad.hx, y: bad.hy - 1, z: bad.hz - 1.5, by: 1 }); assert.equal(bad.hold, 0); assert.equal(c2.held, 0);
 });
+await t('pvp terrorist locks and wire traps: two each, own doors pass safely, SWAT trips them', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'Cop'); s.addPlayer(2, 'Bad'); s.setTeam(2, 'tango'); s.start(31, false, 'clear', 'mansion');
+  const cop = s.players.get(1), bad = s.players.get(2);
+  const free = s.level.doors.map((d, i) => i).filter(i => !s.doorOpen[i] && !s.doorLocked[i] && !s.doorTrap[i] && s.level.doors[i].pad === undefined);
+  assert.ok(free.length >= 4, 'enough plain closed doors');
+  const at = (id, i) => { const d = s.level.doors[i]; s.pose(id, { h: [d.cx + 0.6, d.y + 1.65, d.cz + 0.6, 0, 0, 0, 1] }); };
+  const [a, b, c, e] = free;
+  at(1, a); s.lockdoor(1, a); assert.ok(!s.doorLocked[a], 'officers cannot lock');
+  at(2, a); s.lockdoor(2, a); at(2, b); s.lockdoor(2, b); at(2, c); s.lockdoor(2, c);
+  assert.ok(s.doorLocked[a] && s.doorLocked[b] && !s.doorLocked[c], 'only two locks'); assert.equal(bad.locks, 0);
+  at(2, c); s.trapdoor(2, c); at(2, e); s.trapdoor(2, e); at(2, a); s.trapdoor(2, a); assert.equal(bad.traps, 0);
+  assert.ok(s.doorTrap[c] && s.doorTrap[e] && !s.doorTrap[a], 'only two traps');
+  const flags = s.snapshot().P.find(q => q[0] === 2)[9]; assert.equal(flags >> 13 & 3, 0); assert.equal(flags >> 15 & 3, 0);
+  at(1, a); s.door(1, a); assert.ok(!s.doorOpen[a], 'SWAT stopped by the lock');
+  at(2, a); s.door(2, a); assert.ok(s.doorOpen[a], 'terrorist opens their own lock');
+  const hp = bad.hp; at(2, c); s.door(2, c); assert.ok(s.doorOpen[c] && bad.hp === hp, 'terrorist passes their own wire');
+  const chp = cop.hp; at(1, e); s.door(1, e); assert.ok(s.doorOpen[e] && cop.hp < chp, 'SWAT trips the wire');
+});
 console.log(n + ' tests passed');

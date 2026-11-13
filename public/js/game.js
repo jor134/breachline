@@ -168,6 +168,9 @@ const fig = (() => { const c = document.createElement('canvas'); c.width = 96; c
 function drawFig() { const g = fig.c.getContext('2d'); g.clearRect(0, 0, 96, 176); g.fillStyle = 'rgba(5,8,12,0.7)'; g.fillRect(0, 0, 96, 176); drawBody(g, 8, 8, 2, Math.floor(S.now * 5) % 2 ? S.lastPart : ''); g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.textAlign = 'center'; g.fillText(S.lastPart ? ({ head: 'HEAD', torso: 'TORSO', armL: 'LEFT ARM', armR: 'RIGHT ARM', legL: 'LEFT LEG', legR: 'RIGHT LEG' })[S.lastPart] : 'TREATED', 48, 170); fig.tex.needsUpdate = true; }
 function useMed() { if (S.me.down) return; if (S.me.med) { hint(head.pos.x + head.fwd.x, head.pos.y, head.pos.z + head.fwd.z, 'MED KIT USED'); return; } net.send({ t: 'heal' }); }
 // tool wheel: hold the free hand's lower button, move the hand toward a wedge, let go
+// PvP terrorist players: the lockpick locks a door, the cutters rig a wire trap (two of each)
+const tangoTools = () => S.pvp && S.me.team === 'tango';
+const toolLabel = (k, text) => !tangoTools() ? text : k === 'pick' ? 'LOCK (' + (S.me.locks || 0) + ')' : k === 'cutters' ? 'TRAP (' + (S.me.traps || 0) + ')' : text;
 const WEDGE = [['pick', 'LOCKPICK', -90], ['cutters', 'CUTTERS', -30], ['cam', 'DOOR CAM', 30], ['med', 'MED KIT', 90], ['hands', 'HANDS', 150], ['nvg', 'NVG', 210]];
 const wheel = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.32), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, fog: false })); mesh.renderOrder = 995; mesh.visible = false; scene.add(mesh); return { c, tex, mesh, open: false, hand: null, sel: undefined }; })();
@@ -175,7 +178,7 @@ function drawWheel(sel) {
   if (sel === wheel.sel) return; wheel.sel = sel; const g = wheel.c.getContext('2d'); g.clearRect(0, 0, 256, 256);
   for (const [k, text, deg] of WEDGE) { const a = deg * Math.PI / 180, on = k === sel, cur = k === S.tool || (k === 'nvg' && S.nvg), used = k === 'med' && S.me.med;
     g.beginPath(); g.moveTo(128, 128); g.arc(128, 128, 124, a - 0.5, a + 0.5); g.closePath(); g.fillStyle = on ? (used ? '#5a2a2a' : '#1f7a3d') : 'rgba(12,17,24,0.86)'; g.fill(); g.strokeStyle = cur ? '#7dffa0' : '#3a6ea5'; g.lineWidth = cur ? 5 : 2; g.stroke();
-    g.fillStyle = used ? '#8a8f96' : '#fff'; g.font = 'bold 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(used ? 'USED' : text, 128 + Math.cos(a) * 82, 128 + Math.sin(a) * 82); }
+    g.fillStyle = used ? '#8a8f96' : '#fff'; g.font = 'bold 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(used ? 'USED' : toolLabel(k, text), 128 + Math.cos(a) * 82, 128 + Math.sin(a) * 82); }
   g.beginPath(); g.arc(128, 128, 26, 0, 7); g.fillStyle = '#0c1118'; g.fill(); wheel.tex.needsUpdate = true;
 }
 function openWheel(h) { wheel.open = true; wheel.hand = h; wheel.mesh.position.copy(h.pos); wheel.mesh.lookAt(head.pos); wheel.mesh.updateMatrixWorld(true); wheel.mesh.visible = true; wheel.sel = undefined; drawWheel(null); buzz(h, 0.4, 20); }
@@ -267,7 +270,7 @@ function hudText() {
   const t = Math.max(0, S.timer), mm = Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
   if (M.training) { const T = trainLine(); return { mm: 'RANGE', hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'HITS ' + T.hits + '/' + T.shots + '  NO-SHOOT ' + T.ns + '  HOUSE ' + T.run + ' (best ' + T.best + ')', mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() }; }
   if (S.spec) return { mm, hp: S.me.hp, err: '', obj: 'DOWN - SPECTATING ' + S.spec, mags: S.me.team === 'tango' ? 'TERRORIST' : 'SWAT' };
-  if (S.pvp && S.me.team === 'tango') return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'TERRORIST  STOP THE SQUAD  HOSTAGES RESCUED ' + S.secured + '/' + S.civs + '  BOMBS LIVE ' + (S.bombs.length - S.defused), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() };
+  if (S.pvp && S.me.team === 'tango') return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'TERRORIST  HOSTAGES RESCUED ' + S.secured + '/' + S.civs + '  BOMBS LIVE ' + (S.bombs.length - S.defused) + '  LOCKS ' + (S.me.locks || 0) + '  TRAPS ' + (S.me.traps || 0), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() };
   return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: (S.pvp ? 'SWAT  ' : '') + 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
 }
 function drawHud() {
@@ -287,7 +290,7 @@ function drawHud() {
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
-    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); { const nx = M.training ? MAPS[S.nextMap] : M; $('bTod').style.display = $('tstart').style.display !== 'none' && nx && nx.tods ? 'flex' : 'none'; $('bTod').textContent = 'TIME: ' + S.todPick.toUpperCase(); } $('bTeam').style.display = $('tstart').style.display; $('bTeam').textContent = 'TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT');  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
+    if (S.touch) { $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = tangoTools() && (S.tool === 'pick' || S.tool === 'cutters') ? toolLabel(S.tool, '') : ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); { const nx = M.training ? MAPS[S.nextMap] : M; $('bTod').style.display = $('tstart').style.display !== 'none' && nx && nx.tods ? 'flex' : 'none'; $('bTod').textContent = 'TIME: ' + S.todPick.toUpperCase(); } $('bTeam').style.display = $('tstart').style.display; $('bTeam').textContent = 'TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT');  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
   }
 }
 
@@ -318,7 +321,7 @@ function applySnap(m) {
   if (m.T) for (let i = 0; i < S.doorTrap.length; i++) { const v = +m.T[i]; S.doorTrap[i] = v; const d = world.doors[i]; d.trap.visible = v > 0 && m.ph === 'active'; if (v) { const o = (v === 1 ? 0.3 : -0.3); d.trap.position.set(level.doors[i].x0 + (d.horiz ? 0 : o), level.doors[i].y, level.doors[i].z0 + (d.horiz ? o : 0)); } }
   nadeView(m.G || [], m.SM || []);
   for (const [id, name, , hp, down, h, l, r, g, w] of m.P) {
-    if (id === S.me.id) { const tm = w & 2048 ? 'tango' : 'swat'; if (tm !== S.me.team) { S.me.team = tm; myBody.setTeam(tm); } const hd = !!(w & 4096); if (hd !== !!S.me.holding) { S.me.holding = hd; if (!hd) for (const q of hands) q.shield = false; } S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
+    if (id === S.me.id) { const tm = w & 2048 ? 'tango' : 'swat'; if (tm !== S.me.team) { S.me.team = tm; myBody.setTeam(tm); } S.me.locks = w >> 13 & 3; S.me.traps = w >> 15 & 3; const hd = !!(w & 4096); if (hd !== !!S.me.holding) { S.me.holding = hd; if (!hd) for (const q of hands) q.shield = false; } S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
     seen.add(id); let o = S.officers.get(id); if (!o) { o = new Officer(name, label(name, '#9fd0ff')); scene.add(o.g); S.officers.set(id, o); }
     o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team);
   }
@@ -343,6 +346,7 @@ function onEvent(e) {
     case 'hurt': if (e.p === S.me.id) { hudT = 0; hurtT = 1; sfx.hurt(); for (const h of hands) buzz(h, 1, 150); S.lastPart = e.part; S.figT = 4; } break;
     case 'heal': if (e.p === S.me.id) { sfx.ok(); S.lastPart = ''; S.figT = 2.5; } break;
     case 'down': if (e.p === S.me.id) sfx.hurt(); break;
+    case 'tlock': case 'ttrap': { const d = level.doors[e.d]; if (e.p === S.me.id && d) { hint(d.cx, d.y + 1.3, d.cz, (e.e === 'tlock' ? 'DOOR LOCKED' : 'WIRE SET') + ' - ' + e.left + ' LEFT'); sfx.click(); } break; }
     case 'grab': { const a = S.actors.get(e.n); if (e.p === S.me.id && a) { hint(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, 'SHIELD: PISTOL ONLY'); if (S.mode !== 'vr' && hands[1].item === 'rifle') deskKey('Digit2'); } break; }   // phone / desktop: switch to the pistol for you
     case 'drop': { const a = S.actors.get(e.n); if (a && e.why !== 'let go') sayAt(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, e.why === 'flash' ? 'HOSTAGE BROKE FREE (FLASHED)' : e.why === 'shot' ? 'HOSTAGE BROKE FREE (SHOT)' : 'HOSTAGE FREE', '#80d0ff'); break; }
     case 'carhit': if (e.p != null) { sfx.boom({ x: e.x, y: 0.5, z: e.z }); if (e.p === S.me.id) sayAt(head.pos.x + head.fwd.x * 1.5, head.pos.y, head.pos.z + head.fwd.z * 1.5, 'HIT BY A RACE CAR', '#ff6060'); } break;
@@ -405,18 +409,24 @@ function nearestDowned(p, maxD) { let best = null, bd = maxD; for (const o of S.
 const shieldOn = () => S.pvp && S.me.team === 'tango' && S.phase === 'active' && !S.me.down;
 function nearestHostage(p, maxD) { let best = null, bd = maxD; for (const [id, a] of S.actors) { if (a.kind !== 'c' || a.st === 'u' || a.st === 'd' || a.st === 'x') continue; const d = Math.hypot(a.g.position.x - p.x, a.g.position.z - p.z) + Math.abs(a.g.position.y + 1.1 - p.y) * 0.5; if (d < bd) { bd = d; best = id; } } return best; }
 function deskInteract() {
-  if (shieldOn()) { if (S.me.holding) return net.send({ t: 'release' }); const n = nearestHostage(head.pos, 1.6); if (n != null) return net.send({ t: 'hold', n }); }
+  if (shieldOn()) { if (S.me.holding) return net.send({ t: 'release' }); const n = nearestHostage(head.pos, 1.5); if (n != null) return net.send({ t: 'hold', n }); }
   for (let i = 0; i < S.bombs.length; i++) { const b = S.bombs[i]; if (!b.defused && b.g.position.distanceTo(head.pos) < 1.7) { const p = b.g.position; return S.tool === 'cutters' ? net.send({ t: 'cut', b: i, w: b.order[b.n] }) : hint(p.x, p.y + 0.4, p.z, 'SELECT CUTTERS'); } }
   if (nearBreaker(head.pos, 1.7)) return net.send({ t: 'breaker' });
-  const n = nearestCuffable(v1.copy(head.pos).setY(head.pos.y - 0.7), 1.6); if (n != null) return net.send({ t: 'cuff', n });
+  const n = tangoTools() ? null : nearestCuffable(v1.copy(head.pos).setY(head.pos.y - 0.7), 1.6); if (n != null) return net.send({ t: 'cuff', n });
   const p = nearestDowned(head.pos, 2); if (p != null) return net.send({ t: 'revive', p });
-  const bi = nearestDoor(head.pos, 2.2); if (bi < 0) return;
+  const bi = nearestDoor(head.pos, 2.2);
+  if (shieldOn() && bi < 0) { hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.3, head.pos.z + head.fwd.z * 1.2, 'NO HOSTAGE OR DOOR IN REACH'); return; }
+  if (bi < 0) return;
+  if (tangoTools() && !S.doorOpen[bi] && (S.tool === 'pick' || S.tool === 'cutters')) { const D = level.doors[bi], lock = S.tool === 'pick';
+    if (lock ? S.doorLocked[bi] || D.pad !== undefined : S.doorTrap[bi]) return hint(D.cx, D.y + 1.2, D.cz, lock ? 'ALREADY LOCKED' : 'ALREADY RIGGED');
+    if (!(lock ? S.me.locks : S.me.traps)) return hint(D.cx, D.y + 1.2, D.cz, lock ? 'NO LOCKS LEFT' : 'NO TRAPS LEFT');
+    S.deskPick = { id: bi, t: lock ? 2 : 1, lock, trap: !lock }; return; }
   if (S.tool === 'cam' && !S.doorOpen[bi]) { S.deskCam = { id: bi, t: 6 }; if (S.doorTrap[bi]) hint(level.doors[bi].cx, level.doors[bi].y + 1.3, level.doors[bi].cz, 'TRIPWIRE BEHIND DOOR'); return; }
   if (S.tool === 'cutters' && S.doorTrap[bi] && !S.doorOpen[bi]) { S.deskPick = { id: bi, t: 1.5, disarm: true }; return; }
   const D = level.doors[bi];
   if (D.pad !== undefined && S.doorLocked[bi]) { if (S.tool === 'cutters') S.deskPick = { id: bi, t: 2.5, snip: true }; else hint(D.cx, D.y + 1.2, D.cz, 'PADLOCKED: USE CUTTERS'); return; }
   net.send({ t: 'door', d: bi });
-  if (S.doorLocked[bi] && !S.doorOpen[bi]) { if (S.tool === 'pick') S.deskPick = { id: bi, t: 0 }; else hint(D.cx, D.y + 1.2, D.cz, 'NEED LOCKPICK OR KICK'); }
+  if (S.doorLocked[bi] && !S.doorOpen[bi] && !tangoTools()) { if (S.tool === 'pick') S.deskPick = { id: bi, t: 0 }; else hint(D.cx, D.y + 1.2, D.cz, 'NEED LOCKPICK OR KICK'); }
 }
 // nearest door whose opening is within reach of a point (hand or head), on the same storey
 function nearestDoor(p, maxD) { let bd = maxD, bi = -1; level.doors.forEach((d, i) => { const dd = Math.hypot(d.cx - p.x, d.cz - p.z); if (Math.abs(d.y - S.feetY) < 1.2 && dd < bd) { bd = dd; bi = i; } }); return bi; }
@@ -548,11 +558,15 @@ function useWorld(h) {
   const n = nearestCuffable(h.pos, 1.0); if (n != null) { h.hold = { kind: 'cuff', id: n, t: 0, need: 1.2 }; return true; }
   const p = nearestDowned(h.pos, 0.9); if (p != null) { h.hold = { kind: 'revive', id: p, t: 0, need: 3 }; return true; }
   const d = nearestDoor(h.pos, 0.95); if (d < 0) return false;
+  if (tangoTools() && !S.doorOpen[d] && (S.tool === 'pick' || S.tool === 'cutters')) { const D = level.doors[d], lock = S.tool === 'pick';
+    if (lock ? S.doorLocked[d] || D.pad !== undefined : S.doorTrap[d]) { hint(D.cx, D.y + 1.2, D.cz, lock ? 'ALREADY LOCKED' : 'ALREADY RIGGED'); return true; }
+    if (!(lock ? S.me.locks : S.me.traps)) { hint(D.cx, D.y + 1.2, D.cz, lock ? 'NO LOCKS LEFT' : 'NO TRAPS LEFT'); return true; }
+    h.hold = { kind: lock ? 'lockdoor' : 'trapdoor', id: d, t: 0, need: lock ? 2 : 3 }; return true; }   // terrorist: keep holding on the door to lock it / rig the wire
   if (S.tool === 'cam' && !S.doorOpen[d]) { h.hold = { kind: 'cam', id: d, t: 0, need: 1e9 }; if (S.doorTrap[d]) hint(level.doors[d].cx, level.doors[d].y + 1.3, level.doors[d].cz, 'TRIPWIRE BEHIND DOOR'); return true; }   // slide the camera under: keep holding to watch
   if (S.tool === 'cutters' && S.doorTrap[d] && !S.doorOpen[d]) { h.hold = { kind: 'disarm', id: d, t: 0, need: 2.5 }; return true; }
   const D0 = level.doors[d]; if (D0.pad !== undefined && S.doorLocked[d]) { if (S.tool === 'cutters') h.hold = { kind: 'snip', id: d, t: 0, need: 1.5 }; else hint(D0.cx, D0.y + 1.2, D0.cz, 'PADLOCKED: USE CUTTERS'); return true; }   // squeeze the cutters through the shackle
   net.send({ t: 'door', d }); buzz(h, 0.5, 30);
-  if (S.doorLocked[d] && !S.doorOpen[d]) { const D = level.doors[d]; if (S.tool === 'pick') h.hold = { kind: 'pick', id: d, t: 0, need: 4 }; else hint(D.cx, D.y + 1.2, D.cz, 'NEED LOCKPICK OR KICK'); }   // with the lockpick out, keep holding to pick
+  if (S.doorLocked[d] && !S.doorOpen[d] && !tangoTools()) { const D = level.doors[d]; if (S.tool === 'pick') h.hold = { kind: 'pick', id: d, t: 0, need: 4 }; else hint(D.cx, D.y + 1.2, D.cz, 'NEED LOCKPICK OR KICK'); }   // with the lockpick out, keep holding to pick
   return true;
 }
 function handVR(h, o, dt) {
@@ -589,7 +603,7 @@ function handVR(h, o, dt) {
   const bar = bars[h.i]; bar.visible = !!h.hold;
   if (h.hold) {
     const H = h.hold; let tx, tz, ok = true;
-    if (H.kind === 'pick' || H.kind === 'cam' || H.kind === 'disarm' || H.kind === 'snip') { const d = level.doors[H.id]; tx = d.cx; tz = d.cz; ok = !S.doorOpen[H.id] && (H.kind === 'pick' || H.kind === 'snip' ? S.doorLocked[H.id] : H.kind === 'disarm' ? S.doorTrap[H.id] > 0 : true); if (H.kind === 'cam') { dcam.door = H.id; dcam.hand = h; } }
+    if (H.kind === 'pick' || H.kind === 'cam' || H.kind === 'disarm' || H.kind === 'snip' || H.kind === 'lockdoor' || H.kind === 'trapdoor') { const d = level.doors[H.id]; tx = d.cx; tz = d.cz; ok = !S.doorOpen[H.id] && (H.kind === 'pick' || H.kind === 'snip' ? S.doorLocked[H.id] : H.kind === 'disarm' ? S.doorTrap[H.id] > 0 : H.kind === 'lockdoor' ? !S.doorLocked[H.id] : H.kind === 'trapdoor' ? !S.doorTrap[H.id] : true); if (H.kind === 'cam') { dcam.door = H.id; dcam.hand = h; } }
     else { const tgt = H.kind === 'cuff' ? S.actors.get(H.id) : S.officers.get(H.id), tp = tgt && (H.kind === 'cuff' ? tgt.g.position : tgt.head.position); ok = !!tp; if (tp) { tx = tp.x; tz = tp.z; } }
     if (!ok || Math.hypot(tx - h.pos.x, tz - h.pos.z) > 1.3) h.hold = null;
     else {
@@ -732,7 +746,7 @@ function frame(t) {
   myBody.g.visible = S.mode === 'vr'; if (S.mode === 'vr') myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY, head.quat);
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
-  if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (!(P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
+  if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (S.doorOpen[P.id] && (P.lock || P.trap) || !(P.lock ? !S.doorLocked[P.id] : P.trap ? !S.doorTrap[P.id] : P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.lock ? 'lockdoor' : P.trap ? 'trapdoor' : P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
   vestHints(); doorCam(dt); smokeDraw();
   if (smokeFog > 0.01 || smokeFogCur > 0.01) { smokeFogCur += (smokeFog - smokeFogCur) * Math.min(1, dt * 4); applyLook(); if (smokeFogCur > 0.01) { scene.fog.density += smokeFogCur * 0.6; scene.fog.color.lerp(smokeCol.setRGB(S.nvg ? 0.2 : 0.5, S.nvg ? 0.5 : 0.51, S.nvg ? 0.25 : 0.53), smokeFogCur * 0.8); scene.background.copy(scene.fog.color); } }
   // a door lever lights up when an empty hand can work it
@@ -820,5 +834,10 @@ $('tplay').onclick = () => { initAudio(); connect($('solo').checked); begin('des
 let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('install').style.display = 'inline-block'; });
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
+// Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
+const BUILD = 'v29';
+function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
+setTimeout(checkBuild, 3000);
 window.__bl = { HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

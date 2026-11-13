@@ -33,7 +33,7 @@ export class Sim {
   hold(id, nid) {
     const p = this.players.get(id), n = this.npcs.find(q => q.id === nid);
     if (!p || !n || !this.pvp || p.team !== 'tango' || p.down || p.hold || this.phase !== 'active' || n.kind !== 'c' || n.held || n.st === 'u' || n.st === 'd') return;
-    if (Math.hypot(n.x - p.hx, n.z - p.hz) > 1.5 || Math.abs(n.y - p.y) > 0.6) return;
+    if (Math.hypot(n.x - p.hx, n.z - p.hz) > 1.9 || Math.abs(n.y - p.y) > 0.8) return;   // generous: the client's view of the head lags a pose message behind
     p.hold = nid; n.held = id; n.st = 'x'; this.ev({ e: 'grab', p: id, n: nid }); this.ev({ e: 'say', n: nid, k: 'plead' }); this.carry(p);
   }
   release(id) { const p = this.players.get(id); if (p && p.hold) this.drop(p, 'let go'); }
@@ -82,7 +82,7 @@ export class Sim {
       return { x: bx, z: bz, y: f * H + h, yaw, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
     if (M.training) this.setupTraining();
-    for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; p.spawn = null; p.hold = 0; }
+    for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; p.spawn = null; p.hold = 0; p.locks = 2; p.traps = 2; }
     // PvP: as soon as one player has picked the terrorist side. Terrorist players start inside, at suspect posts far from the squad's way in.
     const tangos = [...this.players.values()].filter(p => p.team === 'tango'); this.pvp = !M.training && tangos.length > 0;
     if (this.pvp) {
@@ -176,8 +176,9 @@ export class Sim {
   revive(id, tid) { const p = this.players.get(id), q = this.players.get(tid); if (p && q && !p.down && q.down && p.team === q.team && this.near(p, q.hx, q.y, q.hz, 1.8)) { q.down = false; q.hp = 40; this.ev({ e: 'revive', p: tid }); } }
   door(id, did) {
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
-    if (!this.doorOpen[did] && this.doorLocked[did]) return this.ev({ e: 'locked', d: did });
-    if (!this.doorOpen[did] && this.doorTrap[did]) this.trip(did, p);
+    const own = this.pvp && p.team === 'tango' && d.pad === undefined;   // terrorist players have the keys and know where their wires are
+    if (!this.doorOpen[did] && this.doorLocked[did]) { if (!own) return this.ev({ e: 'locked', d: did }); this.doorLocked[did] = false; }
+    if (!this.doorOpen[did] && this.doorTrap[did]) { if (own) this.doorTrap[did] = 0; else this.trip(did, p); }
     this.doorOpen[did] = !this.doorOpen[did]; this.ev({ e: 'door', d: did, open: this.doorOpen[did] });
   }
   // Throwing the main breaker kills every light in the house. One suspect may come down to switch it back on.
@@ -193,6 +194,17 @@ export class Sim {
     const d = this.level.doors[did]; this.doorTrap[did] = 0; this.ev({ e: 'trap', d: did });
     if (!this.M.training) for (const q of this.players.values()) if (!q.down && this.near(q, d.cx, d.y, d.cz, 3.5)) this.hurt(q, 28 + this.rnd() * 18, this.rnd() < 0.5 ? 'legL' : this.rnd() < 0.5 ? 'legR' : 'torso');
     if (this.phase === 'active') this.noise(d.cx, d.cz, 38, p);
+  }
+  // PvP: each terrorist player can lock two doors (lockpick tool) and rig two with a wire (cutters tool), closed doors only
+  lockdoor(id, did) {
+    const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.pvp || p.team !== 'tango' || this.phase !== 'active' || !(p.locks > 0) || d.pad !== undefined) return;
+    if (this.doorOpen[did] || this.doorLocked[did] || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
+    this.doorLocked[did] = true; p.locks--; this.ev({ e: 'tlock', d: did, p: id, left: p.locks });
+  }
+  trapdoor(id, did) {
+    const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.pvp || p.team !== 'tango' || this.phase !== 'active' || !(p.traps > 0)) return;
+    if (this.doorOpen[did] || this.doorTrap[did] || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
+    this.doorTrap[did] = 1; p.traps--; this.ev({ e: 'ttrap', d: did, p: id, left: p.traps });
   }
   disarm(id, did) {
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.doorTrap[did] || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
@@ -504,7 +516,7 @@ export class Sim {
     return { result, lines, total, grade, time: Math.round(this.M.time - this.timer) };
   }
   snapshot() {
-    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9) | (p.team === 'tango' ? 2048 : 0) | (p.hold ? 4096 : 0)]);
+    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9) | (p.team === 'tango' ? 2048 : 0) | (p.hold ? 4096 : 0) | ((p.locks || 0) & 3) << 13 | ((p.traps || 0) & 3) << 15]);
     const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.stun > 0 && (n.st === 'a' || n.st === 'g' || n.st === 'c') ? 'z' : n.st === 'c' && n.crouch ? 'h' : n.st, n.kind === 's' && n.armed ? 1 : 0]);
     const E = this.events; this.events = [];
     const s = { t: 's', X: this.extractT > 0 ? Math.ceil(5 - this.extractT) : 0, ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };

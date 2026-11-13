@@ -33,6 +33,8 @@ export class RoomHost {
       case 'team': s.setTeam(id, m.team); break;
       case 'hold': s.hold(id, m.n); break;
       case 'release': s.release(id); break;
+      case 'lockdoor': s.lockdoor(id, m.d); break;
+      case 'trapdoor': s.trapdoor(id, m.d); break;
       case 'map': if ((s.phase !== 'active' || s.M.training) && MAP_IDS.includes(m.m) && m.m !== s.mapId) { s.setMap(m.m); s.reset(s.seed); this.send(null, { t: 'init', init: s.init() }); } break;   // lobby only: everyone loads the same map
       case 'restart':
       case 'start': if (m.t === 'restart' || s.phase !== 'active' || s.M.training) { s.start((Date.now() ^ (Math.random() * 1e9)) >>> 0, false, m.wx, MAP_IDS.includes(m.map) ? m.map : s.M.training ? s.nextMap : s.mapId, m.tod); this.send(null, { t: 'init', init: s.init() }); } break;
