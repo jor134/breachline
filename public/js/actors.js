@@ -284,7 +284,14 @@ export class Body {
     this.arms = [-1, 1].map(sx => { const up = new THREE.Mesh(limbGeo, sleeve), fore = new THREE.Mesh(limbGeo, sleeve), glove = detailed ? makeHand(sx) : new THREE.Mesh(gloveGeo, vertexSheen('plastic')); if (!detailed) glove.scale.x = sx; g.add(up, fore, glove); return { sx, up, fore, glove }; });
     this.detailed = detailed; this.lastT = performance.now();
     this.blob = makeBlob(0.42); g.add(this.blob); this.torso.receiveShadow = this.legs.receiveShadow = true;
+    this.team = 'swat'; this.skinGen = 0;
     if (CHARS_ON) loadChar('swat').then(t => this.attachSkin(t)).catch(e => console.warn('officer model not loaded', e));
+  }
+  // PvP: a terrorist player wears the terrorist model. Swaps the skinned model; the vest gear and the arm solve stay.
+  setTeam(team) {
+    team = team === 'tango' ? 'tango' : 'swat'; if (team === this.team) return; this.team = team; const gen = ++this.skinGen;
+    if (!CHARS_ON) return;
+    loadChar(team === 'tango' ? 'phoenix' : 'swat').then(t => { if (gen !== this.skinGen) return; if (this.skin) { try { this.skin.dispose(); } catch (e) { } this.skin = null; } if (this.holder) { this.g.remove(this.holder); this.holder = null; } this.attachSkin(t); }).catch(e => console.warn('team model not loaded', e));
   }
   // The squad model: placed under the headset, arms solved to the controllers, legs bent when you crouch. Only the vest gear stays from the built-in body.
   attachSkin(tpl) {

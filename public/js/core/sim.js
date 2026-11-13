@@ -27,6 +27,7 @@ export class Sim {
     }
     return best ? best.slice(1) : [x, z, 0];
   }
+  setTeam(id, team) { const p = this.players.get(id); if (!p || (this.phase === 'active' && !this.M.training) || (team !== 'swat' && team !== 'tango')) return; p.team = team; this.ev({ e: 'team', p: id, team }); }
   choose(m) { if (this.M.training && MISSION_IDS.includes(m.m)) this.nextMap = m.m; if (m.wx === 'random' || WEATHER.includes(m.wx)) this.wxPick = m.wx; if (m.tod === 'random' || m.tod === 'day' || m.tod === 'night') this.todPick = m.tod; }
   setMap(id) { this.level = buildLevel(MAPS[id] ? id : 'mansion'); this.M = this.level.map; this.mapId = this.level.id; this.targets = null; }
   reset(seed) {
@@ -65,7 +66,14 @@ export class Sim {
       return { x: bx, z: bz, y: f * H + h, yaw, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
     if (M.training) this.setupTraining();
-    for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; }
+    for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; p.spawn = null; }
+    // PvP: as soon as one player has picked the terrorist side. Terrorist players start inside, at suspect posts far from the squad's way in.
+    const tangos = [...this.players.values()].filter(p => p.team === 'tango'); this.pvp = !M.training && tangos.length > 0;
+    if (this.pvp) {
+      const [sx, sz] = M.spawn[0], used = new Set(this.npcs.map(n => n.kind === 's' ? n.post[0] + ',' + n.post[1] : ''));
+      const posts = M.spots.s.filter(([, x, z]) => !used.has(x + ',' + z)).map(([f, x, z]) => [Math.hypot(x - sx, z - sz), f, x, z]).sort((a, b) => b[0] - a[0]);
+      tangos.forEach((p, i) => { const [, f, x, z] = posts[(i * 3) % Math.max(1, posts.length)] || [0, 0, ...M.spawn[0]]; p.spawn = [x, f * M.H, z]; p.hx = x; p.hz = z; p.y = f * M.H; p.hy = p.y + 1.65; });
+    }
   }
   start(seed, night = false, wx = this.wxPick, map = this.mapId, tod) { this.night = !!night; if (tod === 'random' || tod === 'day' || tod === 'night') this.todPick = tod; if (map !== this.mapId && MAPS[map]) this.setMap(map);   // every mission starts with the power on; night falls when someone throws the breaker
     this.wxPick = wx === 'random' || WEATHER.includes(wx) ? wx : this.wxPick; this.reset(seed); this.phase = 'active'; this.ev({ e: 'start' }); }
@@ -73,13 +81,13 @@ export class Sim {
   addPlayer(id, name) {
     const used = new Set([...this.players.values()].map(p => p.slot)); let slot = 0; while (used.has(slot)) slot++;
     const [x, z] = this.M.spawn[slot % 4];
-    const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: false, w: 0, med: false, fl: 2, sm: 1 };
+    const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: false, w: 0, med: false, fl: 2, sm: 1, team: 'swat' };
     if (this.M.training) p.tr = { hits: 0, shots: 0, ns: 0 };
     this.players.set(id, p); return p;
   }
   removePlayer(id) { this.players.delete(id); }
   init() {
-    return { seed: this.seed, map: this.mapId, night: this.night, weather: this.weather, tod: this.tod, rt: this.raceT, npcs: this.npcs.map(n => [n.id, n.kind, n.v, n.hvt ? 1 : 0]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order, b.yaw]), time: this.M.time };
+    return { seed: this.seed, map: this.mapId, night: this.night, weather: this.weather, tod: this.tod, rt: this.raceT, pvp: !!this.pvp, ph: this.phase, sp: Object.fromEntries([...this.players.values()].filter(p => p.spawn).map(p => [p.id, p.spawn])), npcs: this.npcs.map(n => [n.id, n.kind, n.v, n.hvt ? 1 : 0]), bombs: this.bombs.map(b => [b.x, b.y, b.z, b.wires, b.order, b.yaw]), time: this.M.time };
   }
   pose(id, m) {
     const p = this.players.get(id); if (!p || !Array.isArray(m.h) || m.h.length < 7 || !m.h.every(Number.isFinite)) return;
@@ -98,12 +106,13 @@ export class Sim {
     let best = rayStatic(this.level, this.doorOpen, ox, oy, oz, dx, dy, dz, 80), kind = 'w', tn = null, part = null, tp = null;
     let tg = null; if (this.targets) { if (p.tr) p.tr.shots++; for (const t of this.targets) { if (!t.up) continue; const h = this.rayTarget(t, ox, oy, oz, dx, dy, dz, best); if (h >= 0 && h < best) { best = h; kind = 't'; tg = t; } } }
     for (const n of this.npcs) { if (n.st === 'd') continue; for (const [sx, sy, sz, sr, pt] of this.spheres(n)) { const t = raySphere(ox, oy, oz, dx, dy, dz, sx, sy, sz, sr); if (t >= 0 && t < best) { best = t; kind = 'n'; tn = n; part = pt; } } }
-    for (const q of this.players.values()) { if (q === p || q.down || !q.has) continue; for (const [oy2, sr] of [[0, 0.14], [-0.32, 0.21], [-0.62, 0.2]]) { const t = raySphere(ox, oy, oz, dx, dy, dz, q.hx, q.hy + oy2, q.hz, sr); if (t >= 0 && t < best) { best = t; kind = 'p'; tp = q; tn = null; } } }
+    let pp = 'torso'; for (const q of this.players.values()) { if (q === p || q.down || !q.has) continue; for (const [oy2, sr, pt] of [[0, 0.14, 'head'], [-0.32, 0.21, 'torso'], [-0.62, 0.2, 'legL']]) { const t = raySphere(ox, oy, oz, dx, dy, dz, q.hx, q.hy + oy2, q.hz, sr); if (t >= 0 && t < best) { best = t; kind = 'p'; tp = q; tn = null; pp = pt; } } }
     this.ev({ e: 'ps', p: id, w, o: [r2(ox), r2(oy), r2(oz)], h: [r2(ox + dx * best), r2(oy + dy * best), r2(oz + dz * best)], k: kind });
     if (kind === 't') { const ns = !tg.hostile; if (p.tr) { if (ns) p.tr.ns++; else p.tr.hits++; } if (ns && tg.kind === 'house') this.house.ns++; tg.hit = true; if (tg.kind !== 'move') { tg.up = 0; tg.tt = tg.kind === 'static' ? 1.2 : 1 + this.rnd() * 2; } this.ev({ e: 'th', t: tg.i, ns, p: id }); return; }
-    if (!this.M.training) this.noise(ox, oz, 45, p);
-    if (kind === 'n') this.hitNpc(tn, DMG[w][part], p, part);
-    else if (kind === 'p' && !this.M.training) { this.log.ff++; this.hurt(tp, DMG[w].torso * 0.6); }
+    const tango = p.team === 'tango';
+    if (!this.M.training && !tango) this.noise(ox, oz, 45, p);
+    if (kind === 'n') { if (tango && tn.kind === 's') return; if (tango) { tn.hp -= DMG[w][part]; if (tn.hp <= 0) { tn.st = 'd'; this.log.civExecuted = (this.log.civExecuted || 0) + 1; } this.ev({ e: 'hit', n: tn.id, dead: tn.hp <= 0 }); return; } this.hitNpc(tn, DMG[w][part], p, part); }
+    else if (kind === 'p' && !this.M.training) { if (tp.team !== p.team) this.hurt(tp, DMG[w][pp === 'legL' ? (this.rnd() < 0.5 ? 'legL' : 'legR') : pp] * 0.75, pp === 'legL' ? 'legL' : pp); else { this.log.ff++; this.hurt(tp, DMG[w].torso * 0.6); } }
   }
   spheres(n) { if (n.st === 'i' || n.st === 'j') return [[n.x, n.y + 0.2, n.z, 0.28, 'torso']]; const k = KNEEL[n.st] || n.crouch ? 0.62 : 1; return [[n.x, n.y + 1.62 * k, n.z, 0.13, 'head'], [n.x, n.y + 1.32 * k, n.z, 0.2, 'torso'], [n.x, n.y + 1.02 * k, n.z, 0.2, 'torso'], [n.x, n.y + 0.55 * k, n.z, 0.18, 'legs']]; }
   hitNpc(n, dmg, p, part) {
@@ -128,7 +137,7 @@ export class Sim {
   }
   shout(id) {
     const p = this.players.get(id); if (!p || p.down || this.phase !== 'active' || this.t - p.lastShout < 1.0) return; p.lastShout = this.t;
-    this.ev({ e: 'shout', p: id });
+    this.ev({ e: 'shout', p: id }); if (p.team === 'tango') return;
     for (const n of this.npcs) {
       if (Math.hypot(n.x - p.hx, n.z - p.hz) > 12 || !this.clear(p.hx, p.hy, p.hz, n.x, this.eyeY(n), n.z)) continue;
       if (n.kind === 'c') { if (n.st === 'w') { if (n.stubborn) { n.stubborn = false; this.ev({ e: 'say', n: n.id, k: 'plead' }); } else { n.st = 'y'; this.ev({ e: 'say', n: n.id, k: 'comply' }); } } continue; }
@@ -143,11 +152,11 @@ export class Sim {
   engage(n, p, react) { if ((n.hvt || n.guard) && !n.rally) { n.rally = true; for (const q of this.npcs) if ((q.hvt || q.guard) && q !== n && (q.st === 'g' || q.st === 'a')) this.engage(q, p, react + 0.3); n.rally = false; }   // the boss and his guards fight together
     n.wantCover = !n.cov && (this.rnd() < 0.85 || n.defend); n.crouch = false; n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
   cuff(id, nid) {
-    const p = this.players.get(id), n = this.npcs.find(q => q.id === nid); if (!p || p.down || !n || this.phase !== 'active') return;
+    const p = this.players.get(id), n = this.npcs.find(q => q.id === nid); if (!p || p.down || !n || this.phase !== 'active' || p.team === 'tango') return;
     if ((n.st === 's' || n.st === 'k' || n.st === 'y' || n.st === 'i') && this.near(p, n.x, n.y, n.z, 1.9)) { n.st = n.st === 'i' ? 'j' : 'u'; n.fake = false; this.ev({ e: 'cuff', n: n.id, p: id }); }
   }
   heal(id) { const p = this.players.get(id); if (!p || p.down || p.med || this.phase !== 'active') return; p.med = true; p.hp = Math.min(100, p.hp + 60); p.w = 0; this.ev({ e: 'heal', p: id }); }   // one med kit per officer per mission
-  revive(id, tid) { const p = this.players.get(id), q = this.players.get(tid); if (p && q && !p.down && q.down && this.near(p, q.hx, q.y, q.hz, 1.8)) { q.down = false; q.hp = 40; this.ev({ e: 'revive', p: tid }); } }
+  revive(id, tid) { const p = this.players.get(id), q = this.players.get(tid); if (p && q && !p.down && q.down && p.team === q.team && this.near(p, q.hx, q.y, q.hz, 1.8)) { q.down = false; q.hp = 40; this.ev({ e: 'revive', p: tid }); } }
   door(id, did) {
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
     if (!this.doorOpen[did] && this.doorLocked[did]) return this.ev({ e: 'locked', d: did });
@@ -252,7 +261,7 @@ export class Sim {
     this.ev({ e: 'kick', d: did, ok }); if (this.phase === 'active') this.noise(d.cx, d.cz, 16, p);
   }
   cut(id, bi, wi) {
-    const p = this.players.get(id), b = this.bombs[bi]; if (!p || p.down || !b || b.defused || b.failed || this.phase !== 'active' || !(wi >= 0 && wi < 4) || b.cut[wi] || !this.near(p, b.x, b.y - 0.8, b.z, 2)) return;
+    const p = this.players.get(id), b = this.bombs[bi]; if (!p || p.down || p.team === 'tango' || !b || b.defused || b.failed || this.phase !== 'active' || !(wi >= 0 && wi < 4) || b.cut[wi] || !this.near(p, b.x, b.y - 0.8, b.z, 2)) return;
     b.cut[wi] = true; const ok = wi === b.order[b.n];
     if (ok) { b.n++; if (b.n >= b.order.length) b.defused = true; } else if (this.M.training) b.failed = true; else { this.timer = Math.max(5, this.timer - 45); this.log.wrongWire++; }
     this.ev({ e: 'cut', b: bi, w: wi, ok, defused: b.defused });
@@ -341,12 +350,12 @@ export class Sim {
     if (n.stun > 0) { n.stun -= dt; return; }
     if (n.st === 's' || n.st === 'k') {
       n.tS += dt;
-      if (n.fake && n.tS > n.fakeAt) { n.fake = false; n.armed = true; let bp = null, bd = 1e9; for (const p of this.players.values()) { const d = Math.hypot(p.hx - n.x, p.hz - n.z); if (!p.down && d < bd) { bd = d; bp = p; } } if (bp) { this.engage(n, bp, 0.55); this.ev({ e: 'say', n: n.id, k: 'fake' }); } }
+      if (n.fake && n.tS > n.fakeAt) { n.fake = false; n.armed = true; let bp = null, bd = 1e9; for (const p of this.players.values()) { const d = Math.hypot(p.hx - n.x, p.hz - n.z); if (!p.down && p.team !== 'tango' && d < bd) { bd = d; bp = p; } } if (bp) { this.engage(n, bp, 0.55); this.ev({ e: 'say', n: n.id, k: 'fake' }); } }
       else if (n.st === 's' && n.tS > 1.2 && !n.fake) n.st = 'k';
       return;
     }
     let seen = null, best = 1e9;
-    for (const p of this.players.values()) { if (p.down || !p.has) continue; const d = Math.hypot(p.hx - n.x, p.hy - n.y - 1.5, p.hz - n.z); if (d < best && this.sees(n, p, d)) { seen = p; best = d; } }
+    for (const p of this.players.values()) { if (p.down || !p.has || p.team === 'tango') continue; const d = Math.hypot(p.hx - n.x, p.hy - n.y - 1.5, p.hz - n.z); if (d < best && this.sees(n, p, d)) { seen = p; best = d; } }   // human terrorists are on their side
     if (n.st === 'g') {
       if (seen) return this.engage(n, seen, 0.6 + this.rnd() * 0.5);
       if (n.path) { if (!this.walk(n, dt, 1.3)) n.pwait = 4 + this.rnd() * 8; }
@@ -401,6 +410,7 @@ export class Sim {
   // Anyone may call it: the mission ends now and is scored on what has been done. Complete only if every bomb is safe and every hostage is accounted for.
   endMission(id, how = 'radio') {
     if (this.phase !== 'active' || !this.players.has(id) || this.M.training) return;
+    if (this.pvp) { if (this.players.get(id).team === 'tango') return; return this.endPvp('tango', how === 'exit' ? 'SWAT WALKED OUT' : 'SWAT CALLED IT OFF'); }
     const civ = this.npcs.filter(n => n.kind === 'c'), done = this.bombs.every(b => b.defused) && civ.every(n => n.st === 'u' || n.st === 'd');
     this.left = how; this.phase = 'ended'; this.report = this.score(done ? 'MISSION COMPLETE' : 'MISSION INCOMPLETE'); this.ev({ e: 'end', result: this.report.result });
   }
@@ -420,6 +430,14 @@ export class Sim {
     if (this.M.race) this.tickRace();
     for (const n of this.npcs) if (n.kind === 's') this.tickSuspect(n, dt);
     const sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c'), ps = [...this.players.values()];
+    if (this.pvp) {
+      const sw = ps.filter(p => p.team !== 'tango'), tg = ps.filter(p => p.team === 'tango'), objectives = civ.every(n => n.st === 'u' || n.st === 'd') && this.bombs.every(b => b.defused);
+      if (sw.length && sw.every(p => p.down)) return this.endPvp('tango', 'SQUAD DOWN');
+      if (objectives) return this.endPvp('swat', 'HOSTAGES AND BOMBS SECURED');
+      if (tg.every(p => p.down) && sus.every(n => SECURED[n.st])) return this.endPvp('swat', 'ALL TERRORISTS DOWN');
+      if (this.timer <= 0) return this.endPvp('tango', this.bombs.some(b => !b.defused) ? 'TIME UP - DETONATION' : 'TIME UP');
+      return;
+    }
     let result = null;
     if (this.timer <= 0 && this.bombs.some(b => !b.defused)) result = 'DETONATION';
     else if (ps.length && ps.every(p => p.down)) result = 'SQUAD DOWN';
@@ -429,6 +447,17 @@ export class Sim {
     const EX = this.M.exit; for (const p of ps) if (p.has && this.level.objective(p.hx, p.hz)) p.entered = true;
     const up = ps.filter(p => !p.down && p.has), atGate = p => p.hx > EX.x0 && p.hx < EX.x1 && p.hz > EX.z0 && p.hz < EX.z1 && Math.abs(p.y - (EX.y || 0)) < 0.5;
     if (up.length && ps.some(p => p.entered) && up.every(atGate)) { if ((this.extractT += dt) >= 5) this.endMission(up[0].id, 'exit'); } else this.extractT = 0;
+  }
+  endPvp(winner, why) {
+    this.phase = 'ended'; const result = (winner === 'swat' ? 'SWAT WIN' : 'TERRORISTS WIN') + ': ' + why;
+    const ps = [...this.players.values()], sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c'), names = t => ps.filter(p => (p.team === 'tango') === t).map(p => p.name + (p.down ? ' (down)' : '')).join(', ') || '-';
+    this.report = { result, winner, pvp: true, time: Math.round(this.M.time - this.timer), grade: '-', total: 0, lines: [
+      ['Why: ' + why.toLowerCase(), null],
+      ['Hostages secured ' + civ.filter(n => n.st === 'u').length + '/' + civ.length + (civ.some(n => n.st === 'd') ? ', ' + civ.filter(n => n.st === 'd').length + ' killed' : ''), null],
+      ['Bombs defused ' + this.bombs.filter(b => b.defused).length + '/' + this.bombs.length, null],
+      ['AI crew down or arrested ' + sus.filter(n => SECURED[n.st]).length + '/' + sus.length, null],
+      ['SWAT: ' + names(false), null], ['Terrorists: ' + names(true), null]] };
+    this.ev({ e: 'end', result });
   }
   score(result) {
     const L = this.log, sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c');
@@ -456,7 +485,7 @@ export class Sim {
     return { result, lines, total, grade, time: Math.round(this.M.time - this.timer) };
   }
   snapshot() {
-    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9)]);
+    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9) | (p.team === 'tango' ? 2048 : 0)]);
     const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.stun > 0 && (n.st === 'a' || n.st === 'g' || n.st === 'c') ? 'z' : n.st === 'c' && n.crouch ? 'h' : n.st, n.kind === 's' && n.armed ? 1 : 0]);
     const E = this.events; this.events = [];
     const s = { t: 's', X: this.extractT > 0 ? Math.ceil(5 - this.extractT) : 0, ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };

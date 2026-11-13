@@ -361,4 +361,28 @@ await t('grand prix: cars lap the straight, anyone on the tarmac when one passes
   const a = carsAt(12.5).map(c => c[0]), b = carsAt(12.5).map(c => c[0]); assert.deepEqual(a, b);
   const s2 = new Sim('grandprix'); const tods = new Set(); for (let k = 1; k < 12; k++) { s2.start(k, false, 'clear', 'grandprix', 'random'); tods.add(s2.tod); } assert.equal(tods.size, 2, 'random picks both day and night');
 });
+await t('pvp: terrorist players start inside, the AI ignores them, they cannot rescue or defuse, cross-team shots hurt, win rules', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'Cop'); s.addPlayer(2, 'Bad'); s.setTeam(2, 'tango'); s.start(9, false, 'clear', 'mansion');
+  const cop = s.players.get(1), bad = s.players.get(2); cop.has = bad.has = true;
+  assert.ok(s.pvp, 'pvp on when someone picked terrorist'); assert.ok(bad.spawn, 'terrorist got an inside spawn'); assert.ok(s.init().sp[2], 'spawn goes to the client');
+  assert.ok(s.level.objective(bad.spawn[0], bad.spawn[2]) || s.level.map.inside(bad.spawn[0], bad.spawn[2], bad.spawn[1]), 'inside the building');
+  // stand the terrorist right in front of an AI suspect: it must not engage him
+  const n = s.npcs.find(q => q.kind === 's'); s.pose(2, { h: [n.x, n.y + 1.65, n.z + 1.2, 0, 0, 0, 1] }); s.pose(1, { h: [...s.M.spawn[0].slice(0, 1), 1.65, s.M.spawn[0][1], 0, 0, 0, 1] });
+  n.yaw = 0; for (let i = 0; i < 30; i++) s.tick(1 / 15); assert.notEqual(n.st, 'c', 'AI does not fight its own side');
+  // terrorists cannot cuff hostages or cut wires
+  const c = s.npcs.find(q => q.kind === 'c'); c.st = 'y'; s.pose(2, { h: [c.x, c.y + 1.65, c.z + 0.8, 0, 0, 0, 1] }); s.cuff(2, c.id); assert.equal(c.st, 'y');
+  const b = s.bombs[0]; s.pose(2, { h: [b.x, b.y + 0.9, b.z + 0.6, 0, 0, 0, 1] }); s.cut(2, 0, b.order[0]); assert.equal(b.n, 0);
+  // the officer shoots the terrorist: full damage, no friendly-fire penalty
+  s.pose(1, { h: [bad.hx, bad.hy, bad.hz + 3, 0, 0, 0, 1] }); s.t += 5; const hp0 = bad.hp; s.shot(1, { o: [bad.hx, bad.hy - 0.3, bad.hz + 2.5], d: [0, 0, -1], w: 'rifle' });
+  assert.ok(bad.hp < hp0, 'terrorist hurt'); assert.equal(s.log.ff, 0, 'not friendly fire');
+  // all officers down -> terrorists win
+  s.hurt(cop, 999); s.tick(1 / 15); assert.equal(s.phase, 'ended'); assert.equal(s.report.winner, 'tango'); assert.match(s.report.result, /TERRORISTS WIN/);
+  // timer runs out -> terrorists win; everything secured -> swat win
+  s.start(10, false, 'clear', 'mansion'); s.players.get(1).has = s.players.get(2).has = true; s.timer = 0.01; s.tick(0.1); assert.equal(s.report.winner, 'tango');
+  s.start(11, false, 'clear', 'mansion'); s.players.get(1).has = s.players.get(2).has = true; for (const q of s.npcs) if (q.kind === 'c') q.st = 'u'; for (const q of s.bombs) q.defused = true; s.tick(1 / 15); assert.equal(s.report.winner, 'swat');
+  // radioing it in as SWAT hands the round over; terrorists can't end it
+  s.start(12, false, 'clear', 'mansion'); s.endMission(2); assert.equal(s.phase, 'active'); s.endMission(1); assert.equal(s.report.winner, 'tango');
+  // back to co-op once nobody is a terrorist
+  s.setTeam(2, 'swat'); s.phase = 'lobby'; s.start(13, false, 'clear', 'mansion'); assert.ok(!s.pvp);
+});
 console.log(n + ' tests passed');
