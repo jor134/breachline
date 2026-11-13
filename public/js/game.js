@@ -110,7 +110,7 @@ const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pist
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
 const PISTOL_TILT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.3);
 const HOLSTER = RIG, HOLSTER_ROT = { rifle: [-1.3, 0, 0.5], pistol: [-1.5, 0, 0] }, _he = new THREE.Euler();   // grab zones sit exactly where the holders are drawn on the vest and belt
-const bodyPt = (off, out) => out.set(off[0], 0, off[2] + (S.mode === 'vr' ? myBody.back || 0 : 0)).applyAxisAngle(UP, S.bodyYaw)   // gear moves back with your body as you look down
+const bodyPt = (off, out) => out.set(off[0], 0, off[2] + (S.mode === 'vr' ? (myBody.back || 0) - (off === HOLSTER.flash || off === HOLSTER.smoke ? SELF_BACK.nade : 0) : 0)).applyAxisAngle(UP, S.bodyYaw)   // gear moves back with your body as you look down
   .add(head.pos).setY(head.pos.y + off[1] + (S.mode === 'vr' ? SELF_BACK.up : 0));
 const myBody = new Body(true); myBody.g.visible = false; scene.add(myBody.g);
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
@@ -299,18 +299,18 @@ function showBoard() {   // the mission board in the training lobby: pick where 
     [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 // BODY FIT (training board, VR): slide your own body forward/back and up/down under the headset; kept on this device
-const FIT0 = { d: SELF_BACK.d, up: 0 };
-try { const f = JSON.parse(localStorage.getItem('bl_fit') || 'null'); if (f && Number.isFinite(f.d) && Number.isFinite(f.up)) { SELF_BACK.d = f.d; SELF_BACK.up = f.up; } } catch (e) { }
+const FIT0 = { d: SELF_BACK.d, up: 0, nade: 0 };
+try { const f = JSON.parse(localStorage.getItem('bl_fit') || 'null'); if (f && Number.isFinite(f.d) && Number.isFinite(f.up)) { SELF_BACK.d = f.d; SELF_BACK.up = f.up; SELF_BACK.nade = Number.isFinite(f.nade) ? f.nade : 0; } } catch (e) { }
 function fitStep(k) {
-  if (k === 'reset') { SELF_BACK.d = FIT0.d; SELF_BACK.up = FIT0.up; }
-  else { const [key, dv] = { fwd: ['d', -0.02], back: ['d', 0.02], up: ['up', 0.02], down: ['up', -0.02] }[k]; SELF_BACK[key] = Math.round(Math.max(-0.2, Math.min(0.3, SELF_BACK[key] + dv)) * 100) / 100; }
-  try { localStorage.setItem('bl_fit', JSON.stringify({ d: SELF_BACK.d, up: SELF_BACK.up })); } catch (e) { } sfx.click();
+  if (k === 'reset') { SELF_BACK.d = FIT0.d; SELF_BACK.up = FIT0.up; SELF_BACK.nade = FIT0.nade; }
+  else { const [key, dv] = { fwd: ['d', -0.02], back: ['d', 0.02], up: ['up', 0.02], down: ['up', -0.02], nfwd: ['nade', 0.02], nback: ['nade', -0.02] }[k]; SELF_BACK[key] = Math.round(Math.max(-0.2, Math.min(0.3, SELF_BACK[key] + dv)) * 100) / 100; }
+  try { localStorage.setItem('bl_fit', JSON.stringify({ d: SELF_BACK.d, up: SELF_BACK.up, nade: SELF_BACK.nade })); } catch (e) { } sfx.click();
 }
 function showFit(place = true) {
   S.panel = 'fit'; panel.mesh.visible = true; if (place) frontOfHead(1.1);
   const cm = v => (v >= 0 ? '+' : '') + Math.round(v * 100) + ' cm';
-  panel.draw('BODY FIT', 'Look down at yourself, then nudge the body until it sits right', ['Back / forward: ' + cm(SELF_BACK.d - FIT0.d) + '   (more BACK hides your shoulders and neck)', 'Up / down: ' + cm(SELF_BACK.up) + '   (DOWN lowers the chest and gear)', 'Saved on this headset. RESET goes back to the default.'],
-    [['BODY BACK', 'fit:back'], ['BODY FORWARD', 'fit:fwd'], ['BODY UP', 'fit:up'], ['BODY DOWN', 'fit:down'], ['RESET', 'fit:reset'], ['DONE', 'fit:done']]);
+  panel.draw('BODY FIT', 'Look down at yourself, then nudge the body until it sits right', ['Back / forward: ' + cm(SELF_BACK.d - FIT0.d) + '   (more BACK hides your shoulders and neck)', 'Up / down: ' + cm(SELF_BACK.up) + '   (DOWN lowers the chest and gear)', 'Grenades: ' + cm(SELF_BACK.nade) + '   (flashbangs and smoke, forward of the body)', 'Saved on this headset. RESET goes back to the default.'],
+    [['BODY BACK', 'fit:back'], ['BODY FORWARD', 'fit:fwd'], ['BODY UP', 'fit:up'], ['BODY DOWN', 'fit:down'], ['GRENADES FORWARD', 'fit:nfwd'], ['GRENADES BACK', 'fit:nback'], ['RESET', 'fit:reset'], ['DONE', 'fit:done']]);
 }
 function showEndPanel() {
   const R = S.report; if (!R || S.menu) return; S.panel = 'end'; panel.mesh.visible = true; frontOfHead(1.9);
@@ -919,7 +919,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v33';
+const BUILD = 'v34';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
