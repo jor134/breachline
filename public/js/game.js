@@ -251,8 +251,8 @@ function tryPanel(o, d) {
 }
 
 // wrist display (VR) + DOM HUD (desktop)
-const wc = document.createElement('canvas'); wc.width = 256; wc.height = 160; const wtex = new THREE.CanvasTexture(wc);
-const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0625), new THREE.MeshBasicMaterial({ map: wtex, fog: false, toneMapped: false })); wrist.visible = false; scene.add(wrist);
+const wc = document.createElement('canvas'); wc.width = 512; wc.height = 352; const wtex = new THREE.CanvasTexture(wc); wtex.anisotropy = 4;
+const wrist = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.11), new THREE.MeshBasicMaterial({ map: wtex, fog: false, toneMapped: false })); wrist.visible = false; scene.add(wrist);
 let hudT = 0;
 function hudText() {
   const t = Math.max(0, S.timer), mm = Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
@@ -262,9 +262,17 @@ function hudText() {
 function drawHud() {
   const h = hudText();
   if (S.mode === 'vr') {
-    const g = wc.getContext('2d'); g.fillStyle = '#05080c'; g.fillRect(0, 0, 256, 160); g.fillStyle = S.phase === 'active' && S.timer < 60 ? '#ff5050' : '#7dffa0'; g.font = 'bold 54px monospace'; g.textAlign = 'center'; g.fillText(S.phase === 'active' ? h.mm : S.phase.toUpperCase(), 128, 54);
-    g.fillStyle = '#333'; g.fillRect(16, 68, 224, 14); g.fillStyle = h.hp > 40 ? '#40c060' : '#e04040'; g.fillRect(16, 68, 224 * h.hp / 100, 14);
-    g.fillStyle = '#cfd8e3'; g.font = '15px monospace'; g.fillText(h.obj, 110, 106); g.fillText(h.mags, 110, 128); if (h.err) { g.fillStyle = '#ff8060'; g.font = '11px monospace'; g.textAlign = 'left'; g.fillText(h.err.slice(0, 40), 6, 152); g.textAlign = 'center'; g.font = '15px monospace'; g.fillStyle = '#cfd8e3'; } drawBody(g, 218, 88, 0.85, ''); g.textAlign = 'center'; g.fillStyle = S.net === 'online' ? '#7dffa0' : '#ffb060'; g.fillText(S.net === 'online' ? 'ROOM ' + S.room : S.net.toUpperCase(), 128, 153); wtex.needsUpdate = true;
+    // wrist panel: 512 x 352. Timer and status figure on top, health bar, then one objective per line; long lines shrink to fit
+    const g = wc.getContext('2d'), W = 512, fit = (t, x, y, w, px, bold) => { let f = px; g.font = (bold ? 'bold ' : '') + f + 'px monospace'; while (f > 12 && g.measureText(t).width > w) { f -= 1; g.font = (bold ? 'bold ' : '') + f + 'px monospace'; } g.fillText(t, x, y); };
+    g.fillStyle = '#05080c'; g.fillRect(0, 0, W, 352); g.strokeStyle = '#1f3a2a'; g.lineWidth = 4; g.strokeRect(2, 2, W - 4, 348);
+    g.textAlign = 'left'; g.fillStyle = S.phase === 'active' && S.timer < 60 ? '#ff5050' : '#7dffa0'; fit(S.phase === 'active' ? h.mm : S.phase.toUpperCase(), 18, 86, 360, 88, true);
+    drawBody(g, 452, 12, 1.1, '');   // 44 x 81 px, above the health bar
+    g.fillStyle = '#333'; g.fillRect(18, 104, 476, 22); g.fillStyle = h.hp > 40 ? '#40c060' : '#e04040'; g.fillRect(18, 104, 476 * h.hp / 100, 22);
+    g.fillStyle = '#cfd8e3'; const lines = h.obj.split(/\s{2,}/).filter(Boolean); let y = 162;
+    for (let k = 0; k < lines.length; k += 2) { fit(lines.slice(k, k + 2).join('   '), 18, y, 476, 32); y += 38; }
+    fit(h.mags, 18, y, 476, 30); y += 36;
+    if (h.err) { g.fillStyle = '#ff8060'; fit(h.err.slice(0, 70), 18, Math.min(y, 314), 476, 20); }
+    g.fillStyle = S.net === 'online' ? '#7dffa0' : '#ffb060'; g.textAlign = 'right'; fit(S.net === 'online' ? 'ROOM ' + S.room : S.net.toUpperCase(), 494, 338, 300, 24); g.textAlign = 'left'; wtex.needsUpdate = true;
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
@@ -712,9 +720,9 @@ function frame(t) {
   hurtT = Math.max(0, hurtT - dt * 1.5); flashWhite = Math.max(0, flashWhite - dt * 0.4);
   const vm = veil.material; if (flashWhite > 0) { vm.color.set(0xffffff); vm.opacity = flashWhite; } else if (S.me.down) { vm.color.set(0x200000); vm.opacity = 0.72; } else { vm.color.set(0xaa0000); vm.opacity = hurtT * 0.45 + (S.me.hp < 40 && S.mode ? 0.12 : 0); }
   veil.visible = vm.opacity > 0.01; downTag.visible = S.me.down && S.phase === 'active';
-  // wrist display on the left forearm
+  // wrist display on the left forearm, floating 7 cm above it so the sleeve doesn't cut into it
   wrist.visible = S.mode === 'vr' && hands[0].active;
-  if (wrist.visible) { const h = hands[0]; wrist.position.copy(v1.set(0, 0.035, 0.1).applyQuaternion(h.quat).add(h.pos)); wrist.quaternion.copy(h.quat).multiply(q1.setFromAxisAngle(v1.set(1, 0, 0), -Math.PI / 2)); }
+  if (wrist.visible) { const h = hands[0]; wrist.position.copy(v1.set(0, 0.075, 0.11).applyQuaternion(h.quat).add(h.pos)); wrist.quaternion.copy(h.quat).multiply(q1.setFromAxisAngle(v1.set(1, 0, 0), -Math.PI / 2)); }
   if ((hudT -= dt) < 0) { hudT = 0.25; drawHud(); if (S.figT > 0) drawFig(); }
   S.figT = Math.max(0, S.figT - dt); fig.mesh.visible = S.figT > 0 && !!S.mode; fig.mesh.material.opacity = Math.min(1, S.figT);
   weather.update(dt, head.pos, () => sfx.thunder());
