@@ -96,11 +96,14 @@ export function compile(src, id = 'draft') {
   const [sx, sz] = d.spawn || [W / 2, D - 4];
   const spawn = [[sx - 1.5, sz], [sx - 0.5, sz], [sx + 0.5, sz], [sx + 1.5, sz]].map(([x, z]) => [Math.max(0.5, Math.min(W - 0.5, x)), z]);
   const ex = d.exit || [sx - 3, sz - 2, sx + 3, sz + 2];
+  // the HVT gets up to two bodyguards: the nearest suspect spots on his floor, within 10 m (taken out of the random pool)
+  let guards = [], sSpots = d.s;
+  if (d.hvt) { const [hf, hx, hz] = d.hvt; guards = d.s.filter(p => p[0] === hf && Math.hypot(p[1] - hx, p[2] - hz) < 10 && Math.hypot(p[1] - hx, p[2] - hz) > 0.6).sort((a, b) => Math.hypot(a[1] - hx, a[2] - hz) - Math.hypot(b[1] - hx, b[2] - hz)).slice(0, 2); sSpots = d.s.filter(p => !guards.includes(p)); }
   const name = d.name.toUpperCase();
   return {
     id, custom: true, src: d, name, op: d.name + '  (by ' + d.creator + ')', H, DOOR_H: 2.1, YARD: { x0: 0, z0: 0, x1: W, z1: D }, layers: NF, layerFloor: Array.from({ length: NF }, (_, i) => i),
     spawn, exit: { x0: ex[0], z0: ex[1], x1: ex[2], z1: ex[3] }, breaker, cars: [], rooms, openings: d.openings, glass: d.glass, furniture: d.furniture,
-    spots: { s: d.s, c: d.c, b: d.b.map(([f, x, z]) => [f, x, z, furnTop(f, x, z) || 0.05]) }, hvt: d.hvt ? { at: d.hvt, guards: [] } : null, veg: null,
+    spots: { s: sSpots, c: d.c, b: d.b.map(([f, x, z]) => [f, x, z, furnTop(f, x, z) || 0.05]) }, hvt: d.hvt ? { at: d.hvt, guards } : null, veg: null,
     counts: { ...d.counts }, time: d.time, patrolMax: 20, tods: ['day', 'night'], style: d.style,
     stairs: d.stairs.map(([f, x0, z0, x1, z1]) => ({ x0, z0, x1, z1, yb: f * H, n: 1 })), foot: { x0: 0, z0: 0, x1: W, z1: D },
     lobby: { x: Math.min(W - 1, sx + 2.5), y: 1.5, z: Math.min(D - 1, sz + 1.5), tx: sx, tz: sz },

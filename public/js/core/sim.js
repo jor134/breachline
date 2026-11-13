@@ -51,7 +51,7 @@ export class Sim {
     this.seed = seed >>> 0; this.rnd = rng32(this.seed); const rnd = this.rnd;
     { const r = rng32(this.seed ^ 0x9e3779b9)(); this.weather = WEATHER.includes(this.wxPick) ? this.wxPick : r < 0.35 ? 'clear' : r < 0.6 ? 'rain' : r < 0.8 ? 'fog' : 'storm'; }
     { const T = this.M.tods; this.tod = !T ? 'dusk' : T.includes(this.todPick) ? this.todPick : T[rng32(this.seed ^ 0x51ed)() < 0.5 ? 0 : 1]; }
-    const M = this.M, H = M.H, C = M.counts, NS = C.s - (M.hvt ? 3 : 0);
+    const M = this.M, H = M.H, C = M.counts, NG = M.hvt ? (M.hvt.guards || []).length : 0, NS = Math.max(0, C.s - (M.hvt ? 1 + NG : 0));
     this.phase = 'lobby'; this.timer = M.time; this.t = 0; this.report = null;
     this.log = { unauth: 0, execution: 0, civHit: 0, civKilled: 0, civExecuted: 0, ff: 0, downs: 0, wrongWire: 0 }; this.extractT = 0; this.left = null;
     const pick = (arr, n) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); };
@@ -64,7 +64,7 @@ export class Sim {
       fakeChance: rnd() < 0.18, fake: false, shouts: 0, spd: 0, strafe: false, path: null, pi: 0, react: 0, cool: 0, burst: 3, lost: 0, tA: 0, tS: 0, hold: false, tgt: 0, lk: null, armed: true, flagged: false });
     spots.slice(0, NS).forEach((s, i) => mk(s, i, true));
     // the high-value target and his two bodyguards: fixed posts, hard to talk down
-    if (M.hvt) { mk(M.hvt.at, NS, false); M.hvt.guards.forEach((g, k) => mk(g, NS + 1 + k, false)); const [b, g1, g2] = this.npcs.slice(-3); b.hvt = true; b.v = 4; b.resolve = 0.96; b.fakeChance = false; for (const g of [g1, g2]) { g.guard = true; g.resolve = 0.85 + rnd() * 0.12; } }
+    if (M.hvt) { mk(M.hvt.at, NS, false); (M.hvt.guards || []).forEach((g, k) => mk(g, NS + 1 + k, false)); const [b, ...gs] = this.npcs.slice(-(1 + NG)); b.hvt = true; b.v = 4; b.resolve = 0.96; b.fakeChance = false; for (const g of gs) { g.guard = true; g.resolve = 0.85 + rnd() * 0.12; } }
     const pads = M.pads ? pick(M.pads.map((p, i) => i), M.pads.length) : [], padCivs = (C.padCivs || 0);
     (M.civMust || []).concat(pick(M.spots.c, C.c - padCivs - (M.civMust || []).length)).concat(pads.slice(C.b, C.b + padCivs).map(i => [M.pads[i].f, ...M.pads[i].hostage])).forEach(([f, x, z], i) => this.npcs.push({ id: 101 + i, kind: 'c', v: Math.floor(rnd() * 4), x, z, y: f * H, yaw: rnd() * 6.28, hp: 100, st: 'w', stubborn: rnd() < 0.25, flagged: false }));
     // Most suspects will turn on a hostage once a firefight has gone on for a few rounds. Drawn from their own stream so the rest of the layout per seed is unchanged.
@@ -186,7 +186,8 @@ export class Sim {
   }
   // Throwing the main breaker kills every light in the house. One suspect may come down to switch it back on.
   breaker(id) {
-    const B = this.M.breaker, by = Math.floor(B.y / this.M.H) * this.M.H;
+    const B = this.M.breaker; if (!B) return;   // a player-made map may have no breaker
+    const by = Math.floor(B.y / this.M.H) * this.M.H;
     const p = this.players.get(id); if (!p || p.down || this.phase !== 'active' || this.t - p.lastBrk < 1 || !this.near(p, B.x, by, B.z, 2)) return;
     p.lastBrk = this.t; this.night = !this.night; this.ev({ e: 'power', on: !this.night });
     if (this.night && this.rnd() < 0.7) { let best = null, bd = 1e9; for (const n of this.npcs) if (n.kind === 's' && n.st === 'g') { const d = Math.hypot(n.x - B.x, n.z - B.z) + Math.abs(n.y - by) * 3; if (d < bd) { bd = d; best = n; } }
@@ -401,6 +402,7 @@ export class Sim {
       n.tA += dt;
       if (n.fix && !this.night) n.fix = false;
       const B = this.M.breaker;
+      if (n.fix && !B) n.fix = false;
       if (n.fix && Math.hypot(n.x - B.x, n.z - B.z) < 1.5 && Math.abs(n.y - Math.floor(B.y / this.M.H) * this.M.H) < 0.5) { n.path = null; this.face(n, B.x, B.z, dt, 5); if ((n.fixT += dt) > 2) { this.night = false; n.fix = false; n.hold = true; this.ev({ e: 'power', on: true, by: n.id }); } }
       else if (n.ambush) {   // get behind something between the post and where the trouble came from, crouch, and watch that way
         n.ambush = false; const c = this.findCover(n, { hx: n.lk[0], hz: n.lk[1], hy: n.lk[2] + 1.6 }); if (c && this.goto(n, c.hx, c.hz, n.y)) n.waitLow = c.low;

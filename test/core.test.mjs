@@ -456,6 +456,11 @@ await t('custom maps: the sample compiles, checks clean, plays; broken ones are 
   lv.registerMap(compile(d, 'u_sample')); assert.ok(lv.MISSION_IDS.includes('u_sample'));
   const s = new Sim('u_sample'); s.addPlayer(1, 'A'); s.start(2, false, 'clear', 'u_sample'); assert.equal(s.mapId, 'u_sample'); assert.equal(s.bombs.length, 1); for (let i = 0; i < 60; i++) s.tick(1 / 15); assert.equal(s.phase, 'active');
   const L = lv.buildLevel('u_sample'); assert.ok(Math.abs(L.groundY(14, 14, 3.3) - 3.2) < 0.01, 'upper floor'); assert.ok(L.map.breaker && Math.abs(L.map.breaker.x - 31.87) < 0.01, 'breaker on the wall');
+  // no breaker, an HVT, and suspects who hear the squad: nothing breaks, the HVT and his guards are there
+  const nb = { ...JSON.parse(JSON.stringify(d)), breaker: null, hvt: [1, 15, 22], counts: { s: 6, c: 2, b: 1 } }; assert.ok(check(nb, lv).ok);
+  lv.registerMap(compile(nb, 'u_nobrk')); const s2 = new Sim('u_nobrk'); s2.addPlayer(1, 'A'); s2.start(4, false, 'clear', 'u_nobrk');
+  const sus = s2.npcs.filter(n => n.kind === 's'); assert.equal(sus.length, 6, 'six suspects in all'); const boss = sus.find(n => n.hvt); assert.ok(boss && boss.y === 3.2, 'the HVT upstairs'); assert.equal(sus.filter(n => n.guard).length, 2, 'two guards');
+  s2.pose(1, { h: [26, 1.65, 33, 0, 0, 0, 1] }); s2.breaker(1); for (const n of sus) { n.st = 'a'; n.fix = true; n.lk = [26, 33, 0]; } for (let i = 0; i < 90; i++) s2.tick(1 / 15); assert.equal(s2.phase, 'active');
   const walledIn = JSON.parse(JSON.stringify(d)); walledIn.openings = walledIn.openings.filter(o => o[6] !== 'ext'); const r2 = check(walledIn, lv); assert.ok(!r2.ok && r2.errors.some(e => /cannot be reached/.test(e)), 'no way in');
   assert.ok(!check({ ...d, spawn: null }, lv).ok); assert.ok(!check({ ...d, floors: 2, stairs: [] }, lv).ok);
   const c = clean({ name: '<script>x</script>', rooms: [[0, -5, -5, 999, 3, 'wood']], furniture: [[0, 1, 1, 2, 2, 99, 'nuke', 'up']] }); assert.equal(c.name, 'scriptxscript'); assert.deepEqual(c.rooms[0].slice(1, 5), [0, 0, 60, 3]); assert.equal(c.furniture[0][6], 'crate'); assert.equal(c.furniture[0][5], 2.4);
