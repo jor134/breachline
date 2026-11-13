@@ -566,7 +566,7 @@ function handVR(h, o, dt) {
 }
 
 // ---------- vest zones: what an empty hand would grab, lit up and labelled before you grab it ----------
-const ZONES = [['rifle', 0.22], ['pistol', 0.2], ['pouch', 0.17], ['radio', 0.12], ['flash', 0.12], ['smoke', 0.12], ['nvg', 0.17]];
+const ZONES = [['rifle', 0.22], ['pistol', 0.2], ['pouch', 0.17], ['radio', 0.14], ['flash', 0.12], ['smoke', 0.12], ['nvg', 0.17]];
 function zonePos(k, out) { return k === 'nvg' ? out.copy(head.pos).addScaledVector(head.fwd, 0.05).setY(head.pos.y + 0.07) : k === 'rifle' || k === 'pistol' ? out.copy(guns[k].mesh.position) : bodyPt(HOLSTER[k], out); }
 function zoneFor(h, o) {
   const OG = gunIn(o);
