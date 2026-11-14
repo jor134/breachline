@@ -30,6 +30,8 @@ Voice chat, climbing (container tops, crane ladders), downloaded furniture and c
 
 LANDSCAPE tools: a sculpt brush (raise, lower, smooth, flatten to a height or a storey) on a 1 m height grid, two storeys up or down, with slopes relaxed to at most 0.5 m per metre so the ground is always walkable. Buildings sit on the ground: inside a footprint the floor is the room's floor (foundations show where the ground falls away), so raising the ground to +1 storey beside an upper-floor door makes a walk-out. Trees (trunks stop bullets), shrubs (hide you, bullets pass), property walls on grid lines (privacy wall, low wall, wood fence that hides but bullets pass, iron railing you can see and shoot through), and gates in them that work like outside doors. All optional fields in the map JSON (`ter`, `trees`, `shrubs`, `pwalls`, `gates`); maps without them are unchanged.
 
+Delete a published map from OPEN → Published → Delete (needs the creator code; drafts saved on the device are kept). The editor's Home button and the game's HOME SCREEN (VR/desktop menu) or HOME (phone, under MENU) go back and forth; while testing a draft it reads BACK TO EDITOR.
+
 The format and its checks are in `js/core/maps/custom.js` (shared by the editor, the game and the Worker). Published maps and textures live in the `Library` Durable Object (SQLite) behind `/api/maps` and `/api/tex`. Publishing and uploads need the creator code: set the `CREATOR_CODE` secret on the Worker (Cloudflare dashboard > Workers > breachline > Settings > Variables and Secrets). Without it, publishing is off.
 
 ## Voice chat

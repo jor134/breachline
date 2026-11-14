@@ -389,11 +389,23 @@ $('bOpen').onclick = () => {
     for (const b of c.querySelectorAll('[data-del]')) b.onclick = () => { delete all[b.dataset.del]; localStorage.setItem('bl_drafts', JSON.stringify(all)); closeDlg(); $('bOpen').onclick(); };
     $('dExp').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(M)], { type: 'application/json' })); a.download = (M.name || 'map').replace(/\W+/g, '_') + '.json'; a.click(); };
     $('dImpB').onclick = () => $('dImp').click(); $('dImp').onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { try { load(clean(JSON.parse(t))); save(); closeDlg(); } catch (err) { msg('That file is not a BREACHLINE map.', 'err'); } }); };
-    fetch('api/maps', { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject()).then(j => { const el = $('dPub'); if (!el) return; el.innerHTML = (j.maps || []).length ? j.maps.map(m => `<div class="row"><span>${esc(m.name)} <span style="color:#9fb0c3">by ${esc(m.creator)}</span></span><button data-pub="${m.id}">Edit</button></div>`).join('') : '<div class="row">Nothing published yet.</div>';
+    fetch('api/maps', { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject()).then(j => { const el = $('dPub'); if (!el) return; el.innerHTML = (j.maps || []).length ? j.maps.map(m => `<div class="row"><span>${esc(m.name)} <span style="color:#9fb0c3">by ${esc(m.creator)}</span></span><span><button data-pub="${m.id}">Edit</button> <button data-unpub="${m.id}" data-name="${esc(m.name)}" class="warn">Delete</button></span></div>`).join('') : '<div class="row">Nothing published yet.</div>';
+      for (const b of el.querySelectorAll('[data-unpub]')) b.onclick = () => unpublish(b.dataset.unpub, b.dataset.name);
       for (const b of el.querySelectorAll('[data-pub]')) b.onclick = () => fetch('api/maps/' + b.dataset.pub).then(r => r.json()).then(m => { closeDlg(); load(m, b.dataset.pub); save(); }); }).catch(() => { const el = $('dPub'); if (el) el.textContent = 'The map library is not reachable from here.'; });
   });
 };
 $('bUndo').onclick = undo;
+$('bHome').onclick = () => { save(); location.href = './'; };   // the draft is kept on this device: it is here when you come back
+// take a published map off the mission board for good (needs the creator code); a copy you have open or saved here is kept
+function unpublish(id, name) {
+  dialog(`<h3>Delete "${esc(name)}"?</h3><p style="font-size:13px;color:#9fb0c3">It comes off the mission board for everyone. Drafts saved on this device are kept, so you can publish it again later.</p><div class="row"><button id="dYes" class="warn">Delete it</button></div>`, () => {
+    $('dYes').onclick = () => code(c => fetch('api/maps/' + id, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: c }) }).then(x => x.json()).then(j => {
+      if (!j.ok) { if (/creator code/i.test(j.error || '')) sessionStorage.removeItem('bl_code'); return msg(j.error || 'Could not delete it', 'err'); }
+      if (pubId === id) { pubId = null; save(); } const all = drafts(); for (const k in all) if (all[k].pubId === id) all[k].pubId = null; localStorage.setItem('bl_drafts', JSON.stringify(all));
+      closeDlg(); msg('Deleted "' + name + '" from the mission board.', 'ok');
+    }).catch(() => msg('The map library is not reachable.', 'err')));
+  });
+}
 const runCheck = () => check(M, { buildLevel, findPath, registerMap });
 $('bCheck').onclick = () => { const r = runCheck(); msg(r.ok ? 'Ready to play.' + (r.warnings.length ? '\nNotes:\n• ' + r.warnings.join('\n• ') : '') : 'Problems:\n• ' + r.errors.join('\n• ') + (r.warnings.length ? '\nNotes:\n• ' + r.warnings.join('\n• ') : ''), r.ok ? 'ok' : 'err'); };
 $('bTest').onclick = () => { const r = runCheck(); if (!r.ok) return msg('Fix these first:\n• ' + r.errors.join('\n• '), 'err'); localStorage.setItem('bl_draft', JSON.stringify(r.map)); save(); location.href = './?draft=1'; };
