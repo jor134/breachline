@@ -140,7 +140,7 @@ function resetLoadout() {
   S.reloading = false;
 }
 function placeAtSpawn() {
-  const sp = S.spawnAt, [x, z] = sp ? [sp[0], sp[2]] : M.spawn[S.me.slot % 4], fy = sp ? sp[1] : 0; S.feetY = fy; rig.rotation.y = 0; S.yaw = 0; S.pitch = 0;   // terrorist players start inside
+  const sp = S.spawnAt, [x, z] = sp ? [sp[0], sp[2]] : M.spawn[S.me.slot % 4], fy = sp ? sp[1] : M.yAt ? M.yAt(0, x, z) : 0; S.feetY = fy; rig.rotation.y = 0; S.yaw = 0; S.pitch = 0;   // terrorist players start inside
   if (S.mode === 'vr') { rig.position.y = fy; headWorld(); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; headWorld(); } else rig.position.set(x, fy, z);
 }
 
@@ -640,7 +640,7 @@ function fire(h, G, o) {
   const r = pullTrigger(G.st, S.now, edge, held);
   if (r === 'fire') {
     net.send({ t: 'shot', o: [v1.x, v1.y, v1.z], d: [v2.x, v2.y, v2.z], w: G.kind });
-    const d = rayStatic(level, S.doorOpen, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, 60); tracer(v1, v3.copy(v2).multiplyScalar(d).add(v1));
+    const d = rayStatic(level, S.doorOpen, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, 60, 'bullet'); tracer(v1, v3.copy(v2).multiplyScalar(d).add(v1));
     sfx.shot(null, G.kind); G.kick += (o.support ? 0.03 : 0.07) * GUNS[G.kind].recoil; G.flashT = 0.045; buzz(h, 1, 50); if (o.support) buzz(o, 0.5, 40);
     if (G.st.locked) sfx.lock();
   } else if (r === 'click') sfx.dry(G.kind);
@@ -962,7 +962,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v41';
+const BUILD = 'v42';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

@@ -23,8 +23,8 @@ export async function loadVegetation(scene, map) {
       for (let i = 0; i < p.pos.count; i++) { v.fromBufferAttribute(p.pos, i).applyMatrix4(M); pos.push(v.x, v.y, v.z); if (p.nor) v.fromBufferAttribute(p.nor, i).applyMatrix3(N).normalize(); else v.set(0, 1, 0); nor.push(v.x, v.y, v.z); col.push(p.color.r * b, p.color.g * b, p.color.b * b); }
     }
   };
-  for (const [x, z, name, h, turn] of VEG.trees) add(name, x, terrainY(z) - 0.05, z, h, turn);
-  for (const [x, z, name, h] of VEG.shrubs) add(name, x, terrainY(z) - 0.03, z, h, jit() * 6.28);
+  for (const [x, z, name, h, turn] of VEG.trees) add(name, x, terrainY(z, x) - 0.05, z, h, turn);
+  for (const [x, z, name, h] of VEG.shrubs) add(name, x, terrainY(z, x) - 0.03, z, h, jit() * 6.28);
   for (const [f, x, z, name, h] of VEG.pots) add(name, x, f * H + 0.46, z, h, jit() * 6.28);
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   const mesh = new THREE.Mesh(geo, sheen({ vertexColors: true, side: THREE.DoubleSide }, 'matte')); mesh.matrixAutoUpdate = false; scene.add(mesh);

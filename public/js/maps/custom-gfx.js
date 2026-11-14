@@ -18,6 +18,7 @@ export function customGfx(map) {
     setTod(t) { tod = t === 'night' ? 'night' : 'day'; },
     noCast: ['cgrass', 'casphalt', 'gravel', 'paver'],
     outer: () => outer, inner: () => wall,
+    door: d => d.gate === 'railing' ? 'steel' : d.gate === 'fence' ? 'walnut' : d.gate ? 'wood' : 'door',
     mats(M) {
       const S = (t, gl) => sheen({ map: t }, gl);
       if (!M.cconcrete) Object.assign(M, {
@@ -29,9 +30,23 @@ export function customGfx(map) {
       const keys = new Set([wall, outer, ground, ...map.rooms.map(r => r[6])].filter(k => typeof k === 'string' && k.startsWith('utex_')));
       for (const k of keys) if (!M[k]) { const m = M[k] = sheen({ color: 0xffffff }, 'satin'); loader.load('api/tex/' + k.slice(5), t => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; m.map = t; m.needsUpdate = true; }); }
     },
-    scenery({ b, hills, hillM }) {
+    scenery({ b, hills, hillM, level, root, MATS }) {
       const g = ground === 'grass' || ground === 'asphalt' ? 'c' + ground : ground;
-      b(g).quad([-400, -0.005, -400], [W + 400, -0.005, -400], [W + 400, -0.005, D + 400], [-400, -0.005, D + 400], [0, 1, 0], 0.25);
+      if (map.flat) b(g).quad([-400, -0.005, -400], [W + 400, -0.005, -400], [W + 400, -0.005, D + 400], [-400, -0.005, D + 400], [0, 1, 0], 0.25);
+      else root.add(terrainMesh(map, MATS[g]));
+      // what the landscape adds: foundations under buildings that stand above the ground, property walls, fences and railings
+      for (const w of level.boxes) {
+        if (w.kind === 'found') b(outer).box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 0.5);
+        else if (w.sub === 'privacy' || w.sub === 'low') { b('stone').box(w.x0, w.x1, w.y0, w.y1 - 0.08, w.z0, w.z1, 'xXzZY', 0.5); const e = 0.04; b('fascia').box(w.x0 - (w.horiz ? 0 : e), w.x1 + (w.horiz ? 0 : e), w.y1 - 0.08, w.y1, w.z0 - (w.horiz ? e : 0), w.z1 + (w.horiz ? e : 0), 'xXzZY', 0.5); }
+        else if (w.sub === 'fence') { const hz = w.horiz, a = hz ? w.x0 : w.z0, e = hz ? w.x1 : w.z1, c = hz ? (w.z0 + w.z1) / 2 : (w.x0 + w.x1) / 2, top = w.y1;
+          const bx = (m, u0, u1, y0, y1, t) => hz ? b(m).box(u0, u1, y0, y1, c - t, c + t, 'xXzZY', 1) : b(m).box(c - t, c + t, y0, y1, u0, u1, 'xXzZY', 1);
+          for (let u = a; u < e - 0.01; u += 0.15) bx('walnut', u + 0.005, Math.min(e, u + 0.14), w.y0, top - ((Math.round(u / 0.15) % 2) ? 0.06 : 0), 0.025);
+          bx('walnut', a, e, w.base + 0.35, w.base + 0.43, 0.045); bx('walnut', a, e, top - 0.4, top - 0.32, 0.045); }
+        else if (w.kind === 'fence' && w.sub === 'railing') { const hz = w.horiz, a = hz ? w.x0 : w.z0, e = hz ? w.x1 : w.z1, c = hz ? (w.z0 + w.z1) / 2 : (w.x0 + w.x1) / 2, top = w.y1;
+          const bx = (u0, u1, y0, y1, t) => hz ? b('steel').box(u0, u1, y0, y1, c - t, c + t, 'xXzZY', 1) : b('steel').box(c - t, c + t, y0, y1, u0, u1, 'xXzZY', 1);
+          for (let u = a + 0.06; u < e; u += 0.13) bx(u - 0.01, u + 0.01, w.y0, top, 0.01);
+          bx(a, e, top - 0.04, top, 0.022); bx(a, e, w.base + 0.12, w.base + 0.16, 0.018); if (Math.abs(a - Math.round(a)) < 0.01) bx(a, a + 0.06, w.y0, top + 0.08, 0.035); }
+      }
       // a flat roof over every room with nothing built on top of it
       for (const r of map.rooms) {
         const [f, , x0, z0, x1, z1] = r, y = (f + 1) * H;
@@ -41,4 +56,26 @@ export function customGfx(map) {
       for (const [x, z, r, h] of [[-160, -120, 120, 34], [W + 170, -60, 140, 40], [W / 2, D + 220, 160, 30], [-180, D + 60, 110, 26]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); hills.add(m); }
     },
   };
+}
+
+// The sculpted ground as one smooth mesh on a 0.5 m grid, cut out under buildings, with an apron out to the horizon at the edge heights.
+function terrainMesh(map, mat) {
+  const [W, D] = [map.YARD.x1, map.YARD.z1], T = map.groundT, NXV = Math.round(W * 2) + 1, NZV = Math.round(D * 2) + 1;
+  const pos = [], uv = [], idx = [], vid = (i, j) => j * NXV + i;
+  for (let j = 0; j < NZV; j++) for (let i = 0; i < NXV; i++) { const x = Math.min(W, i / 2), z = Math.min(D, j / 2); pos.push(x, T(x, z) - 0.005, z); uv.push(x * 0.25, z * 0.25); }
+  const under = (x, z) => map.terrainY(z, x) !== T(x, z);   // a footprint where a floor, not the ground, is underfoot
+  for (let j = 0; j < NZV - 1; j++) for (let i = 0; i < NXV - 1; i++) { const x = (i + 0.5) / 2, z = (j + 0.5) / 2; if (under(x, z)) continue; const a = vid(i, j), b = vid(i + 1, j), c = vid(i + 1, j + 1), d = vid(i, j + 1); idx.push(a, d, c, a, c, b); }
+  // apron: each edge vertex pushed out 400 m at its own height, corners filled
+  const far = 400, ring = [];
+  for (let i = 0; i < NXV; i++) ring.push([i, 0, 0, -1]); for (let j = 1; j < NZV; j++) ring.push([NXV - 1, j, 1, 0]); for (let i = NXV - 2; i >= 0; i--) ring.push([i, NZV - 1, 0, 1]); for (let j = NZV - 2; j >= 1; j--) ring.push([0, j, -1, 0]);
+  const fv = [];
+  for (const [i, j, dx, dz] of ring) { const k = vid(i, j), x = pos[k * 3], y = pos[k * 3 + 1], z = pos[k * 3 + 2]; const corner = (i === 0 || i === NXV - 1) && (j === 0 || j === NZV - 1);
+    const ox = corner ? (i ? 1 : -1) : dx, oz = corner ? (j ? 1 : -1) : dz; fv.push(pos.length / 3); pos.push(x + ox * far, y, z + oz * far); uv.push((x + ox * far) * 0.25, (z + oz * far) * 0.25); }
+  for (let n = 0; n < ring.length; n++) { const m = (n + 1) % ring.length, a = vid(ring[n][0], ring[n][1]), b = vid(ring[m][0], ring[m][1]); idx.push(a, b, fv[m], a, fv[m], fv[n]); }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
+  // the triangles' winding faces up for the grid; flip any that ended up facing down (the apron)
+  const p = geo.attributes.position, I = geo.index.array;
+  for (let t = 0; t < I.length; t += 3) { const [a, b, c] = [I[t], I[t + 1], I[t + 2]]; const ux = p.getX(b) - p.getX(a), uz = p.getZ(b) - p.getZ(a), vx = p.getX(c) - p.getX(a), vz = p.getZ(c) - p.getZ(a); if (uz * vx - ux * vz < 0) { I[t + 1] = c; I[t + 2] = b; } }
+  geo.index.needsUpdate = true; geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; m.name = 'terrain'; return m;
 }

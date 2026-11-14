@@ -59,14 +59,14 @@ export class Sim {
     const SM = M.susMust || [], spots = SM.concat(pick(M.spots.s, NS + 4 - SM.length));
     // on a big map a suspect only walks a beat near his post (map.patrolMax)
     const mk = ([f, x, z], i, patrol) => this.npcs.push({
-      id: i + 1, kind: 's', v: Math.floor(rnd() * 4), x, z, y: f * H, yaw: rnd() * 6.28, hp: 100, st: 'g', post: [x, z, f * H],
+      id: i + 1, kind: 's', v: Math.floor(rnd() * 4), x, z, y: this.yAt(f, x, z), yaw: rnd() * 6.28, hp: 100, st: 'g', post: [x, z, this.yAt(f, x, z)],
       patrol: patrol && rnd() < 0.35 ? (sp => sp && Math.hypot(sp[1] - x, sp[2] - z) + Math.abs(sp[0] - f) * 8 <= (M.patrolMax || Infinity) ? sp : null)(spots[NS + (i % 4)]) : null, pt: 0, pwait: 3 + rnd() * 6, resolve: 0.3 + rnd() * 0.65, sweep: (rnd() - 0.5) * 0.8,
       fakeChance: rnd() < 0.18, fake: false, shouts: 0, spd: 0, strafe: false, path: null, pi: 0, react: 0, cool: 0, burst: 3, lost: 0, tA: 0, tS: 0, hold: false, tgt: 0, lk: null, armed: true, flagged: false });
     spots.slice(0, NS).forEach((s, i) => mk(s, i, true));
     // the high-value target and his two bodyguards: fixed posts, hard to talk down
     if (M.hvt) { mk(M.hvt.at, NS, false); (M.hvt.guards || []).forEach((g, k) => mk(g, NS + 1 + k, false)); const [b, ...gs] = this.npcs.slice(-(1 + NG)); b.hvt = true; b.v = 4; b.resolve = 0.96; b.fakeChance = false; for (const g of gs) { g.guard = true; g.resolve = 0.85 + rnd() * 0.12; } }
     const pads = M.pads ? pick(M.pads.map((p, i) => i), M.pads.length) : [], padCivs = (C.padCivs || 0);
-    (M.civMust || []).concat(pick(M.spots.c, C.c - padCivs - (M.civMust || []).length)).concat(pads.slice(C.b, C.b + padCivs).map(i => [M.pads[i].f, ...M.pads[i].hostage])).forEach(([f, x, z], i) => this.npcs.push({ id: 101 + i, kind: 'c', v: Math.floor(rnd() * 4), x, z, y: f * H, yaw: rnd() * 6.28, hp: 100, st: 'w', stubborn: rnd() < 0.25, flagged: false }));
+    (M.civMust || []).concat(pick(M.spots.c, C.c - padCivs - (M.civMust || []).length)).concat(pads.slice(C.b, C.b + padCivs).map(i => [M.pads[i].f, ...M.pads[i].hostage])).forEach(([f, x, z], i) => this.npcs.push({ id: 101 + i, kind: 'c', v: Math.floor(rnd() * 4), x, z, y: this.yAt(f, x, z), yaw: rnd() * 6.28, hp: 100, st: 'w', stubborn: rnd() < 0.25, flagged: false }));
     // Most suspects will turn on a hostage once a firefight has gone on for a few rounds. Drawn from their own stream so the rest of the layout per seed is unchanged.
     { const rr = rng32(this.seed ^ 0x51ed27); for (const n of this.npcs) if (n.kind === 's') { n.ruthless = rr() < 0.75; n.fired = 0; n.execAfter = 3 + Math.floor(rr() * 5); n.exec = null; } }
     // about half the suspects defend the room they are in: they take cover there when they hear trouble and wait for you to come through the door
@@ -79,8 +79,8 @@ export class Sim {
     const bombAt = M.pads ? pads.slice(0, C.b).map(i => [M.pads[i].f, ...M.pads[i].bomb, 0.85]) : M.bombMust ? [M.bombMust, ...pick(M.spots.b, C.b - 1)] : pick(M.spots.b, C.b);
     this.bombs = bombAt.map(([f, x, z, h]) => {
       const wires = pick([0, 1, 2, 3], 4), order = pick([0, 1, 2, 3], 2);
-      const [bx, bz, yaw] = this.edgeSpot(x, z, f * H + h, f * H);
-      return { x: bx, z: bz, y: f * H + h, yaw, wires, order, n: 0, cut: [false, false, false, false], defused: false };
+      const fy = this.yAt(f, x, z), [bx, bz, yaw] = this.edgeSpot(x, z, fy + h, fy);
+      return { x: bx, z: bz, y: fy + h, yaw, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
     if (M.training) this.setupTraining();
     for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; p.spawn = null; p.hold = 0; p.locks = 2; p.traps = 2; }
@@ -89,7 +89,7 @@ export class Sim {
     if (this.pvp) {
       const [sx, sz] = M.spawn[0], used = new Set(this.npcs.map(n => n.kind === 's' ? n.post[0] + ',' + n.post[1] : ''));
       const posts = M.spots.s.filter(([, x, z]) => !used.has(x + ',' + z)).map(([f, x, z]) => [Math.hypot(x - sx, z - sz), f, x, z]).sort((a, b) => b[0] - a[0]);
-      tangos.forEach((p, i) => { const [, f, x, z] = posts[(i * 3) % Math.max(1, posts.length)] || [0, 0, ...M.spawn[0]]; p.spawn = [x, f * M.H, z]; p.hx = x; p.hz = z; p.y = f * M.H; p.hy = p.y + 1.65; });
+      tangos.forEach((p, i) => { const [, f, x, z] = posts[(i * 3) % Math.max(1, posts.length)] || [0, 0, ...M.spawn[0]]; p.spawn = [x, this.yAt(f, x, z), z]; p.hx = x; p.hz = z; p.y = p.spawn[1]; p.hy = p.y + 1.65; });
     }
     this.spawnBots();
   }
@@ -115,6 +115,7 @@ export class Sim {
   }
   near(p, x, y, z, d) { return Math.hypot(p.hx - x, p.hz - z) < d && Math.abs(p.y - y) < 1.8; }
   clear(ax, ay, az, bx, by, bz, solidGlass = false) { const dx = bx - ax, dy = by - ay, dz = bz - az, d = Math.hypot(dx, dy, dz); if (d < 0.05) return true; return rayStatic(this.level, this.doorOpen, ax, ay, az, dx / d, dy / d, dz / d, d, solidGlass) >= d - 0.02; }
+  yAt(f, x, z) { return this.M.yAt ? this.M.yAt(f, x, z) : f * this.M.H; }   // standing height of a spot: custom maps put outdoor spots on the ground
   eyeY(n) { return n.y + (KNEEL[n.st] || n.crouch ? 1.0 : 1.58); }
 
   // ---- player actions ----
@@ -122,7 +123,7 @@ export class Sim {
     const p = this.players.get(id); if (!p || p.down || this.phase !== 'active' || !Array.isArray(m.o) || !Array.isArray(m.d)) return;
     const w = m.w === 'pistol' ? 'pistol' : 'rifle'; if (this.t - p.lastShot < 0.06) return; p.lastShot = this.t;
     let [ox, oy, oz] = m.o, [dx, dy, dz] = m.d; const dl = Math.hypot(dx, dy, dz); if (!(dl > 0) || !this.near(p, ox, p.y, oz, 1.6)) return; dx /= dl; dy /= dl; dz /= dl;
-    let best = rayStatic(this.level, this.doorOpen, ox, oy, oz, dx, dy, dz, 80), kind = 'w', tn = null, part = null, tp = null;
+    let best = rayStatic(this.level, this.doorOpen, ox, oy, oz, dx, dy, dz, 80, 'bullet'), kind = 'w', tn = null, part = null, tp = null;
     let tg = null; if (this.targets) { if (p.tr) p.tr.shots++; for (const t of this.targets) { if (!t.up) continue; const h = this.rayTarget(t, ox, oy, oz, dx, dy, dz, best); if (h >= 0 && h < best) { best = h; kind = 't'; tg = t; } } }
     if (p.hold && w === 'rifle') return;   // one hand on the hostage: pistol only
     for (const n of this.npcs) { if (n.st === 'd' || n.held === id) continue; for (const [sx, sy, sz, sr, pt] of this.spheres(n)) { const t = raySphere(ox, oy, oz, dx, dy, dz, sx, sy, sz, sr); if (t >= 0 && t < best) { best = t; kind = 'n'; tn = n; part = pt; } } }

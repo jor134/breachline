@@ -465,6 +465,33 @@ await t('custom maps: the sample compiles, checks clean, plays; broken ones are 
   assert.ok(!check({ ...d, spawn: null }, lv).ok); assert.ok(!check({ ...d, floors: 2, stairs: [] }, lv).ok);
   const c = clean({ name: '<script>x</script>', rooms: [[0, -5, -5, 999, 3, 'wood']], furniture: [[0, 1, 1, 2, 2, 99, 'nuke', 'up']] }); assert.equal(c.name, 'scriptxscript'); assert.deepEqual(c.rooms[0].slice(1, 5), [0, 0, 60, 3]); assert.equal(c.furniture[0][6], 'crate'); assert.equal(c.furniture[0][5], 2.4);
 });
+await t('landscape: sculpted ground, a walk-out, foundations, trees, shrubs, walls, fences and gates', async () => {
+  const { compile, check, clean, terDims, SLOPE } = await import('../public/js/core/maps/custom.js'); const lv = await import('../public/js/core/level.js');
+  const W = 40, D = 40, [nx, nz] = terDims(W, D), ter = []; for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) ter.push(Math.max(0, Math.min(32, 32 - (j - 10) * 5)));
+  const m = { name: 'Hill', size: [W, D], floors: 2, H: 3.2, rooms: [[0, 10, 10, 20, 20], [1, 10, 10, 20, 20]], openings: [[0, 14, 20, 15, 20, 'door', 'ext'], [1, 14, 10, 15, 10, 'door', 'ext']], stairs: [[0, 11, 12, 12.5, 17]],
+    spawn: [20, 32], s: [[1, 17, 15], [0, 15, 4]], c: [[0, 25, 3]], b: [[0, 17, 18]], ter, trees: [[5, 5, 'oak'], [30, 30, 'pine']], shrubs: [[25, 28, 'bush']],
+    pwalls: [[2, 36, 38, 36, 'fence'], [2, 1, 2, 36, 'railing'], [38, 1, 38, 36, 'privacy']], gates: [[19, 36, 21, 36]] };
+  const r = check(m, lv); assert.ok(r.ok, r.errors.join('; '));
+  lv.registerMap(compile(m, 'u_hill')); const L = lv.buildLevel('u_hill');
+  assert.ok(Math.abs(L.groundY(15, 4, 0) - 3.2) < 0.01, 'on the hill'); assert.ok(Math.abs(L.groundY(5, 13, 0) - 1.7) < 0.05, 'on the slope'); assert.equal(L.groundY(15, 15, 0), 0, 'the ground floor inside');
+  const p = lv.findPath(L, 20, 32, 0, 14.5, 9, 3.2); assert.ok(p && Math.hypot(p.at(-1)[0] - 14.5, p.at(-1)[1] - 9) < 1, 'walk round the house and up the hill to the upper door');
+  assert.ok(Math.abs(lv.rayStatic(L, null, 25, 1.5, 20, 0, 0, -1, 30) - 6.6) < 0.1, 'a shot into the hillside stops in it');
+  assert.ok(lv.rayStatic(L, null, 5, 1, 38, 0, 0, -1, 10) < 2.1 && lv.rayStatic(L, null, 5, 1, 38, 0, 0, -1, 10, 'bullet') === 10, 'a wood fence hides but bullets go through');
+  assert.ok(lv.rayStatic(L, null, 4, 1, 20, -1, 0, 0, 10) === 10 && lv.circleHits(L, null, 2, 20, 0.25, 0), 'a railing: see through, cannot walk through');
+  assert.ok(lv.rayStatic(L, null, 36, 1, 20, 1, 0, 0, 10, 'bullet') < 2.1, 'a privacy wall stops bullets');
+  assert.ok(L.doors.some(d => d.gate === 'fence' && d.exterior), 'the gate is a door'); assert.ok(L.boxes.some(b => b.kind === 'trunk') && L.boxes.some(b => b.sub === 'shrub'), 'trunks and shrubs are solid');
+  const s = new Sim('u_hill'); s.addPlayer(1, 'A'); s.start(5, false, 'clear', 'u_hill');
+  assert.ok(s.npcs.some(n => n.kind === 's' && n.x === 15 && Math.abs(n.y - 3.2) < 0.01), 'the suspect on the hill stands on it'); for (let i = 0; i < 150; i++) s.tick(1 / 15); assert.equal(s.phase, 'active');
+  // the ground drops away under a house: foundations, and no way under it
+  const dip = []; for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) dip.push(Math.max(-32, Math.min(0, -(j - 14) * 5)));
+  const m2 = { ...m, ter: dip, floors: 1, rooms: [[0, 10, 10, 20, 20]], openings: [[0, 14, 10, 15, 10, 'door', 'ext']], stairs: [], s: [[0, 15, 15]], c: [[0, 12, 12]], b: [[0, 17, 17]], spawn: [20, 4] };
+  lv.registerMap(compile(m2, 'u_dip')); const L2 = lv.buildLevel('u_dip'); assert.equal(L2.boxes.filter(b => b.kind === 'found').length, 3, 'foundations on three sides');
+  assert.ok(lv.circleHits(L2, null, 15, 20.2, 0.25, -2.6), 'the foundation wall blocks the low ground'); assert.equal(L2.groundY(15, 15, -3), 0, 'the house floor stays the floor');
+  // cleaning: steep ground is relaxed to walkable, out-of-range heights clamped, flat ground not stored
+  const steep = new Array(nx * nz).fill(0); steep[20 * nx + 20] = 999; const c = clean({ ...m, ter: steep }); assert.ok(Math.max(...c.ter) <= 64, 'clamped to two storeys');
+  for (let j = 0; j < nz; j++) for (let i = 0; i + 1 < nx; i++) assert.ok(Math.abs(c.ter[j * nx + i + 1] - c.ter[j * nx + i]) <= SLOPE);
+  assert.equal(clean({ ...m, ter: new Array(nx * nz).fill(0) }).ter, undefined); assert.equal(clean({ ...m, ter: [1, 2, 3] }).ter, undefined, 'wrong size: dropped');
+});
 Sim.BOTS = true;
 const run = (s, sec, until) => { const ev = []; for (let i = 0; i < sec * 15; i++) { s.tick(1 / 15); ev.push(...s.events.splice(0)); if (until && until()) break; } return ev; };
 await t('bots: three fill a solo squad, two with a friend, a joiner takes a bot place, none in training; rooms count humans', async () => {

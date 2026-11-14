@@ -75,7 +75,7 @@ export function buildLevel(id = 'mansion') {
   for (const [f, x0, z0, x1, z1, h, kind, face] of map.furniture || []) boxes.push({ f, kind: 'furn', sub: kind, face, x0, x1, z0, z1, y0: f * H, y1: f * H + h });
   const veg = map.veg;
   if (veg) {
-    for (const [x, z] of veg.trees) { const y = map.terrainY(z, x); boxes.push({ f: y < -H / 2 ? -1 : 0, kind: 'trunk', x0: x - 0.17, x1: x + 0.17, z0: z - 0.17, z1: z + 0.17, y0: y, y1: y + 3.2 }); }
+    for (const [x, z] of veg.trees) { const y = map.terrainY(z, x); boxes.push({ f: y < -H / 2 ? -1 : 0, kind: 'trunk', x0: x - 0.17, x1: x + 0.17, z0: z - 0.17, z1: z + 0.17, y0: y - 0.3, y1: y + 3.2 }); }
     for (const [f, x, z] of veg.pots) boxes.push({ f, kind: 'furn', sub: 'pot', x0: x - 0.22, x1: x + 0.22, z0: z - 0.22, z1: z + 0.22, y0: f * H, y1: f * H + 0.5 });
   }
   // map-specific solids (containers, hull, cranes, slabs) and extra doors (container doors)
@@ -163,8 +163,9 @@ function rayBox(b, ox, oy, oz, dx, dy, dz, max) {
 }
 // Distance along a unit ray to the first solid surface (walls, furniture, closed doors, floors), or max.
 // Walks the spatial index cell by cell along the ray (2D DDA) and stops once the next cell starts beyond the nearest hit.
+// solidGlass: true = glass stops it (sight that glass blocks), 'bullet' = a bullet (passes glass, fences and screens: wood fences, shrubs), else sight
 export function rayStatic(level, doorOpen, ox, oy, oz, dx, dy, dz, max, solidGlass = false) {
-  let best = max; const G = level.grid, stamp = ++G.stamp, cs = G.cs, boxes = level.boxes;
+  let best = max; const bullet = solidGlass === 'bullet'; const G = level.grid, stamp = ++G.stamp, cs = G.cs, boxes = level.boxes;
   let ci = Math.floor((ox - G.x0) / cs), cj = Math.floor((oz - G.z0) / cs);
   const sx = dx > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1, ax = Math.abs(dx), az = Math.abs(dz);
   const tdx = ax > 1e-12 ? cs / ax : Infinity, tdz = az > 1e-12 ? cs / az : Infinity;
@@ -173,7 +174,7 @@ export function rayStatic(level, doorOpen, ox, oy, oz, dx, dy, dz, max, solidGla
   for (let guard = 0, t = 0; guard < G.nx + G.nz + 4 && t <= best; guard++) {
     if (ci >= 0 && cj >= 0 && ci < G.nx && cj < G.nz) for (const bi of G.cells[cj * G.nx + ci]) {
       if (G.mark[bi] === stamp) continue; G.mark[bi] = stamp; const b = boxes[bi];
-      if ((b.kind === 'glass' && !solidGlass) || b.kind === 'fence') continue; const h = rayBox(b, ox, oy, oz, dx, dy, dz, best); if (h >= 0 && h < best) best = h;
+      if ((b.kind === 'glass' && solidGlass !== true) || b.kind === 'fence' || (b.kind === 'screen' && bullet)) continue; const h = rayBox(b, ox, oy, oz, dx, dy, dz, best); if (h >= 0 && h < best) best = h;
     } else if ((ci < 0 && sx < 0) || (cj < 0 && sz < 0) || (ci >= G.nx && sx > 0) || (cj >= G.nz && sz > 0)) break;
     if (tmx < tmz) { t = tmx; tmx += tdx; ci += sx; } else { t = tmz; tmz += tdz; cj += sz; }
   }
