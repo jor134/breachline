@@ -499,7 +499,7 @@ function deskKey(code) {
   if (code === 'KeyO') cycleWx();
   if (code === 'KeyP' && (S.phase !== 'active' || M.training)) cycleMap();
   if (code === 'KeyM') return toggleMenu();
-  if (code === 'KeyN') return toggleMic();
+  if (code === 'KeyB') return toggleMic();
   if (S.me.down) return;
   if (code === 'KeyF') doShout();
   else if (code === 'KeyC') S.crouch = !S.crouch;
@@ -962,7 +962,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v40';
+const BUILD = 'v41';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
