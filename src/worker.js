@@ -14,6 +14,7 @@ export default {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
       return env.ROOMS.get(env.ROOMS.idFromName(m[1].toUpperCase())).fetch(req);
     }
+    if (url.pathname === '/api/ice') return json(await iceServers(env));   // voice chat connection servers
     if (url.pathname.startsWith('/api/')) {
       // the creator code travels to the library in a header, set by this Worker from its secret, never from the client
       const fwd = new Request(req); fwd.headers.set('x-creator-code', env.CREATOR_CODE || ''); return library(env).fetch(fwd);
@@ -21,6 +22,22 @@ export default {
     return new Response('Not found', { status: 404 });
   },
 };
+
+// Voice chat connection servers (same as Kerbside). With a Cloudflare TURN key (TURN_KEY_ID and TURN_KEY_API_TOKEN secrets),
+// voice also works on networks that block direct connections. Credentials are short-lived and cached.
+let iceCache = null;
+async function iceServers(env) {
+  const stun = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return { iceServers: stun, turn: false };
+  if (iceCache && iceCache.until > Date.now()) return iceCache.value;
+  try {
+    const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, { method: 'POST', headers: { Authorization: 'Bearer ' + env.TURN_KEY_API_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl: 86400 }) });
+    if (!r.ok) throw new Error('TURN ' + r.status);
+    const j = await r.json();
+    const list = (Array.isArray(j.iceServers) ? j.iceServers : [j.iceServers]).map(x => ({ ...x, urls: (Array.isArray(x.urls) ? x.urls : [x.urls]).filter(u => !/:53(\?|$)/.test(u)) })).filter(x => x.urls.length);   // port 53 is blocked by browsers
+    const value = { iceServers: list, turn: true }; iceCache = { value, until: Date.now() + 12 * 3600e3 }; return value;
+  } catch (e) { return { iceServers: stun, turn: false, error: String(e.message || e) }; }
+}
 
 // ---- published maps and textures ----
 export class Library {
@@ -84,6 +101,7 @@ export class Room {
     const bye = () => { if (!this.socks.delete(id)) return; this.host.leave(id); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } };
     server.addEventListener('message', e => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m && m.t === 'sig') { const to = this.socks.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
       const mid = m && (m.m || m.map);
       if (typeof mid === 'string' && mid.startsWith('u_') && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });
       else this.queue = this.queue.then(() => { try { this.host.message(id, m); } catch {} });

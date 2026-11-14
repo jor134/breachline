@@ -21,6 +21,9 @@ await sleep(250);
 assert.ok(b.msgs.some(m => m.t === 'init'), 'both players get the new mission'); const s2 = a.msgs.filter(m => m.t === 's').at(-1);
 assert.equal(s2.ph, 'active'); assert.deepEqual(s2.P[1][5].slice(0, 3), [1, 1.6, 2]); assert.deepEqual(s2.P[1][8], [2, 0]);
 const n1 = a.msgs.filter(m => m.t === 's').length; await sleep(400); const rate = (a.msgs.filter(m => m.t === 's').length - n1) / 0.4; assert.ok(rate > 10 && rate < 20, 'tick rate ' + rate);
+// voice chat set-up passes from one player to the other untouched, tagged with the sender, and never reaches the game
+const idA = a.msgs[0].id, idB = b.msgs[0].id; a.ws.send(JSON.stringify({ t: 'sig', to: idB, data: { desc: { type: 'offer', sdp: 'v=0' } } })); await sleep(100);
+const sig = b.msgs.find(m => m.t === 'sig'); assert.ok(sig && sig.from === idA && sig.data.desc.type === 'offer', 'signal relayed'); assert.ok(!c.msgs.some(m => m.t === 'sig'), 'only to the addressee');
 for (let i = 0; i < 4; i++) await join('/ws/FULL?name=p' + i); const extra = await join('/ws/FULL?name=late'); await sleep(100); assert.equal(extra.msgs[0].t, 'full');
 b.ws.close(); await sleep(200); assert.equal(a.msgs.filter(m => m.t === 's').at(-1).P.filter(p => !(p[9] & 1 << 17)).length, 1); assert.equal(s2.P.filter(p => p[9] & 1 << 17).length, 2, 'two humans: two bots');
 a.ws.close(); await sleep(200); assert.equal(rooms.get('ABCD').timer, null, 'room stops ticking when empty');

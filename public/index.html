@@ -55,6 +55,7 @@ body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:c
   <label for="name">Callsign</label><input id="name" type="text" maxlength="14" placeholder="Officer" autocomplete="off">
   <label for="room">Room code (share with your squad)</label><input id="room" type="text" maxlength="8" autocomplete="off">
   <div class="row"><input id="solo" type="checkbox"><span>Solo practice (no server)</span></div>
+  <div class="row"><input id="voiceon" type="checkbox"><span>Voice chat with your squad (microphone)</span></div>
   <div class="row"><span>Gun tilt</span><input id="tilt" type="range" min="-40" max="40" step="1"><span id="tiltv"></span></div>
   <button id="vr">ENTER VR</button><div id="vrnote"></div>
   <button id="tplay">PLAY ON THIS PHONE / TABLET</button>
@@ -71,7 +72,7 @@ body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:c
 <div id="touch">
   <div id="tstick"><div id="tknob"></div></div>
   <div class="tb" id="bFire">FIRE</div><div class="tb" id="bAim">AIM</div><div class="tb" id="bReload">RELOAD</div><div class="tb" id="bUse">USE</div><div class="tb" id="bShout">SHOUT</div>
-  <div class="tr" id="trTop"><div class="tb" id="bSwap">GUN</div><div class="tb" id="bTool">HANDS</div><div class="tb" id="bMed">MED</div><div class="tb" id="bNvg">NVG</div><div class="tb" id="bLight">LIGHT</div></div>
+  <div class="tr" id="trTop"><div class="tb" id="bMic" style="display:none">MIC</div><div class="tb" id="bSwap">GUN</div><div class="tb" id="bTool">HANDS</div><div class="tb" id="bMed">MED</div><div class="tb" id="bNvg">NVG</div><div class="tb" id="bLight">LIGHT</div></div>
   <div class="tr" id="trLeft"><div class="tb" id="bMenu">MENU</div><div class="tb" id="bOrd" style="display:none">SQUAD</div><div class="tb" id="bCrouch">CROUCH</div><div class="tb" id="bKick">KICK</div><div class="tb" id="bFlash">FLASH 2</div><div class="tb" id="bSmoke">SMOKE 1</div></div>
   <div id="tstart"><div class="tb" id="bMap">MAP: MANSION</div><div class="tb" id="bWx">WEATHER: RANDOM</div><div class="tb" id="bTod" style="display:none">TIME: RANDOM</div><div class="tb" id="bTeam">TEAM: SWAT</div><div class="tb" id="bDusk">START MISSION</div><div class="tb" id="bEnd" style="background:rgba(150,40,30,.85)">END MISSION</div></div>
 </div>

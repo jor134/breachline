@@ -30,3 +30,7 @@ Voice chat, climbing (container tops, crane ladders), downloaded furniture and c
 
 The format and its checks are in `js/core/maps/custom.js` (shared by the editor, the game and the Worker). Published maps and textures live in the `Library` Durable Object (SQLite) behind `/api/maps` and `/api/tex`. Publishing and uploads need the creator code: set the `CREATOR_CODE` secret on the Worker (Cloudflare dashboard > Workers > breachline > Settings > Variables and Secrets). Without it, publishing is off.
 
+## Voice chat
+
+Online rooms have voice chat between the human players (like Kerbside's hangouts): WebRTC audio, one connection per pair, signalled through the room's Durable Object (`js/voice.js`). Tick "Voice chat with your squad" on the start screen (remembered). The microphone is asked for on the page: in VR the first ENTER VR tap asks for it and the second enters VR, since the headset cannot show the prompt once inside. Mute: VR grab the radio for the menu, MIC button; desktop N; phone MIC. A green speaker shows over a teammate's head while they talk, and the HUD / wrist shows MIC ON, MIC OFF or NO MIC. Connections use Cloudflare STUN; set the `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` secrets on the Worker (the same Cloudflare TURN key as Kerbside works) so voice also gets through strict networks via `/api/ice`.
+

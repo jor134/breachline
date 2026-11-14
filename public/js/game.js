@@ -8,6 +8,7 @@ import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
 import { resolveCircle, rayStatic, MAP_IDS, MAPS, MISSION_IDS, registerMap } from './core/level.js';
 import { compile as compileCustom } from './core/maps/custom.js';
+import { createVoice } from './voice.js';
 import { createRace } from './race.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
@@ -103,6 +104,15 @@ const net = {
   local(name) { this.host = new RoomHost((id, o) => onMsg(JSON.parse(JSON.stringify(o)))); this.host.join(1, name); this.timer = setInterval(() => this.host.tick(), TICK * 1000); },
   send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); else if (this.host) this.host.message(1, o); },
 };
+
+// ---------- voice chat (online rooms) ----------
+const voice = createVoice(o => net.send(o));
+$('voiceon').checked = voice.on; $('voiceon').onchange = e => { voice.setOn(e.target.checked); if (e.target.checked && !$('solo').checked) voice.startMic().then(ok => status(ok ? 'Microphone ready for squad voice chat.' : voice.err)); };
+voice.getIce();
+// a small speaker over a teammate's head while they talk
+const TALK_MAT = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#40e070'; g.beginPath(); g.moveTo(10, 24); g.lineTo(22, 24); g.lineTo(36, 10); g.lineTo(36, 54); g.lineTo(22, 40); g.lineTo(10, 40); g.fill(); g.strokeStyle = '#40e070'; g.lineWidth = 5; for (const r of [12, 22]) { g.beginPath(); g.arc(36, 32, r, -0.8, 0.8); g.stroke(); } const t = new THREE.CanvasTexture(c); return new THREE.SpriteMaterial({ map: t, depthTest: false, fog: false }); })();
+function voiceLine() { if (S.net !== 'online' || !voice.on) return ''; return voice.mic ? (voice.muted ? 'MIC OFF' : 'MIC ON') : 'NO MIC'; }
+function toggleMic() { if (!voice.mic) { if (voice.err) hint(head.pos.x + head.fwd.x, head.pos.y, head.pos.z + head.fwd.z, 'NO MIC'); return; } voice.setMuted(!voice.muted); sfx.beep(null, voice.muted ? 500 : 900); hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.2, head.pos.z + head.fwd.z * 1.2, voice.muted ? 'MIC MUTED' : 'MIC ON'); }
 
 // ---------- hands & guns ----------
 const mkIn = () => ({ trig: 0, grip: 0, a: 0, b: 0, stick: 0, sx: 0, sy: 0, thumb: 0, trigT: 0 });
@@ -324,11 +334,12 @@ function showEndPanel() {
 function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z); }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ['RESTART MISSION', 'start'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ['RESTART MISSION', 'start'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
   const act = panel.probe(o, d, false); if (!act) return act === '';   // a pull on the panel background is swallowed, not fired
+  if (act === 'mic') { toggleMic(); toggleMenu(true); return true; }
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
   if (act === 'tod') { cycleTod(); showLobbyPanel(); return true; }
   if (act.startsWith('fit:')) { const k = act.slice(4); if (k === 'done') { sfx.click(); S.panel = 'lobby'; showLobbyPanel(); } else { if (k !== 'open') fitStep(k); showFit(k === 'open'); } return true; }
@@ -350,8 +361,9 @@ function hudText() {
   if (M.training) { const T = trainLine(); return { mm: 'RANGE', hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'HITS ' + T.hits + '/' + T.shots + '  NO-SHOOT ' + T.ns + '  HOUSE ' + T.run + ' (best ' + T.best + ')', mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() }; }
   if (S.spec) return { mm, hp: S.me.hp, err: '', obj: 'DOWN - SPECTATING ' + S.spec, mags: S.me.team === 'tango' ? 'TERRORIST' : 'SWAT' };
   if (S.pvp && S.me.team === 'tango') return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: 'TERRORIST  HOSTAGES RESCUED ' + S.secured + '/' + S.civs + '  BOMBS LIVE ' + (S.bombs.length - S.defused) + '  LOCKS ' + (S.me.locks || 0) + '  TRAPS ' + (S.me.traps || 0), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() };
+  for (const [id, o] of S.officers) { const talk = !o.bot && voice.level(id) > 0.12; if (talk && !o.talk) { o.talk = new THREE.Sprite(TALK_MAT); o.talk.scale.set(0.14, 0.14, 1); o.talk.position.y = 0.48; o.talk.renderOrder = 998; o.head.add(o.talk); } if (o.talk) o.talk.visible = talk; }
   const squad = [...S.officers.values()].filter(o => o.bot).map(o => o.name + ' ' + (o.down ? 'DOWN' : BOT_ST[o.bst] || '')).join('  ');
-  return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: (S.pvp ? 'SWAT  ' : '') + (squad ? squad + '  ' : '') + 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
+  return { mm, hp: S.me.hp, err: ERRS[ERRS.length - 1] || '', obj: (voiceLine() ? voiceLine() + '  ' : '') + (S.pvp ? 'SWAT  ' : '') + (squad ? squad + '  ' : '') + 'HOSTAGES ' + S.secured + '/' + S.civs + '  BOMBS ' + S.defused + '/' + S.bombs.length + (S.hvt ? '  HVT ' + S.hvt : '') + (S.wx !== 'clear' ? '  ' + S.wx.toUpperCase() : ''), mags: 'MAGS R' + guns.rifle.mags + ' P' + guns.pistol.mags + ' ' + guns.rifle.st.mode.toUpperCase() + '  ' + ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTERS', cam: 'CAM' })[S.tool] + (S.nvg ? ' NVG' : '') + ' F' + S.me.fl + ' S' + S.me.sm };
 }
 function drawHud() {
   const h = hudText();
@@ -370,7 +382,7 @@ function drawHud() {
   } else if (S.mode === 'desktop') {
     const G = gunIn(hands[1]);
     $('hud').textContent = (S.phase === 'active' ? h.mm : S.phase.toUpperCase()) + '   HP ' + h.hp + '   ' + h.obj + '   ' + h.mags + (G ? (G.st.mag === null ? '   NO MAG' : G.st.locked ? '   BOLT OPEN' : !G.st.chamber ? '   CHAMBER EMPTY' : '') : '') + (S.me.down ? '   ** DOWN **' : '') + (S.me.w ? '   HIT: ' + PARTS.filter((p, i) => S.me.w & (1 << i)).join(',') : '') + (S.me.med ? '' : '   MED 1');
-    if (S.touch) { $('bOrd').style.display = botsUp() ? '' : 'none'; $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = tangoTools() && (S.tool === 'pick' || S.tool === 'cutters') ? toolLabel(S.tool, '') : ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); { const nx = M.training ? MAPS[S.nextMap] : M; $('bTod').style.display = $('tstart').style.display !== 'none' && nx && nx.tods ? 'flex' : 'none'; $('bTod').textContent = 'TIME: ' + S.todPick.toUpperCase(); } $('bTeam').style.display = $('tstart').style.display; $('bTeam').textContent = 'TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT');  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
+    if (S.touch) { $('bMic').style.display = S.net === 'online' && voice.on ? '' : 'none'; $('bMic').textContent = voice.mic ? (voice.muted ? 'MIC OFF' : 'MIC ON') : 'NO MIC'; $('bOrd').style.display = botsUp() ? '' : 'none'; $('tstart').style.display = S.phase !== 'active' || S.tmenu || M.training ? 'flex' : 'none'; $('tstart').classList.toggle('tr', !!M.training && !S.tmenu); $('bMap').textContent = M.training ? 'MISSION: ' + (MAPS[S.nextMap] || MAPS[MISSION_IDS[0]]).name : 'MAP: ' + M.name; $('bEnd').style.display = S.phase === 'active' && !M.training ? 'flex' : 'none'; $('bTool').textContent = tangoTools() && (S.tool === 'pick' || S.tool === 'cutters') ? toolLabel(S.tool, '') : ({ hands: 'HANDS', pick: 'PICK', cutters: 'CUTTER', cam: 'CAM' })[S.tool]; $('bFlash').textContent = 'FLASH ' + S.me.fl; $('bSmoke').textContent = 'SMOKE ' + S.me.sm; $('bMed').style.opacity = S.me.med ? 0.3 : 1; $('bWx').textContent = 'WEATHER: ' + S.wxPick.toUpperCase(); { const nx = M.training ? MAPS[S.nextMap] : M; $('bTod').style.display = $('tstart').style.display !== 'none' && nx && nx.tods ? 'flex' : 'none'; $('bTod').textContent = 'TIME: ' + S.todPick.toUpperCase(); } $('bTeam').style.display = $('tstart').style.display; $('bTeam').textContent = 'TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT');  $('bMap').style.display = S.phase !== 'active' || M.training ? 'flex' : 'none'; $('bAim').classList.toggle('on', S.ads); }
   }
 }
 
@@ -403,6 +415,7 @@ function onMsg(m) {
   onMsg2(m);
 }
 function onMsg2(m) {
+  if (m.t === 'sig') { voice.signal(m.from, m.data); return; }
   if (m.t === 'welcome') { const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && (m.ph !== 'active' || m.init.map === 'training') && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
   else if (m.t === 'init') { applyInit(m.init); if (S.phase !== 'active' || M.training) showLobbyPanel(); }
   else if (m.t === 'full') status('That room is full (4 officers). Try another code.');
@@ -424,6 +437,7 @@ function applySnap(m) {
     o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team); o.bot = bot; o.bst = w >> 18 & 7; o.slot = id - 900;
   }
   for (const [id, o] of S.officers) if (!seen.has(id)) { scene.remove(o.g); S.officers.delete(id); }
+  voice.sync(S.me.id, [...S.officers.entries()].filter(([, o]) => !o.bot).map(([id]) => id), S.net === 'online');
   if (m.R) S.report = m.R;
   if (m.RT != null) { const d = m.RT - S.raceT; S.raceT = Math.abs(d) > 0.6 ? m.RT : S.raceT + d * 0.25; }
   if (m.TP && S.net !== 'offline') S.todPick = m.TP;
@@ -485,6 +499,7 @@ function deskKey(code) {
   if (code === 'KeyO') cycleWx();
   if (code === 'KeyP' && (S.phase !== 'active' || M.training)) cycleMap();
   if (code === 'KeyM') return toggleMenu();
+  if (code === 'KeyN') return toggleMic();
   if (S.me.down) return;
   if (code === 'KeyF') doShout();
   else if (code === 'KeyC') S.crouch = !S.crouch;
@@ -908,13 +923,16 @@ function connect(solo) {
 function begin(mode) { S.mode = mode; $('ui').style.display = 'none'; $('hud').style.display = mode === 'desktop' ? 'block' : 'none'; camera.rotation.set(0, 0, 0); camera.position.set(0, 1.66, 0); S.spawnIn = mode === 'vr' ? 4 : 0; placeAtSpawn(); resetLoadout(); showLobbyPanel(); }
 $('vr').onclick = async () => {
   initAudio(); const solo = $('solo').checked;
+  // the headset cannot show the microphone prompt once inside VR: ask on the page first, then enter VR with a second tap
+  if (!solo && voice.on && !voice.mic && !voice.asked && await voice.permission() !== 'granted') { voice.asked = true; status('Allow the microphone for squad voice chat...'); const ok = await voice.startMic(); status(ok ? 'Microphone ready. Press ENTER VR again.' : voice.err + ' Press ENTER VR again to play without talking.'); return; }
+  if (!solo && voice.on) voice.startMic().then(() => voice.unlock());
   try {
     const sp = navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] }); connect(solo);
     const session = await sp; await renderer.xr.setSession(session); begin('vr');
     session.addEventListener('end', () => { S.mode = null; $('ui').style.display = 'flex'; });
   } catch (e) { status('Could not start VR: ' + (e && e.message || e)); }
 };
-$('desk').onclick = () => { initAudio(); connect($('solo').checked); begin('desktop'); };
+$('desk').onclick = () => { initAudio(); if (!$('solo').checked && voice.on) voice.startMic().then(() => voice.unlock()); connect($('solo').checked); begin('desktop'); };
 if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then(ok => { $('vr').disabled = !ok; if (!ok) $('vrnote').textContent = 'No VR headset detected on this device. Open this page in the Quest browser.'; }).catch(() => { $('vr').disabled = true; });
 else { $('vr').disabled = true; $('vrnote').textContent = 'This browser has no WebXR. Open this page in the Quest browser.'; }
 // ---------- phone / tablet controls: left thumb moves, right thumb looks, buttons do the rest ----------
@@ -925,7 +943,7 @@ function initTouch() {
   S.touch = true; $('touch').style.display = 'block'; document.body.classList.add('touching');
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
-  bind('bOrd', () => { if (OW.open) closeOW(false); else openOW(); }); bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
+  bind('bMic', () => toggleMic()); bind('bOrd', () => { if (OW.open) closeOW(false); else openOW(); }); bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
   bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bWx', () => { cycleWx(); hudT = 0; }); bind('bTod', () => { cycleTod(); hudT = 0; }); bind('bTeam', () => { pickTeam(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
@@ -939,12 +957,12 @@ function initTouch() {
 }
 const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 if (isTouch) $('tplay').style.display = 'block';
-$('tplay').onclick = () => { initAudio(); connect($('solo').checked); begin('desktop'); initTouch(); try { document.documentElement.requestFullscreen?.().catch(() => { }); screen.orientation?.lock?.('landscape').catch(() => { }); } catch { } };
+$('tplay').onclick = () => { initAudio(); if (!$('solo').checked && voice.on) voice.startMic().then(() => voice.unlock()); connect($('solo').checked); begin('desktop'); initTouch(); try { document.documentElement.requestFullscreen?.().catch(() => { }); screen.orientation?.lock?.('landscape').catch(() => { }); } catch { } };
 let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('install').style.display = 'inline-block'; });
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v38';
+const BUILD = 'v39';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
