@@ -515,4 +515,15 @@ await t('solo terrorist: with no SWAT human the bots run the mission themselves'
   const sec = () => s.npcs.filter(n => n.kind === 'c' && n.st === 'u').length + s.bombs.filter(b => b.defused).length;
   run(s, 150, () => sec() >= 2 || s.phase !== 'active'); assert.ok(sec() >= 2, 'bots secured ' + sec() + ' objectives on their own');
 });
+await t('a terrorist can down every bot, leg shots included', () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'T'); s.setTeam(1, 'tango'); s.start(9, false, 'clear', 'mansion'); s.tick(1 / 15);
+  const me = s.players.get(1);
+  for (const b of s.bots()) for (const dy of [-0.62, -1.08, -0.62, -0.32, -0.32, -0.32, -0.32]) {   // legs first: a leg hit used to leave hp NaN and the bot unkillable
+    if (b.down) break; me.hp = 100; s.pose(1, { h: [b.hx + 3, b.hy, b.hz, 0, 0, 0, 1] });
+    const o = [b.hx + 2.8, b.hy - 0.1, b.hz], t = [b.hx, b.hy + dy, b.hz], d = t.map((v, i) => v - o[i]), l = Math.hypot(...d);
+    for (const q of s.bots()) if (q !== b && !q.down) { q.bot.x = q.hx = b.hx - 6; }   // keep the others out of the line of fire
+    me.lastShot = -9; s.shot(1, { o, d: d.map(v => v / l), w: 'pistol' }); assert.ok(Number.isFinite(b.hp), b.name + ' hp stays a number');
+  }
+  for (const b of s.bots()) assert.ok(b.down, b.name + ' went down');
+});
 console.log(n + ' tests passed');

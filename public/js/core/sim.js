@@ -126,13 +126,13 @@ export class Sim {
     let tg = null; if (this.targets) { if (p.tr) p.tr.shots++; for (const t of this.targets) { if (!t.up) continue; const h = this.rayTarget(t, ox, oy, oz, dx, dy, dz, best); if (h >= 0 && h < best) { best = h; kind = 't'; tg = t; } } }
     if (p.hold && w === 'rifle') return;   // one hand on the hostage: pistol only
     for (const n of this.npcs) { if (n.st === 'd' || n.held === id) continue; for (const [sx, sy, sz, sr, pt] of this.spheres(n)) { const t = raySphere(ox, oy, oz, dx, dy, dz, sx, sy, sz, sr); if (t >= 0 && t < best) { best = t; kind = 'n'; tn = n; part = pt; } } }
-    let pp = 'torso'; for (const q of this.players.values()) { if (q === p || q.down || !q.has) continue; for (const [oy2, sr, pt] of [[0, 0.14, 'head'], [-0.32, 0.21, 'torso'], [-0.62, 0.2, 'legL']]) { const t = raySphere(ox, oy, oz, dx, dy, dz, q.hx, q.hy + oy2, q.hz, sr); if (t >= 0 && t < best) { best = t; kind = 'p'; tp = q; tn = null; pp = pt; } } }
+    let pp = 'torso'; for (const q of this.players.values()) { if (q === p || q.down || !q.has) continue; for (const [oy2, sr, pt] of [[0, 0.14, 'head'], [-0.32, 0.21, 'torso'], [-0.62, 0.2, 'legL'], [-1.08, 0.17, 'legL']]) { const t = raySphere(ox, oy, oz, dx, dy, dz, q.hx, q.hy + oy2, q.hz, sr); if (t >= 0 && t < best) { best = t; kind = 'p'; tp = q; tn = null; pp = pt; } } }
     this.ev({ e: 'ps', p: id, w, o: [r2(ox), r2(oy), r2(oz)], h: [r2(ox + dx * best), r2(oy + dy * best), r2(oz + dz * best)], k: kind });
     if (kind === 't') { const ns = !tg.hostile; if (p.tr) { if (ns) p.tr.ns++; else p.tr.hits++; } if (ns && tg.kind === 'house') this.house.ns++; tg.hit = true; if (tg.kind !== 'move') { tg.up = 0; tg.tt = tg.kind === 'static' ? 1.2 : 1 + this.rnd() * 2; } this.ev({ e: 'th', t: tg.i, ns, p: id }); return; }
     const tango = p.team === 'tango';
     if (!this.M.training && !tango) this.noise(ox, oz, 45, p); else if (tango) this.botHear(ox, oz);
     if (kind === 'n') { if (tango && tn.kind === 's') return; if (tango) { tn.hp -= DMG[w][part]; if (tn.hp <= 0) { tn.st = 'd'; this.log.civExecuted = (this.log.civExecuted || 0) + 1; } this.ev({ e: 'hit', n: tn.id, dead: tn.hp <= 0 }); return; } this.hitNpc(tn, DMG[w][part], p, part); }
-    else if (kind === 'p' && !this.M.training) { if (tp.team !== p.team) { if (tp.hold) this.drop(tp, 'shot'); } if (tp.team !== p.team) this.hurt(tp, DMG[w][pp === 'legL' ? (this.rnd() < 0.5 ? 'legL' : 'legR') : pp] * 0.75, pp === 'legL' ? 'legL' : pp); else { this.log.ff++; this.hurt(tp, DMG[w].torso * 0.6); } }
+    else if (kind === 'p' && !this.M.training) { if (tp.team !== p.team) { if (tp.hold) this.drop(tp, 'shot'); } if (tp.team !== p.team) this.hurt(tp, DMG[w][pp === 'legL' ? 'legs' : pp] * 0.75, pp === 'legL' ? (this.rnd() < 0.5 ? 'legL' : 'legR') : pp); else { this.log.ff++; this.hurt(tp, DMG[w].torso * 0.6); } }
   }
   spheres(n) { if (n.st === 'i' || n.st === 'j') return [[n.x, n.y + 0.2, n.z, 0.28, 'torso']]; const k = KNEEL[n.st] || n.crouch ? 0.62 : n.st === 'x' ? 0.93 : 1; return [[n.x, n.y + 1.62 * k, n.z, 0.13, 'head'], [n.x, n.y + 1.32 * k, n.z, 0.2, 'torso'], [n.x, n.y + 1.02 * k, n.z, 0.2, 'torso'], [n.x, n.y + 0.55 * k, n.z, 0.18, 'legs']]; }
   hitNpc(n, dmg, p, part) {
@@ -147,7 +147,7 @@ export class Sim {
     if (n.exec && n.st === 'c' && this.rnd() < 0.5) n.exec = null;   // a wounded suspect may lose his nerve
     this.ev({ e: 'hit', n: n.id, dead });
   }
-  hurt(p, dmg, part = 'torso') { if (p.down) return; p.hp -= dmg; p.w |= 1 << PARTS.indexOf(part); this.ev({ e: 'hurt', p: p.id, part }); if (p.hp <= 0) { p.hp = 0; p.down = true; this.log.downs++; this.ev({ e: 'down', p: p.id }); } }
+  hurt(p, dmg, part = 'torso') { if (p.down || !(dmg > 0)) return; if (!Number.isFinite(p.hp)) p.hp = 100; p.hp -= dmg; p.w |= 1 << PARTS.indexOf(part); this.ev({ e: 'hurt', p: p.id, part }); if (p.hp <= 0) { p.hp = 0; p.down = true; this.log.downs++; this.ev({ e: 'down', p: p.id }); } }
   noise(x, z, radius, src) {
     radius *= HEAR[this.weather];
     for (const n of this.npcs) if (n.kind === 's' && n.st === 'g' && Math.hypot(n.x - x, n.z - z) < radius) {
