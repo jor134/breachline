@@ -99,7 +99,7 @@ export const CarGeo = (() => {
 })();
 
 // The downloaded car ("Ferrari F1 2019" by valvetin, CC BY 4.0), stripped to solid colours and simplified by
-// tools/solid_car.py: one mesh per colour group, smooth-shaded with hard edges kept. Until it has loaded, cars use the built-in shape above.
+// tools/hq_car.py: one mesh per colour group, smooth-shaded with hard edges kept. Until it has loaded, cars use the built-in shape above.
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { toCreasedNormals } from '../vendor/BufferGeometryUtils.js';
 const M = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.55, metalness: 0.1, side: THREE.DoubleSide }, o));
