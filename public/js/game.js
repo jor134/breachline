@@ -10,6 +10,7 @@ import { resolveCircle, rayStatic, MAP_IDS, MAPS, MISSION_IDS, registerMap } fro
 import { compile as compileCustom } from './core/maps/custom.js';
 import { createVoice } from './voice.js';
 import { createRace } from './race.js';
+import { createTutorial } from './tutorial.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 
@@ -79,6 +80,11 @@ function loadMap(id, tod) {
 loadMap(MAP_IDS.includes(Q.get('map')) ? Q.get('map') : 'training');
 // ?draft=1: the level editor's TEST button. The draft from this device's editor plays solo, straight into the mission.
 const DRAFT = (() => { if (!Q.get('draft')) return null; try { const d = JSON.parse(localStorage.getItem('bl_draft') || 'null'); if (!d) return null; registerMap(compileCustom(d, 'draft')); return d; } catch (e) { console.warn('draft not loaded', e); return null; } })();
+// the tutorial: from the start screen (TUTORIAL button, the first-visit offer or ?tut=1) it runs solo; from the mission board, in place
+let TUT = false; let tutSeen = false; try { tutSeen = !!localStorage.getItem('bl_tutseen'); } catch (e) { }
+function armTutorial() { TUT = true; $('solo').checked = true; $('tutoffer').style.display = 'none'; try { localStorage.setItem('bl_tutseen', '1'); } catch (e) { } status('Tutorial: now pick ENTER VR, PLAY ON THIS PHONE / TABLET or Desktop. It runs solo in the training facility.'); $('tutbtn').classList.add('on'); }
+$('tutbtn').onclick = armTutorial; $('tutgo').onclick = armTutorial; $('tutno').onclick = e => { e.preventDefault(); $('tutoffer').style.display = 'none'; try { localStorage.setItem('bl_tutseen', '1'); } catch (er) { } };
+if (!tutSeen && !Q.get('draft')) $('tutoffer').style.display = 'block'; if (Q.get('tut')) setTimeout(armTutorial, 0);
 if (DRAFT) { $('solo').checked = true; setTimeout(() => { status('Testing your draft "' + DRAFT.name + '": pick VR, phone or desktop. It plays solo.'); const a = $('editlink'); a.textContent = 'BACK TO THE EDITOR'; }, 0); }   // everyone arrives at the training facility; the mission board sends the squad out
 
 const S = { mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
@@ -102,7 +108,7 @@ const net = {
     });
   },
   local(name) { this.host = new RoomHost((id, o) => onMsg(JSON.parse(JSON.stringify(o)))); this.host.join(1, name); this.timer = setInterval(() => this.host.tick(), TICK * 1000); },
-  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); else if (this.host) this.host.message(1, o); },
+  send(o) { if (o && window.__tut) window.__tut.note(o.t); if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); else if (this.host) this.host.message(1, o); },
 };
 
 // ---------- voice chat (online rooms) ----------
@@ -294,6 +300,12 @@ class Panel {
   }
 }
 const panel = new Panel();
+const coach = new Panel(); coach.mesh.scale.setScalar(0.7); coach.mesh.visible = false;   // the tutorial's own panel (VR)
+const tut = window.__tut = createTutorial({ THREE, scene, S, M: () => M, head, coach, sfx,
+  hits: () => trainLine().hits, mag: k => guns[k].st.mag, yaw: () => S.mode === 'vr' ? head.yaw : S.yaw, holding: k => hands.some(h => h.item === k), botsUp: () => botsUp(),
+  groundY: (x, z) => level.groundY(x, z, S.feetY + 0.5), say: t => sayAt(head.pos.x + head.fwd.x * 1.2, head.pos.y + 0.2, head.pos.z + head.fwd.z * 1.2, t, '#7dffa0'),
+  toTraining: () => net.send({ t: 'restart', wx: S.wxPick, map: 'training' }),
+  pickMission: (m, wx, tod) => { S.nextMap = m; S.wxPick = wx; S.todPick = tod; net.send({ t: 'choose', m, wx, tod }); showLobbyPanel(); } });
 // PvP: each player picks a side on the board; one terrorist is enough to make the next mission a PvP round
 const pvpOn = () => (S.squadT || []).some(t => t === 'tango');
 const teamBtn = () => ['TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT'), 'team'];
@@ -310,7 +322,7 @@ function showBoard() {   // the mission board in the training lobby: pick where 
     [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
       'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', 'Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
       'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'],
-    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 // BODY FIT (training board, VR): slide your own body forward/back and up/down under the headset; kept on this device
 const FIT0 = { d: SELF_BACK.d, up: 0, gear: 0 };
@@ -340,7 +352,9 @@ function toggleMenu(open = !S.menu) {
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
-  const act = panel.probe(o, d, false); if (!act) return act === '';   // a pull on the panel background is swallowed, not fired
+  const ca = coach.probe(o, d, false); if (ca) return tut.act(ca); if (ca === '') return true;
+  const act = panel.probe(o, d, false); if (!act) return act === '';
+  if (act === 'tut') { sfx.click(); tut.showMenu(); return true; }   // a pull on the panel background is swallowed, not fired
   if (act === 'mic') { toggleMic(); toggleMenu(true); return true; }
   if (act === 'home') { goHome(); return true; }
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
@@ -450,6 +464,7 @@ function applySnap(m) {
 }
 const LINES = { surrender: ["DON'T SHOOT!", '#ffe080', "Don't shoot! I give up!"], defy: ['NO!', '#ff7070', 'No way!'], comply: ['OK! OK!', '#a0e0ff', 'Okay, okay!'], plead: ['PLEASE!', '#a0e0ff', 'Please help us!'], threat: ['BACK OFF OR THEY DIE!', '#ff3030', 'Back off or the hostage dies!'], fake: ['(draws weapon)', '#ff4040', ''] };
 function onEvent(e) {
+  tut.event(e, S.me.id);
   const a = e.n != null ? S.actors.get(e.n) : null;
   switch (e.e) {
     case 'start': resetLoadout(); placeAtSpawn(); S.report = null; S.menu = false; S.panel = null; panel.mesh.visible = false; if (M.training) showLobbyPanel(); sfx.ok(); break;
@@ -511,6 +526,7 @@ function deskKey(code) {
   else if (code === 'KeyL' && S.phase === 'active') net.send({ t: 'end' });
   else if (code === 'KeyE') deskInteract();
   else if (code === 'KeyG') openOW();
+  else if (code === 'KeyK') tut.key();
   else if (code === 'KeyQ') doKick();
   else if (code === 'KeyN') toggleNVG();
   else if (code === 'KeyH') useMed();
@@ -861,6 +877,7 @@ const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 
 function frame(t) {
   const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t; S.now += dt;
   if (S.spawnIn && --S.spawnIn === 0) { headWorld(); placeAtSpawn(); showLobbyPanel(); }
+  if (TUT && S.mode && !S.spawnIn && S.me.id) { TUT = false; tut.start('core'); }   // the tutorial starts once you stand in the facility
   if (S.mode === 'vr') { readVR(); headWorld(); moveVR(dt); collide(); for (const h of hands) if (h.active) { (h.xr.src && h.xr.src.gripSpace ? h.xr.grip : h.xr.ray).getWorldPosition(h.pos); h.xr.ray.getWorldQuaternion(h.quat).multiply(tiltQ); } }
   else if (S.mode === 'desktop') {
     moveDesktop(dt); collide(); camera.updateMatrixWorld(true);
@@ -880,10 +897,11 @@ function frame(t) {
   if (S.mode === 'vr') for (const h of hands) if (h.active && !h.item) { const i = nearestDoor(h.pos, 0.95); if (i >= 0) world.doors[i].hot = true; }
   for (const d of world.doors) d.hm.emissive.setHex(d.hot ? 0x30c060 : 0);
   // panel cursor
-  panel.cursor.visible = false;
+  panel.cursor.visible = false; coach.cursor.visible = false;
+  if (coach.mesh.visible && S.mode === 'vr') for (const h of hands) { if (!h.active) continue; const G = gunIn(h); if (G) { G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set(0, 0, -1).applyQuaternion(G.mesh.quaternion); } else { v1.copy(h.pos); v2.set(0, 0, -1).applyQuaternion(h.quat); } if (coach.probe(v1, v2, true) !== null) break; }
   if (panel.mesh.visible && S.mode) for (const h of hands) { if (!h.active) continue; const G = gunIn(h); if (G) { G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set(0, 0, -1).applyQuaternion(G.mesh.quaternion); } else { v1.copy(h.pos); v2.set(0, 0, -1).applyQuaternion(h.quat); } if (panel.probe(v1, v2, true) !== null) break; }
   if ((S.phase === 'lobby' || M.training && S.phase === 'active') && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
-  updateTargets(dt);
+  updateTargets(dt); tut.tick(dt);
   spectate(dt);
   if (race) { S.raceT += dt; race.update(S.raceT, head.pos, level.inside(head.pos.x, head.pos.z, head.pos.y)); }
   // world animation
@@ -947,7 +965,7 @@ function initTouch() {
   const bind = (id, down, up) => { const el = $(id); el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); initAudio(); el.classList.add('on'); down(); }); const end = () => { el.classList.remove('on'); if (up) up(); }; el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); el.addEventListener('pointerleave', end); };
   bind('bFire', () => { mouseL = true; }, () => { mouseL = false; }); bind('bAim', () => { S.ads = !S.ads; }); bind('bReload', () => deskKey('KeyR')); bind('bUse', () => deskKey('KeyE')); bind('bShout', () => deskKey('KeyF')); bind('bKick', () => deskKey('KeyQ'));
   bind('bMic', () => toggleMic()); bind('bOrd', () => { if (OW.open) closeOW(false); else openOW(); }); bind('bSwap', () => deskKey(hands[1].item === 'rifle' ? 'Digit2' : 'Digit1')); bind('bTool', () => deskKey({ hands: 'Digit4', pick: 'Digit5', cutters: 'Digit8', cam: 'Digit3' }[S.tool])); bind('bFlash', () => deskKey('Digit6')); bind('bSmoke', () => deskKey('Digit7')); bind('bMed', () => deskKey('KeyH')); bind('bNvg', () => deskKey('KeyN')); bind('bLight', () => deskKey('KeyT')); bind('bCrouch', () => deskKey('KeyC'));
-  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bHome', () => goHome()); if (DRAFT) $('bHome').textContent = 'EDITOR'; bind('bWx', () => { cycleWx(); hudT = 0; }); bind('bTod', () => { cycleTod(); hudT = 0; }); bind('bTeam', () => { pickTeam(); hudT = 0; });
+  bind('bMenu', () => { S.tmenu = !S.tmenu; hudT = 0; }); bind('bDusk', () => { net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() }); S.tmenu = false; }); bind('bMap', () => { cycleMap(); hudT = 0; }); bind('bEnd', () => { net.send({ t: 'end' }); S.tmenu = false; }); bind('bHome', () => goHome()); bind('bTutT', () => { tut.showMenu(); S.tmenu = false; }); if (DRAFT) $('bHome').textContent = 'EDITOR'; bind('bWx', () => { cycleWx(); hudT = 0; }); bind('bTod', () => { cycleTod(); hudT = 0; }); bind('bTeam', () => { pickTeam(); hudT = 0; });
   const stick = $('tstick'), knob = $('tknob'); let sid = null;
   const sMove = e => { const r = stick.getBoundingClientRect(), dx = (e.clientX - r.left - r.width / 2) / (r.width / 2), dy = (e.clientY - r.top - r.height / 2) / (r.height / 2), l = Math.max(1, Math.hypot(dx, dy)); S.tmove.x = dx / l; S.tmove.y = dy / l; knob.style.transform = `translate(${S.tmove.x * 34}px,${S.tmove.y * 34}px)`; };
   const sEnd = e => { if (e.pointerId !== sid) return; sid = null; S.tmove.x = S.tmove.y = 0; knob.style.transform = ''; };
@@ -965,9 +983,9 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v43';
+const BUILD = 'v45';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { get wheel() { return wheel; }, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { get wheel() { return wheel; }, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

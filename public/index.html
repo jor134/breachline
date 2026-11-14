@@ -24,6 +24,14 @@ button{padding:13px 16px;font-size:16px;font-weight:700;border:0;border-radius:6
 #vr{width:100%;background:#1f7a3d;color:#fff}#vr:disabled{background:#2a3038;color:#6b7684;cursor:default}
 #desk{width:100%;background:#1c2a3b;color:#cfe0f2}
 #install{display:none;background:#3a6ea5;color:#fff;width:100%}
+#tutbtn{background:#c08a1e;color:#111}#tutbtn.on{outline:3px solid #ffe08a}
+#tutoffer{background:#2a2110;border:1px solid #c08a1e;border-radius:8px;padding:10px 12px;margin:6px 0 4px;font-size:14px;color:#f2e2c0;line-height:1.35}#tutgo{background:#c08a1e;color:#111}
+#coach{position:fixed;top:8px;left:50%;transform:translateX(-50%);width:min(560px,52vw);background:rgba(8,16,24,.88);border:2px solid #40ff80;border-radius:10px;padding:8px 12px;color:#e8eef5;font:14px/1.35 sans-serif;z-index:30;pointer-events:auto}
+#coach .ch{display:flex;gap:10px;align-items:baseline}#coach .ch b{color:#7dffa0;font-size:15px}#coach .ch span{color:#8fb4dc;font-size:11px;flex:1}#coach .cmin{flex:0;cursor:pointer;padding:0 6px;font-size:16px;color:#e8eef5}
+#coach .ct{margin:5px 0 6px}#coach .cb{display:flex;gap:8px;flex-wrap:wrap}#coach button{margin:0;padding:7px 12px;font-size:13px;background:#1f7a3d;color:#fff}#coach button[data-a="tut:exit"]{background:#39424e}#coach .ck{font-size:11px;color:#8fb4dc;margin-top:4px}
+#coach.min .ct,#coach.min .cb,#coach.min .ck{display:none}
+body.touching #coach{top:auto;bottom:6px;left:45%;width:min(370px,44vw)}
+@media (max-height:500px){#coach{font-size:12px;padding:5px 9px;width:min(520px,50vw)}body.touching #coach{width:min(370px,44vw)}#coach .ct{margin:3px 0 4px}#coach button{padding:5px 9px;font-size:12px}}
 .row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px;color:#b9c6d4}
 .row input[type=range]{flex:1}
 #status,#vrnote{font-size:13px;color:#ffcf8a;margin-top:10px;min-height:1em}
@@ -52,11 +60,13 @@ body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:c
 <body><pre id="errs" style="display:none;position:fixed;left:6px;bottom:6px;z-index:50;max-width:70vw;white-space:pre-wrap;font:11px monospace;color:#ff9a80;background:rgba(0,0,0,.6);padding:4px 6px;margin:0;pointer-events:none"></pre>
 <div id="ui"><div class="card">
   <h1>BREACHLINE</h1><div class="sub">Co-op tactical entry &middot; Quest, phone, tablet or desktop &middot; up to 4 officers</div>
+  <div id="tutoffer" style="display:none"><b>New to BREACHLINE?</b> A hands-on tutorial teaches the controls in about ten minutes, then takes you on your first mission.<div class="row" style="justify-content:center;gap:14px;margin-top:8px"><button id="tutgo" style="width:auto;padding:10px 18px;margin:0">TAKE THE TUTORIAL</button><a id="tutno" href="#" style="color:#9fb0c3">No thanks</a></div></div>
   <label for="name">Callsign</label><input id="name" type="text" maxlength="14" placeholder="Officer" autocomplete="off">
   <label for="room">Room code (share with your squad)</label><input id="room" type="text" maxlength="8" autocomplete="off">
   <div class="row"><input id="solo" type="checkbox"><span>Solo practice (no server)</span></div>
   <div class="row"><input id="voiceon" type="checkbox"><span>Voice chat with your squad (microphone)</span></div>
   <div class="row"><span>Gun tilt</span><input id="tilt" type="range" min="-40" max="40" step="1"><span id="tiltv"></span></div>
+  <div class="row" style="gap:8px"><button id="tutbtn" style="flex:1;margin:4px 0">TUTORIAL</button><a href="howto.html" id="howlink" style="flex:1;display:block;text-align:center;color:#7dd0ff;font-weight:bold;padding:12px 0">HOW TO PLAY</a></div>
   <button id="vr">ENTER VR</button><div id="vrnote"></div>
   <button id="tplay">PLAY ON THIS PHONE / TABLET</button>
   <button id="desk">Desktop preview (mouse + keyboard)</button>
@@ -74,7 +84,7 @@ body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:c
   <div class="tb" id="bFire">FIRE</div><div class="tb" id="bAim">AIM</div><div class="tb" id="bReload">RELOAD</div><div class="tb" id="bUse">USE</div><div class="tb" id="bShout">SHOUT</div>
   <div class="tr" id="trTop"><div class="tb" id="bMic" style="display:none">MIC</div><div class="tb" id="bSwap">GUN</div><div class="tb" id="bTool">HANDS</div><div class="tb" id="bMed">MED</div><div class="tb" id="bNvg">NVG</div><div class="tb" id="bLight">LIGHT</div></div>
   <div class="tr" id="trLeft"><div class="tb" id="bMenu">MENU</div><div class="tb" id="bOrd" style="display:none">SQUAD</div><div class="tb" id="bCrouch">CROUCH</div><div class="tb" id="bKick">KICK</div><div class="tb" id="bFlash">FLASH 2</div><div class="tb" id="bSmoke">SMOKE 1</div></div>
-  <div id="tstart"><div class="tb" id="bMap">MAP: MANSION</div><div class="tb" id="bWx">WEATHER: RANDOM</div><div class="tb" id="bTod" style="display:none">TIME: RANDOM</div><div class="tb" id="bTeam">TEAM: SWAT</div><div class="tb" id="bDusk">START MISSION</div><div class="tb" id="bEnd" style="background:rgba(150,40,30,.85)">END MISSION</div><div class="tb" id="bHome">HOME</div></div>
+  <div id="tstart"><div class="tb" id="bMap">MAP: MANSION</div><div class="tb" id="bWx">WEATHER: RANDOM</div><div class="tb" id="bTod" style="display:none">TIME: RANDOM</div><div class="tb" id="bTeam">TEAM: SWAT</div><div class="tb" id="bDusk">START MISSION</div><div class="tb" id="bEnd" style="background:rgba(150,40,30,.85)">END MISSION</div><div class="tb" id="bTutT">TUTORIAL</div><div class="tb" id="bHome">HOME</div></div>
 </div>
 <script type="module" src="js/game.js"></script>
 <div id="ow"></div>

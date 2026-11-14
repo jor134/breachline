@@ -492,6 +492,12 @@ await t('landscape: sculpted ground, a walk-out, foundations, trees, shrubs, wal
   for (let j = 0; j < nz; j++) for (let i = 0; i + 1 < nx; i++) assert.ok(Math.abs(c.ter[j * nx + i + 1] - c.ter[j * nx + i]) <= SLOPE);
   assert.equal(clean({ ...m, ter: new Array(nx * nz).fill(0) }).ter, undefined); assert.equal(clean({ ...m, ter: [1, 2, 3] }).ter, undefined, 'wrong size: dropped');
 });
+await t('tutorial: every step has words for each platform, and every marker can be walked to from the lobby', async () => {
+  const { TUT_STEPS, TUT_EXTRAS, TUT_MARKS } = await import('../public/js/tutorial.js'); const TL = buildLevel('training');
+  const all = [...TUT_STEPS, ...Object.values(TUT_EXTRAS).flatMap(e => e.steps)];
+  for (const st of all) { assert.ok(st.title && st.text && st.text.vr, 'words for ' + st.title); assert.ok(st.info || st.done, st.title + ' ends somehow'); if (!st.vrOnly && !st.info) assert.ok(st.text.touch && st.text.desk || st.text.vr.indexOf('GRIP') < 0, st.title + ' has phone and desktop words'); }
+  for (const [k, [x, z]] of Object.entries(TUT_MARKS)) { const p = findPath(TL, 10, 23, 0, x, z, 0); assert.ok(p && Math.hypot(p.at(-1)[0] - x, p.at(-1)[1] - z) < 1, 'marker ' + k + ' reachable'); }
+});
 Sim.BOTS = true;
 const run = (s, sec, until) => { const ev = []; for (let i = 0; i < sec * 15; i++) { s.tick(1 / 15); ev.push(...s.events.splice(0)); if (until && until()) break; } return ev; };
 await t('bots: three fill a solo squad, two with a friend, a joiner takes a bot place, none in training; rooms count humans', async () => {

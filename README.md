@@ -24,6 +24,10 @@ Sound effects are recorded CC0 libraries from GitHub (Free Firearm Sound Library
 ## Not in yet
 Voice chat, climbing (container tops, crane ladders), downloaded furniture and character models, AI teammates.
 
+## Tutorial
+
+`js/tutorial.js`: a guided, hands-on tutorial. Start it from TUTORIAL on the start screen (also offered on the first visit, or `?tut=1`), or from the mission board (VR / desktop board, phone top row). Part one in the training facility (move, turn, rifle, shoot, reload, pistol, light, doors, kick, shout, tool wheel, wrist / radio menu, mission board), part two on a first mission (squad orders, arrest, finish). Each step waits until the player does it (green marker for where to go), worded for VR, phone or desktop; SKIP / EXIT always available (desktop: K). Extra lessons: body fit, night vision, grenades, locks and traps, bomb, kill house, playing with friends / PvP, level editor. VR shows a floating coach panel; phone and desktop an overlay. `howto.html` is the readable guide (controls for all three platforms, missions, squad orders, setup, online, PvP, editor).
+
 ## Level editor
 
 `editor.html` (linked from the start screen as LEVEL EDITOR) builds maps top-down with a mouse or touch: rooms on a 0.5 m grid (up to 3 floors), doors, archways, gaps and windows on their walls, stairs between floors, furniture, the squad spawn and exit, and suspect, hostage, bomb, HVT and breaker spots. Style presets (house, office, warehouse, terminal), day or night, and uploaded textures for walls, the ground and floors. CHECK finds problems (missing markers, spots nobody can reach), TEST plays the draft solo in the game (`?draft=1`), PUBLISH puts it on the training room's mission board for everyone. Drafts save on the device; Open also lists published maps to edit, and maps can be exported and imported as JSON.
