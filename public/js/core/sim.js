@@ -180,6 +180,7 @@ export class Sim {
   revive(id, tid) { const p = this.players.get(id), q = this.players.get(tid); if (p && q && !p.down && q.down && p.team === q.team && this.near(p, q.hx, q.y, q.hz, 1.8)) { q.down = false; q.hp = 40; this.ev({ e: 'revive', p: tid }); } }
   door(id, did) {
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || !this.near(p, d.cx, d.y, d.cz, 2.2)) return;
+    if (p.bot) { p.bot.reachT = this.t; p.bot.reachAt = [d.cx, d.y + 1.0, d.cz]; }   // the bot's hand goes to the lever (botPose)
     const own = this.pvp && p.team === 'tango' && d.pad === undefined;   // terrorist players have the keys and know where their wires are
     if (!this.doorOpen[did] && this.doorLocked[did]) { if (!own) return this.ev({ e: 'locked', d: did }); this.doorLocked[did] = false; }
     if (!this.doorOpen[did] && this.doorTrap[did]) { if (own) this.doorTrap[did] = 0; else this.trip(did, p); }
@@ -220,7 +221,7 @@ export class Sim {
     const p = this.players.get(id), k = m.k === 'smoke' ? 'smoke' : 'flash'; if (!p || p.down || this.phase !== 'active' || !Array.isArray(m.o) || !Array.isArray(m.v) || ![...m.o, ...m.v].every(Number.isFinite) || !this.near(p, m.o[0], p.y, m.o[2], 1.8)) return;
     if (k === 'flash' ? p.fl <= 0 : p.sm <= 0) return; if (k === 'flash') p.fl--; else p.sm--;
     let [vx, vy, vz] = m.v; const sp = Math.hypot(vx, vy, vz), cap = 15; if (sp > cap) { vx *= cap / sp; vy *= cap / sp; vz *= cap / sp; }
-    this.gren.push({ k, x: m.o[0], y: m.o[1], z: m.o[2], vx, vy, vz, t: 0, fuse: k === 'flash' ? 1.7 : 1.3, by: id }); this.ev({ e: 'throw', p: id, k });
+    this.gren.push({ k, x: m.o[0], y: m.o[1], z: m.o[2], vx, vy, vz, t: 0, fuse: k === 'flash' ? 1.7 : 1.3, by: id }); this.ev({ e: 'throw', p: id, k }); if (p.bot) p.bot.throwT = this.t;
   }
   tickGrenades(dt) {
     for (const g of this.gren) {
@@ -293,7 +294,7 @@ export class Sim {
     const p = this.players.get(id), d = this.level.doors[did]; if (!p || p.down || !d || this.doorOpen[did] || !this.near(p, d.cx, d.y, d.cz, 2.2) || this.t - p.lastKick < 0.7) return;
     p.lastKick = this.t; const ok = !this.doorLocked[did] || (d.pad === undefined && this.rnd() < 0.55);   // a padlocked container door does not give
     if (ok) { if (this.doorTrap[did]) this.trip(did, p); this.doorLocked[did] = false; this.doorOpen[did] = true; }
-    this.ev({ e: 'kick', d: did, ok }); if (this.phase === 'active') this.noise(d.cx, d.cz, 16, p);
+    this.ev({ e: 'kick', d: did, ok, p: id }); if (this.phase === 'active') this.noise(d.cx, d.cz, 16, p);
   }
   cut(id, bi, wi) {
     const p = this.players.get(id), b = this.bombs[bi]; if (!p || p.down || p.team === 'tango' || !b || b.defused || b.failed || this.phase !== 'active' || !(wi >= 0 && wi < 4) || b.cut[wi] || !this.near(p, b.x, b.y - 0.8, b.z, 2)) return;
@@ -382,6 +383,7 @@ export class Sim {
   }
   tickSuspect(n, dt) {
     if (DONE[n.st]) return;
+    if (n.rl > 0 && (n.rl -= dt) <= 0) { n.rl = 0; n.mag = n.hvt ? 15 : 30; }
     if (n.stun > 0) { n.stun -= dt; return; }
     if (n.st === 's' || n.st === 'k') {
       n.tS += dt;
@@ -422,7 +424,7 @@ export class Sim {
       if (seen) {
         n.tgt = seen.id; n.lost = 0; n.lk = [seen.hx, seen.hz, seen.y]; this.face(n, seen.hx, seen.hz, dt, 8); n.react -= dt;
         if (n.strafe) { if (!this.walk(n, dt, 1.9, true)) n.strafe = false; }
-        else { n.path = null; n.spd = 0; if (n.react <= 0) { n.cool -= dt; if (n.cool <= 0) { this.npcFire(n, seen, best); n.burst--; if (n.burst > 0) n.cool = 0.16; else { n.burst = 2 + Math.floor(this.rnd() * 3); n.cool = 0.7 + this.rnd() * 0.7; if (this.rnd() < 0.4) this.sidestep(n, seen); } } } }
+        else { n.path = null; n.spd = 0; if (n.react <= 0 && !(n.rl > 0)) { n.cool -= dt; if (n.cool <= 0) { this.npcFire(n, seen, best); n.burst--; if (n.burst > 0) n.cool = 0.16; else { n.burst = 2 + Math.floor(this.rnd() * 3); n.cool = 0.7 + this.rnd() * 0.7; if (this.rnd() < 0.4) this.sidestep(n, seen); } } } }
       } else {
         n.lost += dt; if (n.strafe) { n.strafe = false; n.path = null; }
         if (n.lost > 1.2 && n.defend) { if (!n.path && Math.hypot(n.post[0] - n.x, n.post[1] - n.z) > 5) this.goto(n, n.post[0], n.post[1], n.post[2]); if (n.path) this.walk(n, dt, 2.2); else { n.crouch = true; this.face(n, n.lk[0], n.lk[1], dt, 3); } }   // a defender falls back to his room and waits
@@ -484,7 +486,7 @@ export class Sim {
     this.left = how; this.phase = 'ended'; this.report = this.score(done ? 'MISSION COMPLETE' : 'MISSION INCOMPLETE'); this.ev({ e: 'end', result: this.report.result });
   }
   npcFire(n, p, d) {
-    n.fired = (n.fired || 0) + 1;
+    n.fired = (n.fired || 0) + 1; if (n.mag === undefined) n.mag = n.hvt ? 15 : 30; if (--n.mag <= 0) n.rl = n.hvt ? 1.8 : 2.4;   // empty: a reload pause (and the animation)
     const hit = this.rnd() < Math.max(0.08, Math.min(0.5, 0.55 - 0.02 * d)), sp = hit ? 0 : 0.7;
     const to = [r2(p.hx + (this.rnd() - 0.5) * sp), r2(p.hy - 0.25 + (this.rnd() - 0.5) * sp), r2(p.hz + (this.rnd() - 0.5) * sp)];
     this.ev({ e: 'ns', n: n.id, to });
@@ -558,7 +560,7 @@ export class Sim {
   }
   snapshot() {
     const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9) | (p.team === 'tango' ? 2048 : 0) | (p.hold ? 4096 : 0) | ((p.locks || 0) & 3) << 13 | ((p.traps || 0) & 3) << 15 | (p.bot ? 1 << 17 | p.bot.st << 18 : 0)]);
-    const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.stun > 0 && (n.st === 'a' || n.st === 'g' || n.st === 'c') ? 'z' : n.st === 'c' && n.crouch ? 'h' : n.st, n.kind === 's' && n.armed ? 1 : 0]);
+    const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.stun > 0 && (n.st === 'a' || n.st === 'g' || n.st === 'c') ? 'z' : n.st === 'c' && n.crouch ? 'h' : n.st, (n.kind === 's' && n.armed ? 1 : 0) | (n.crouch && n.st !== 'c' ? 2 : 0) | (n.rl > 0 ? 4 : 0) | (n.medic && n.medT > 0 ? 8 : 0)]);   // flags: armed, crouched, reloading, working on someone
     const E = this.events; this.events = [];
     const s = { t: 's', X: this.extractT > 0 ? Math.ceil(5 - this.extractT) : 0, ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };
     if (this.report) s.R = this.report;

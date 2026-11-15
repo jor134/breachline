@@ -101,6 +101,7 @@ export const BotMixin = {
     if (f.n && f.n.st === 'c' && f.n.tgt === p.id) b.crouch = true;   // under fire: get low
     if (b.foe !== (f.n || f.q)) { b.foe = f.n || f.q; b.aim = 0; this.bsay(p, 'contact'); }
     b.aim += dt; if (Math.abs(off) > 0.12 || b.aim < (f.q ? 0.75 : 0.45)) return;
+    if (b.rl > 0) { if ((b.rl -= dt) <= 0) { b.rl = 0; b.mag = 30; } return; }   // changing magazines
     if ((b.cool -= dt) > 0) return;
     // a clean line? no hostage, held shield or officer in front of the target
     const ey = b.y + (b.crouch ? 1.0 : 1.6), dx0 = f.x - b.x, dy0 = f.y - ey, dz0 = f.z - b.z, dl = Math.hypot(dx0, dy0, dz0);
@@ -109,6 +110,7 @@ export const BotMixin = {
     const sp = 0.025 + 0.004 * f.d + (f.q ? 0.03 : 0), rn = () => (this.rnd() - 0.5) * 2 * sp;
     const tx = f.x + rn() * f.d, ty = f.y + rn() * f.d * 0.8, tz = f.z + rn() * f.d, dx = tx - b.x, dy = ty - ey, dz = tz - b.z, l = Math.hypot(dx, dy, dz);
     p.lastShot = -9; this.shot(p.id, { o: [b.x + dx / l * 0.3, ey, b.z + dz / l * 0.3], d: [dx / l, dy / l, dz / l], w: 'rifle' });
+    if (b.mag === undefined) b.mag = 30; if (--b.mag <= 0) { b.rl = 2.4; this.bsay(p, 'reload'); }
     if (--b.burst > 0) b.cool = 0.14; else { b.burst = 2 + Math.floor(this.rnd() * 3); b.cool = 0.45 + this.rnd() * 0.4; }
   },
   // Auto mode (no human SWAT): the lead bot picks the next job.
@@ -125,19 +127,19 @@ export const BotMixin = {
   botTask(p, T, dt) {
     const b = p.bot;
     if (T.k === 'move') { if (T.hunt && (T.t += dt) > 8) return true; const r = this.botApproach(p, T, T.x, T.z, T.y, T.hunt ? 3 : 0.7, dt, T.hunt ? 2.4 : 3.0); return r !== 'going'; }
-    if (T.k === 'revive') { const q = this.players.get(T.p); if (!q || !q.down) return true; const r = this.botApproach(p, T, q.hx, q.hz, q.y, 1.2, dt, 3.2, -1, true); if (r === 'fail') return true; if (r === 'going') return false; b.crouch = true; this.botFace(p, q.hx, q.hz, dt); if ((T.w = (T.w || 0) + dt) > 3) { this.revive(p.id, q.id); this.bsay(p, 'up'); return true; } return false; }
+    if (T.k === 'revive') { const q = this.players.get(T.p); if (!q || !q.down) return true; const r = this.botApproach(p, T, q.hx, q.hz, q.y, 1.2, dt, 3.2, -1, true); if (r === 'fail') return true; if (r === 'going') return false; b.crouch = true; b.workT = this.t; this.botFace(p, q.hx, q.hz, dt); if ((T.w = (T.w || 0) + dt) > 3) { this.revive(p.id, q.id); this.bsay(p, 'up'); return true; } return false; }
     if (T.k === 'detain') {
       const n = this.npcs.find(q => q.id === T.n); if (!n || DONE[n.st] || n.st === 'x' || n.st === 'd') return true;
       if (n.kind === 's' && !CUFFABLE[n.st]) return (T.t += dt) > 10;   // not giving up yet: the fight logic handles him; give up the order after a while
       const r = this.botApproach(p, T, n.x, n.z, n.y, 1.1, dt, 2.8, -1, true); if (r === 'fail') return true; if (r === 'going') return false;
       this.botFace(p, n.x, n.z, dt);
       if (!CUFFABLE[n.st]) { if (this.t - b.shoutT > 1.5) { b.shoutT = this.t; p.lastShout = -9; this.shout(p.id); } return (T.t += dt) > 8; }
-      if ((T.t += dt) > 1.2) { this.cuff(p.id, n.id); this.bsay(p, 'cuffed'); return true; } return false;
+      b.workT = this.t; if ((T.t += dt) > 1.2) { this.cuff(p.id, n.id); this.bsay(p, 'cuffed'); return true; } return false;
     }
     if (T.k === 'defuse') {
       const bm = this.bombs[T.b]; if (!bm || bm.defused) return true;
       if (T.ph === 'go') { const fy = this.level.groundY(b.x, b.z, bm.y - 0.5), r = this.botApproach(p, T, bm.x, bm.z, Math.min(fy, bm.y - 0.4), 1.0, dt, 2.8); if (r === 'fail') return true; if (r === 'going') return false; T.ph = 'work'; T.t = 0; this.bsay(p, 'bomb'); }
-      b.path = null; b.crouch = bm.y - b.y < 1.0; this.botFace(p, bm.x, bm.z, dt);
+      b.path = null; b.crouch = bm.y - b.y < 1.0; b.workT = this.t; this.botFace(p, bm.x, bm.z, dt);
       if ((T.t += dt) > 5 && T.t - (T.last || 0) > 1.1) { T.last = T.t; p.y = b.y; this.cut(p.id, T.b, bm.order[bm.n]); if (bm.defused) { this.bsay(p, 'defused'); return true; } }
       return T.t > 20;
     }
@@ -160,12 +162,12 @@ export const BotMixin = {
       if (T.how === 'unwire') { this.bsay(p, 'nowire'); return true; }
       T.ph = 'entry'; T.t = 0;
     }
-    if (T.ph === 'unwire') { b.crouch = true; if ((T.t += dt) < 3) return false; this.disarm(p.id, T.d); b.crouch = false; if (T.how === 'unwire') return true; T.ph = 'entry'; T.t = 0; }
+    if (T.ph === 'unwire') { b.crouch = true; b.workT = this.t; if ((T.t += dt) < 3) return false; this.disarm(p.id, T.d); b.crouch = false; if (T.how === 'unwire') return true; T.ph = 'entry'; T.t = 0; }
     if (T.ph === 'entry') {
       if (this.doorOpen[T.d]) { if (T.how !== 'breach') return true; T.ph = 'flash'; T.t = 0; }
-      else if (this.doorLocked[T.d] && D.pad !== undefined) { b.crouch = true; if ((T.t += dt) < 3) return false; this.snip(p.id, T.d); b.crouch = false; this.door(p.id, T.d); if (T.how !== 'breach') return true; T.ph = 'flash'; T.t = 0; }   // bolt cutters through a padlock
+      else if (this.doorLocked[T.d] && D.pad !== undefined) { b.crouch = true; b.workT = this.t; if ((T.t += dt) < 3) return false; this.snip(p.id, T.d); b.crouch = false; this.door(p.id, T.d); if (T.how !== 'breach') return true; T.ph = 'flash'; T.t = 0; }   // bolt cutters through a padlock
       else if (this.doorLocked[T.d] && (T.how === 'open')) { this.ev({ e: 'locked', d: T.d }); this.bsay(p, 'locked'); return true; }
-      else if (this.doorLocked[T.d] && T.how === 'pick') { b.crouch = true; if ((T.t += dt) < 4) return false; this.pick(p.id, T.d); b.crouch = false; this.door(p.id, T.d); return true; }
+      else if (this.doorLocked[T.d] && T.how === 'pick') { b.crouch = true; b.workT = this.t; if ((T.t += dt) < 4) return false; this.pick(p.id, T.d); b.crouch = false; this.door(p.id, T.d); return true; }
       else if (T.how === 'kick' || (T.how === 'breach' && this.doorLocked[T.d])) { if ((T.t += dt) < 0.4) return false; T.t = 0; T.kicks = (T.kicks || 0) + 1; this.kick(p.id, T.d); if (!this.doorOpen[T.d] && T.kicks >= 5) { this.bsay(p, 'locked'); return true; } if (!this.doorOpen[T.d]) return false; if (T.how === 'kick') return true; T.ph = 'flash'; T.t = 0; }
       else { this.door(p.id, T.d); if (T.how !== 'breach') return true; T.ph = 'flash'; T.t = 0; }
       return false;
@@ -215,7 +217,15 @@ export const BotMixin = {
     const at = (r, u, f) => [r2(b.x + rx * r + fx * f * fl), r2(b.y + eye + u + up * f), r2(b.z + rz * r + fz * f * fl)];
     p.hx = b.x; p.hz = b.z; p.y = b.y; p.hy = b.y + eye; p.light = this.night;
     p.h = [r2(b.x), r2(b.y + eye), r2(b.z), ...q];
-    p.r = [...at(0.17, -0.27, 0.22), ...q]; p.l = [...at(0.02, -0.25, 0.5), ...q]; p.g = [0, 1];
+    // hands: rifle up by default; gestures on top (working low over someone, changing magazines, reaching for a door, throwing)
+    const L0 = [0.02, -0.25, 0.5], lerp3 = (a, c, u) => a.map((v, i) => v + (c[i] - v) * u), ease = u => u * u * (3 - 2 * u);
+    let R = [0.17, -0.27, 0.22], Lh = L0, lw = null;
+    if (!p.down && this.t - (b.workT ?? -9) < 0.2 && b.aim < 0.15) { const w = Math.sin(this.t * 7) * 0.04; R = [0.2, -0.5, 0.12]; Lh = [-0.02, -0.72 + w, 0.42 + w]; }
+    else if (b.rl > 0) { const u = 1 - b.rl / 2.4, MW = [0.08, -0.36, 0.28], BELT = [-0.16, -0.72, 0.06];
+      Lh = u < 0.25 ? lerp3(L0, MW, ease(u / 0.25)) : u < 0.5 ? lerp3(MW, BELT, ease((u - 0.25) / 0.25)) : u < 0.75 ? lerp3(BELT, MW, ease((u - 0.5) / 0.25)) : lerp3(MW, L0, ease((u - 0.75) / 0.25)); R = [0.15, -0.33, 0.2]; }
+    else if (this.t - (b.throwT ?? -9) < 0.7) { const u = (this.t - b.throwT) / 0.7; Lh = u < 0.4 ? lerp3(L0, [-0.28, 0.12, -0.2], ease(u / 0.4)) : lerp3([-0.28, 0.12, -0.2], [-0.12, -0.05, 0.75], ease(Math.min(1, (u - 0.4) / 0.3))); }
+    else if (this.t - (b.reachT ?? -9) < 0.6 && b.reachAt) { const u = Math.sin(Math.PI * (this.t - b.reachT) / 0.6); lw = b.reachAt; Lh = null; p.l = [...[0, 1, 2].map(i => r2(at(...L0)[i] + (lw[i] - at(...L0)[i]) * u)), ...q]; }
+    p.r = [...at(...R), ...q]; if (Lh) p.l = [...at(...Lh), ...q]; p.g = [0, 1];
   },
   // Gunfire from a terrorist player is something the bots hear and turn toward.
   botHear(x, z) { for (const p of this.bots()) if (Math.hypot(p.bot.x - x, p.bot.z - z) < 30) p.bot.heard = [x, z, 0, this.t]; },

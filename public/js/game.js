@@ -1,7 +1,7 @@
 // BREACHLINE client: WebXR rig, manual weapon handling, interactions, networking, HUD.
 import * as THREE from '../vendor/three.module.min.js';
 import { buildWorld, label } from './gfx.js';
-import { Human, Officer, Bomb, Body, RIG, SELF_BACK, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
+import { Human, Officer, Bomb, Body, RIG, SELF_BACK, GROUND, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
 import { loadCar, loadParkedCars } from './car.js';
 import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
@@ -32,6 +32,7 @@ camera.rotation.order = 'YXZ'; rig.add(camera); scene.add(rig);
 addEventListener('resize', () => { if (renderer.xr.isPresenting) return; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 // The world is rebuilt when the squad picks another map in the lobby: geometry, doors, lights, the breaker, the exit, plants and cars.
 let world = null, level = null, M = null, extras = [], mapGen = 0, ready = false;
+GROUND.y = (x, z, y) => level ? level.groundY(x, z, y) : null;   // feet on stairs and slopes (actors.js)
 
 // ---------- training targets: plywood cut-outs on a hinge; red = armed, blue = no-shoot ----------
 let targets = [];
@@ -214,7 +215,7 @@ function closeWheel(h) { const k = wheelPick(h); wheel.open = false; wheel.mesh.
 // FOLLOW ME and HOLD. VR: hold Y/B (a tap still shouts). Desktop: hold G, move the mouse toward an order, let go. Phone: SQUAD.
 const ORD = { follow: 'FOLLOW ME', hold: 'HOLD', move: 'MOVE THERE', open: 'OPEN', pick: 'PICK LOCK', kick: 'KICK', breach: 'BREACH & CLEAR', unwire: 'CUT WIRE', defuse: 'DEFUSE', detain: 'DETAIN', revive: 'REVIVE' };
 const BOT_ST = ['FOLLOW', 'HOLD', 'MOVING', 'DOOR', 'BOMB', 'DETAIN', 'REVIVE', 'FIGHT'];
-const BSAY = { follow: ['ON YOU', 'Moving with you'], hold: ['HOLDING', 'Holding here'], onit: ['COPY', 'Copy'], contact: ['CONTACT!', 'Contact!'], up: ["YOU'RE GOOD", 'Get up, you are good'], cuffed: ['RESTRAINED', 'Restrained'], bomb: ['ON THE BOMB', 'Working the bomb'], defused: ['BOMB SAFE', 'Bomb is safe'], wire: ['WIRE ON THE DOOR', 'Tripwire, cutting it'], nowire: ['NO WIRE', 'Door is clean'], locked: ['LOCKED', 'It is locked'], flash: ['FLASHBANG OUT', 'Flashbang out'], clear: ['CLEAR', 'Room clear'], leave: ['HANDING OVER', ''] };
+const BSAY = { reload: ['RELOADING', 'Reloading!'], follow: ['ON YOU', 'Moving with you'], hold: ['HOLDING', 'Holding here'], onit: ['COPY', 'Copy'], contact: ['CONTACT!', 'Contact!'], up: ["YOU'RE GOOD", 'Get up, you are good'], cuffed: ['RESTRAINED', 'Restrained'], bomb: ['ON THE BOMB', 'Working the bomb'], defused: ['BOMB SAFE', 'Bomb is safe'], wire: ['WIRE ON THE DOOR', 'Tripwire, cutting it'], nowire: ['NO WIRE', 'Door is clean'], locked: ['LOCKED', 'It is locked'], flash: ['FLASHBANG OUT', 'Flashbang out'], clear: ['CLEAR', 'Room clear'], leave: ['HANDING OVER', ''] };
 const botsUp = () => S.phase === 'active' && !M.training && S.me.team !== 'tango' && [...S.officers.values()].some(o => o.bot && !o.down);
 const orderMark = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.03, 6, 28), new THREE.MeshBasicMaterial({ color: 0x40ff80, depthTest: false, fog: false, transparent: true })); orderMark.renderOrder = 996; orderMark.visible = false; scene.add(orderMark);
 // while Y/B is held: a green laser from the hand and a ring on whatever it points at, with its name; let go to lock it and open the wheel
@@ -488,7 +489,7 @@ function onEvent(e) {
     case 'door': { const d = level.doors[e.d]; sfx.door(v1.set(d.cx, d.y + 1, d.cz), e.open); break; }
     case 'locked': { const d = level.doors[e.d]; sfx.rattle(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'LOCKED', '#ffb060'); break; }
     case 'unlock': { const d = level.doors[e.d]; if (e.k === 'cut') { sfx.cut(v1.set(d.cx, d.y + 1.1, d.cz), true); sayAt(d.cx, d.y + 1.6, d.cz, 'LOCK CUT', '#80ff9a'); } else { sfx.unlock(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'UNLOCKED', '#80ff9a'); } break; }
-    case 'kick': { const d = level.doors[e.d]; sfx.kick(v1.set(d.cx, d.y + 1, d.cz), e.ok); if (e.ok) world.doors[e.d].cur = 0.9; else sayAt(d.cx, d.y + 1.5, d.cz, 'HELD', '#ffb060'); break; }
+    case 'kick': { const d = level.doors[e.d]; const ko = S.officers.get(e.p); if (ko) ko.body.kick(); if (e.p === S.me.id) myBody.kick(); sfx.kick(v1.set(d.cx, d.y + 1, d.cz), e.ok); if (e.ok) world.doors[e.d].cur = 0.9; else sayAt(d.cx, d.y + 1.5, d.cz, 'HELD', '#ffb060'); break; }
     case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (L[2] && a.g.position.distanceTo(head.pos) < 14) { sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); if (voiceState.error) noteErr(voiceState.error); } } } break;
     case 'shout': if (e.p !== S.me.id) sfx.say('Police! Hands up!', 1); break;
     case 'cuff': if (a) sfx.cuff(a.g.position); break;
@@ -886,7 +887,7 @@ function frame(t) {
   for (const h of hands) { if (h.active) { v1.copy(h.pos).sub(h.last).multiplyScalar(1 / dt); if (v1.lengthSq() < 900) h.vel.lerp(v1, 0.45); h.last.copy(h.pos); } }
   placeGuns(dt);
   for (const h of hands) h.pose = handPose(h, hands[1 - h.i]);
-  myBody.g.visible = S.mode === 'vr'; if (S.mode === 'vr') myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY, head.quat);
+  myBody.g.visible = S.mode === 'vr'; if (S.mode === 'vr') myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY, head.quat, { down: !!S.me.down, stride: 0.5 });   // your own legs step, smaller
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
   if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (S.doorOpen[P.id] && (P.lock || P.trap) || !(P.lock ? !S.doorLocked[P.id] : P.trap ? !S.doorTrap[P.id] : P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.lock ? 'lockdoor' : P.trap ? 'trapdoor' : P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
@@ -901,7 +902,7 @@ function frame(t) {
   if (coach.mesh.visible && S.mode === 'vr') for (const h of hands) { if (!h.active) continue; const G = gunIn(h); if (G) { G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set(0, 0, -1).applyQuaternion(G.mesh.quaternion); } else { v1.copy(h.pos); v2.set(0, 0, -1).applyQuaternion(h.quat); } if (coach.probe(v1, v2, true) !== null) break; }
   if (panel.mesh.visible && S.mode) for (const h of hands) { if (!h.active) continue; const G = gunIn(h); if (G) { G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set(0, 0, -1).applyQuaternion(G.mesh.quaternion); } else { v1.copy(h.pos); v2.set(0, 0, -1).applyQuaternion(h.quat); } if (panel.probe(v1, v2, true) !== null) break; }
   if ((S.phase === 'lobby' || M.training && S.phase === 'active') && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
-  updateTargets(dt); tut.tick(dt);
+  updateTargets(dt); tut.tick(dt); for (const o of S.officers.values()) o.tick(dt);
   spectate(dt);
   if (race) { S.raceT += dt; race.update(S.raceT, head.pos, level.inside(head.pos.x, head.pos.z, head.pos.y)); }
   // world animation
@@ -983,7 +984,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v46';
+const BUILD = 'v47';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

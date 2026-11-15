@@ -7,6 +7,8 @@ import { sheen, vertexSheen } from './mats.js';
 import { SOFT } from './gfx.js';
 let blobGeo = null; const makeBlob = r => { if (!blobGeo) { blobGeo = new THREE.PlaneGeometry(1, 1); blobGeo.rotateX(-Math.PI / 2); } const m = new THREE.Mesh(blobGeo, SOFT.blob); m.scale.set(r * 2, 1, r * 2); m.renderOrder = 3; return m; };   // soft round shadow on the floor
 import { WIRE_HEX } from './shared.js';
+// Ground height under a point, for feet on stairs and slopes; the game sets it when a level loads (null: flat at the body's height).
+export const GROUND = { y: null };
 
 const geos = new Map();
 const G = (key, make) => geos.get(key) || geos.set(key, make().toNonIndexed()).get(key);
@@ -140,6 +142,7 @@ export class Human {
     if (s && v === 4) { this.gun = makePistol(false, true); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
     else if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
     this.kind = kind; this.st = ''; this.first = true; this.flashT = 0; this.flinch = 0; this.phase = Math.random() * 6; this.idle = Math.random() * 9; this.speed = 0;
+    this.fwd = 1; this.side = 0; this.fl = 0; this.fl0 = 0; this.rlT = 0; this.buckle = 0; this.footSink = 0; this.phase0 = Math.random() * 6;
     this.p0 = new THREE.Vector3(); this.p1 = new THREE.Vector3(); this.y0 = 0; this.y1 = 0; this.it = 0; this.dur = 0.07; this.lastT = 0;
     this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST); this.blob = makeBlob(0.5); g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
     // everyone wears a downloaded model (suspects, the boss in his suit, civilians); the stick rig above keeps animating, invisibly, and drives its bones
@@ -182,13 +185,18 @@ export class Human {
     sk.solve(W);
   }
   // A new server position arrives ~15 times a second: glide to it at constant speed over one interval instead of chasing it.
-  target(x, y, z, yaw, st, armed) {
+  target(x, y, z, yaw, st, flags) {   // flags: 1 armed, 2 crouched, 4 changing magazines, 8 working on someone (kneeling)
+    const armed = flags & 1; this.fl = flags | 0;
     const now = performance.now() / 1000;
     if (this.first) { this.g.position.set(x, y, z); this.g.rotation.y = yaw; this.first = false; this.lastT = now - 0.07; }
     this.dur = Math.max(0.04, Math.min(0.2, now - this.lastT)); this.lastT = now; this.it = 0;
     this.p0.copy(this.g.position); this.p0.y -= this.cur.yOff; this.p1.set(x, y, z); this.y0 = this.g.rotation.y; let d = yaw - this.y0; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; this.y1 = this.y0 + d;
     if (this.gun) this.gun.visible = !!armed;
-    if (st !== this.st) { this.st = st; this.tgt = Object.assign({}, REST, POSE[st]); }
+    if (st !== this.st || (this.fl & 10) !== this.fl0) {
+      const wasUp = UPRIGHT[this.st]; this.st = st; this.fl0 = this.fl & 10;
+      this.tgt = Object.assign({}, REST, POSE[st], UPRIGHT[st] && this.fl & 8 ? WORK : UPRIGHT[st] && this.fl & 2 ? LOW : null);
+      if (wasUp && (st === 'd' || st === 'i')) this.buckle = 0.32;   // shot down: the knees go first, then the body falls
+    }
   }
   update(dt) {
     const p = this.g.position, px = p.x, pz = p.z; this.it += dt; const a = Math.min(1.25, this.it / this.dur);
@@ -197,18 +205,40 @@ export class Human {
     // blend joints toward the pose for the current state (falling over is slower than raising a rifle)
     const c = this.cur, t = this.tgt, k = 1 - Math.exp(-9 * dt), kl = 1 - Math.exp(-5.5 * dt);
     for (const j in c) c[j] += (t[j] - c[j]) * (j === 'lie' || j === 'yOff' || j === 'drop' ? kl : k);
-    // layered motion: walk cycle scaled by real ground speed (so feet do not slide), breathing, weight shift, flinch, recoil
-    const st = this.st, up = st === 'g' || st === 'a' || st === 'c' || st === 'z', w = up ? Math.min(1, this.speed / 1.3) : 0, run = up ? Math.max(0, Math.min(1, (this.speed - 1.6) / 1.4)) : 0;
-    if (up) this.phase += moved * (2 * Math.PI / (1.25 + 0.5 * run)); this.idle += dt;
-    const ph = this.phase, A = (0.42 + 0.25 * run) * w, br = Math.sin(this.idle * 1.6) * 0.012, sway = up ? Math.sin(this.idle * (st === 'z' ? 3.1 : 0.55)) * (st === 'z' ? 0.09 : 0.02) * (1 - w) : 0, hurt = st === 'i' ? Math.sin(this.idle * 2.2) * 0.1 : 0;
+    // layered motion: a gait from the real ground velocity (forward, backward, sideways), turning steps, breathing, idle life, flinch, recoil
+    const st = this.st, up = !!UPRIGHT[st], vx = (p.x - px) / Math.max(dt, 1e-3), vz = (p.z - pz) / Math.max(dt, 1e-3), fy = this.g.rotation.y, sf = Math.sin(fy), cf = Math.cos(fy);
+    const vf = vx * sf + vz * cf, vs = vx * cf - vz * sf, vl = Math.hypot(vf, vs) || 1;
+    this.fwd += ((up ? vf / vl : 1) - this.fwd) * Math.min(1, dt * 6); this.side += ((up ? vs / vl : 0) - this.side) * Math.min(1, dt * 6);
+    const yawRate = (fy - (this.lastYaw ?? fy)) / Math.max(dt, 1e-3); this.lastYaw = fy;
+    const turning = up && this.speed < 0.4 && Math.abs(yawRate) > 0.9, w = up ? Math.max(Math.min(1, this.speed / 1.3), turning ? 0.35 : 0) : 0, run = up ? Math.max(0, Math.min(1, (this.speed - 1.6) / 1.4)) : 0;
+    if (up) this.phase += moved * (2 * Math.PI / (1.25 + 0.5 * run)) + (turning ? Math.abs(yawRate) * dt * 1.6 : 0); this.idle += dt;
+    const low = this.fl & 2 && up, ph = this.phase, A = (0.42 + 0.25 * run) * w * (low ? 0.75 : 1), F = turning ? 0.4 : this.fwd, Sd = turning ? 0 : this.side, still = up ? 1 - w : 0;
+    const br = Math.sin(this.idle * 1.6) * 0.012, sway = up ? Math.sin(this.idle * (st === 'z' ? 3.1 : 0.55)) * (st === 'z' ? 0.09 : 0.02) * still : 0, hurt = st === 'i' ? Math.sin(this.idle * 2.2) * 0.1 : 0;
     this.flinch = Math.max(0, this.flinch - dt * 4); const fl = this.flinch * this.flinch, kick = this.flashT > 0 ? 0.07 : 0;
+    // idle life: weight on one leg then the other, a look around now and then; a guard checks his weapon; hostages tremble and glance about
+    const shift = Math.sin(this.idle * 0.33) * still, look = (Math.sin(this.idle * 0.23) * Math.sin(this.idle * 0.071 + 1)) * 0.5 * still;
+    const check = this.kind === 's' && st === 'g' && still > 0.8 ? Math.max(0, Math.sin(this.idle * 0.21 + this.phase0) - 0.8) * 5 : 0, scared = st === 'w' || st === 'y' ? Math.sin(this.idle * 13) * 0.012 + Math.sin(this.idle * 0.9) * 0.25 : 0;
     const [L, R] = this.legs;
-    L.hip.rotation.x = c.hl - A * Math.sin(ph); L.knee.rotation.x = c.kl + (0.25 + 0.75 * Math.max(0, Math.cos(ph))) * A * 1.5;
-    R.hip.rotation.x = c.hr + A * Math.sin(ph); R.knee.rotation.x = c.kr + (0.25 + 0.75 * Math.max(0, -Math.cos(ph))) * A * 1.5;
-    this.body.position.y = c.drop - Math.abs(Math.sin(ph)) * 0.035 * w - 0.02 * w; this.body.rotation.z = sway;
-    this.upper.rotation.set(c.spine + 0.07 * w + 0.12 * run + br + fl * 0.25, Math.sin(ph) * 0.07 * w + fl * 0.4, -Math.sin(ph) * 0.03 * w - sway);
+    // feet on stairs and slopes: each foot finds its own ground; the body sinks to the lower one and the other leg folds
+    let dL = 0, dR = 0;
+    if (GROUND.y && up && Math.abs(c.lie) < 0.1) { const base = this.p0.y + (this.p1.y - this.p0.y) * Math.min(1, a), fo = 0.25 * Math.sin(ph) * F * w;
+      const gy = (sx, f) => { const y = GROUND.y(p.x + cf * sx * 0.11 + sf * f, p.z - sf * sx * 0.11 + cf * f, base + 0.5); return y === null || !Number.isFinite(y) ? 0 : Math.max(-0.45, Math.min(0.45, y - base)); };
+      dL = gy(-1, fo + 0.08); dR = gy(1, -fo + 0.08); }
+    const sink = Math.min(0, dL, dR), fold = d => { const s2 = Math.max(0, Math.min(0.6, d - sink)); return Math.acos(1 - s2 / 0.88); };
+    const aL = fold(dL), aR = fold(dR); this.footSink += (sink - this.footSink) * Math.min(1, dt * 10);
+    L.hip.rotation.x = c.hl - A * Math.sin(ph) * F - aL - 0.08 * Math.max(0, shift); L.knee.rotation.x = c.kl + (0.25 + 0.75 * Math.max(0, Math.cos(ph))) * A * 1.5 + 2 * aL + 0.16 * Math.max(0, shift);
+    R.hip.rotation.x = c.hr + A * Math.sin(ph) * F - aR - 0.08 * Math.max(0, -shift); R.knee.rotation.x = c.kr + (0.25 + 0.75 * Math.max(0, -Math.cos(ph))) * A * 1.5 + 2 * aR + 0.16 * Math.max(0, -shift);
+    L.hip.rotation.z = -Sd * A * 0.75 * Math.sin(ph) - 0.03 * shift; R.hip.rotation.z = Sd * A * 0.75 * Math.sin(ph + Math.PI) - 0.03 * shift;   // sideways steps: the legs scissor out and in
+    this.body.position.y = c.drop - Math.abs(Math.sin(ph)) * 0.035 * w - 0.02 * w + this.footSink; this.body.position.x = 0.025 * shift; this.body.rotation.z = sway + 0.03 * shift;
+    this.upper.rotation.set(c.spine + 0.07 * w * Math.max(0, F) - 0.04 * w * Math.max(0, -F) + 0.12 * run + br + fl * 0.25, Math.sin(ph) * 0.07 * w + fl * 0.4 + look + scared * 0.6 + check * 0.25, -Math.sin(ph) * 0.03 * w - sway + scared * 0.05);
     const [la, ra] = this.arms, bob = Math.sin(ph * 2) * 0.04 * w;
-    la.sh.rotation.set(c.slx + bob + br + hurt - kick, 0, c.slz); la.el.rotation.x = c.el; ra.sh.rotation.set(c.srx + bob + br - kick, 0, c.srz); ra.el.rotation.x = c.er - kick;
+    la.sh.rotation.set(c.slx + bob + br + hurt - kick, 0, c.slz); la.el.rotation.x = c.el; ra.sh.rotation.set(c.srx + bob + br - kick - check * 0.5, 0, c.srz); ra.el.rotation.x = c.er - kick - check * 0.4;
+    // changing magazines: the off hand goes to the magazine, down to the belt, back up, back to the handguard
+    if (this.fl & 4 && up) { this.rlT += dt; const u = (this.rlT % 2.4) / 2.4, e2 = v => v * v * (3 - 2 * v), MW = [-1.15, -1.7], BELT = [-0.15, -0.35], k0 = [c.slx, c.el];
+      const at2 = u < 0.25 ? lerp2(k0, MW, e2(u / 0.25)) : u < 0.5 ? lerp2(MW, BELT, e2((u - 0.25) / 0.25)) : u < 0.75 ? lerp2(BELT, MW, e2((u - 0.5) / 0.25)) : lerp2(MW, k0, e2((u - 0.75) / 0.25));
+      la.sh.rotation.x = at2[0]; la.el.rotation.x = at2[1]; ra.sh.rotation.x += 0.25; } else this.rlT = 0;
+    if (this.fl & 8 && up) { const wk = Math.sin(this.idle * 7) * 0.12; la.sh.rotation.x += wk; ra.sh.rotation.x -= wk; }   // working on someone: hands busy
+    if (this.buckle > 0) { this.buckle -= dt; c.lie *= 0.6; c.kl += (1.3 - c.kl) * Math.min(1, dt * 14); c.kr += (1.1 - c.kr) * Math.min(1, dt * 14); c.drop += (-0.35 - c.drop) * Math.min(1, dt * 12); }
     this.g.rotation.x = c.lie; p.y = baseY + c.yOff; const lying = Math.abs(c.lie) / HP, off = -0.8 * lying * Math.sign(c.lie || 1);   // a fallen body's shadow lies under the body, not at its feet
     this.blob.position.set(p.x + Math.sin(this.g.rotation.y) * off, baseY + 0.024, p.z + Math.cos(this.g.rotation.y) * off); this.blob.scale.set(1 + lying * 0.3, 1, 1 + lying * 0.9); this.blob.rotation.y = this.g.rotation.y;
     if (this.gun) { if (this.flashT > 0) this.flashT -= dt; this.gun.userData.flash.visible = this.flashT > 0; }
@@ -218,6 +248,10 @@ export class Human {
 }
 // Joint angles per state. h = hip, k = knee, s?x/s?z = shoulder swing / spread, e = elbow, l / r = left / right.
 const REST = { hl: 0, hr: 0, kl: 0, kr: 0, slx: 0, slz: 0, srx: 0, srz: 0, el: 0, er: 0, spine: 0, drop: 0, lie: 0, yOff: 0 };
+const UPRIGHT = { g: 1, a: 1, c: 1, z: 1, h: 1 };
+const lerp2 = (a, b, u) => [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+const LOW = { hl: -0.55, hr: -0.5, kl: 1.0, kr: 0.95, drop: -0.22, spine: 0.28 };   // moving crouched: bent knees, leaning in
+const WORK = { hl: -0.2, hr: -1.3, kl: 1.9, kr: 1.4, drop: -0.42, spine: 0.55, slx: -1.1, srx: -0.9, el: -0.3, er: -0.4, slz: 0.2, srz: -0.2 };   // kneeling over someone, hands on them
 const KN = { kl: 1.65, kr: 1.65, drop: -0.42 }, UPH = { slx: -2.6, srx: -2.6, el: -0.5, er: -0.5, slz: -0.3, srz: 0.3 }, BACK = { slx: 0.55, srx: 0.55, el: 0.4, er: 0.4, slz: 0.25, srz: -0.25 };
 const POSE = {
   g: { srx: -0.2, er: -1.0, slx: -0.85, slz: 0.5, el: -0.8 }, a: { srx: -0.5, er: -1.0, slx: -1.05, slz: 0.5, el: -0.75, spine: 0.06 }, c: { srx: -1.05, er: -0.55, slx: -1.3, slz: 0.5, el: -0.35, spine: 0.1, kl: 0.12, kr: 0.12, hl: -0.1, hr: 0.14, drop: -0.02 },
@@ -287,6 +321,7 @@ export class Body {
     this.detailed = detailed; this.lastT = performance.now();
     this.blob = makeBlob(0.42); g.add(this.blob); this.torso.receiveShadow = this.legs.receiveShadow = true;
     this.team = 'swat'; this.skinGen = 0;
+    this.G = { ph: Math.random() * 6, vx: 0, vz: 0, spd: 0, last: null, lastYaw: null, lag: 0, step: 0, idle: Math.random() * 9, fall: 0, kick: 0, sink: 0, feet: [new THREE.Vector3(), new THREE.Vector3()] };
     if (CHARS_ON) loadChar('swat').then(t => this.attachSkin(t)).catch(e => console.warn('officer model not loaded', e));
   }
   // PvP: a terrorist player wears the terrorist model. Swaps the skinned model; the vest gear and the arm solve stay.
@@ -312,7 +347,8 @@ export class Body {
       const [L1, L2] = sk.len(S), up = P[r.fore[S]].clone().sub(P[r.up[S]]).normalize(), fo = P[r.hand[S]].clone().sub(P[r.fore[S]]).normalize();
       this.H[S] = { f0: f, b0: b, palm, fingers, thumb, L1, L2, up0: up, fo0: fo, pole0: new THREE.Vector3(0, 0, -1), cur: { i: 0.6, g: 0.7, t: 0.5 }, wq: new THREE.Quaternion(), wp: new THREE.Vector3(), el: new THREE.Vector3(), pole: new THREE.Vector3(), on: false };
     }
-    for (const S of ['L', 'R']) { const th = P[r.thigh[S]], sh = P[r.shin[S]], ft = P[r.foot[S]]; this.H['leg' + S] = { L1: th.distanceTo(sh), L2: sh.distanceTo(ft), d0: sh.clone().sub(th).normalize(), s0: ft.clone().sub(sh).normalize(), foot: ft.clone(), knee: new THREE.Vector3() }; }
+    for (const S of ['L', 'R']) { const th = P[r.thigh[S]], sh = P[r.shin[S]], ft = P[r.foot[S]]; this.H['leg' + S] = { L1: th.distanceTo(sh), L2: sh.distanceTo(ft), d0: sh.clone().sub(th).normalize(), s0: ft.clone().sub(sh).normalize(), foot: ft.clone(), ft: ft.clone(), knee: new THREE.Vector3() }; }
+    this.legLen = this.H.legL.L1 + this.H.legL.L2;
     this.q = [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()];
     this.fns = {}; const IKq = new THREE.Quaternion(), tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
     // two-bone solve: elbow (or knee) position from the root, the target and a bend direction
@@ -321,26 +357,32 @@ export class Body {
       const H = this.H[S], out = S === 'R' ? -1 : 1, Lg = this.H['leg' + S];
       this.fns['up' + S] = (gp) => { if (!H.on) return null; H.pole.set(out * 0.5, -0.75, -0.45); elbowAt(gp, H.wp, H.L1, H.L2, H.pole, H.el); return align2(H.up0, H.pole0, tmpA.copy(H.el).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.up[S]]).clone(); };
       this.fns['fo' + S] = (gp) => { if (!H.on) return null; return align2(H.fo0, H.pole0, tmpA.copy(H.wp).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.fore[S]]).clone(); };
-      this.fns['th' + S] = (gp) => { elbowAt(gp, Lg.foot, Lg.L1, Lg.L2, _kneeFwd, Lg.knee); return align2(Lg.d0, _kneeFwd, tmpA.copy(Lg.knee).sub(gp), _kneeFwd, IKq).multiply(sk.restQ[r.thigh[S]]).clone(); };
-      this.fns['sh' + S] = (gp) => align2(Lg.s0, _kneeFwd, tmpA.copy(Lg.foot).sub(gp), _kneeFwd, IKq).multiply(sk.restQ[r.shin[S]]).clone();
+      this.fns['th' + S] = (gp) => { elbowAt(gp, Lg.ft, Lg.L1, Lg.L2, _kneeFwd, Lg.knee); return align2(Lg.d0, _kneeFwd, tmpA.copy(Lg.knee).sub(gp), _kneeFwd, IKq).multiply(sk.restQ[r.thigh[S]]).clone(); };
+      this.fns['sh' + S] = (gp) => align2(Lg.s0, _kneeFwd, tmpA.copy(Lg.ft).sub(gp), _kneeFwd, IKq).multiply(sk.restQ[r.shin[S]]).clone();
     }
   }
-  poseSkin(headPos, yaw, hands, feetY, headQ, dt) {
-    const sk = this.skin, r = sk.role, hd = this.holder, W = this.W, down = feetY > 50;
-    const wd = this.detailed ? SELF_BACK.wide : 1; hd.scale.set(wd, 1, wd); hd.rotation.set(down ? -HP : 0, yaw + Math.PI, 0); hd.updateMatrix(); const hq = hd.quaternion, ihq = _q1.copy(hq).invert();
-    const e = this.eye, fwd = a1.set(0, 0, 1).applyQuaternion(hq), pitch0 = headQ ? Math.asin(Math.max(-1, Math.min(1, a4.set(0, 0, -1).applyQuaternion(headQ).y))) : 0;
-    if (down) hd.position.copy(headPos).addScaledVector(fwd, -e.y * wd).setY(headPos.y - 0.12);
-    else { const off = a2.set(e.x * wd, 0, e.z * wd + (this.back = this.detailed ? SELF_BACK.d + SELF_BACK.tilt * Math.max(0, Math.sin(-pitch0)) : 0)).applyQuaternion(hq); hd.position.set(headPos.x - off.x, feetY + (this.detailed ? SELF_BACK.up : 0), headPos.z - off.z); }   // your own body: 13 cm behind the eyes
+  poseSkin(headPos, yaw, hands, feetY, headQ, dt, o = {}) {
+    const sk = this.skin, r = sk.role, hd = this.holder, W = this.W, Gt = this.G, fall = Gt.fall, fe = fall * fall * (3 - 2 * fall), down = fall > 0.35;
+    if (o.down) Gt.lieY = feetY < 50 ? feetY + 0.17 : headPos.y - 0.12; else if (fall <= 0) Gt.lieY = null;
+    const lieY = Gt.lieY ?? (feetY < 50 ? feetY + 0.17 : headPos.y - 0.12);   // getting up: stay on the floor where he lay, not at the new head height
+    // falling and getting up: the knees give, then the body tips over backwards (and the reverse on a revive)
+    const tip = Math.max(0, (fe - 0.25) / 0.75), wd = this.detailed ? SELF_BACK.wide : 1; hd.scale.set(wd, 1, wd); hd.rotation.set(-HP * tip, yaw + Math.PI, 0); hd.updateMatrix(); const hq = hd.quaternion, ihq = _q1.copy(_q3.setFromAxisAngle(UPY, yaw + Math.PI)).invert();
+    const e = this.eye, fwd = a1.set(0, 0, 1).applyAxisAngle(UPY, yaw + Math.PI), pitch0 = headQ ? Math.asin(Math.max(-1, Math.min(1, a4.set(0, 0, -1).applyQuaternion(headQ).y))) : 0;
+    const off = a2.set(e.x * wd, 0, e.z * wd + (this.back = this.detailed ? SELF_BACK.d + SELF_BACK.tilt * Math.max(0, Math.sin(-pitch0)) : 0)).applyAxisAngle(UPY, yaw + Math.PI);
+    const standX = headPos.x - off.x, standZ = headPos.z - off.z, standY = (feetY < 50 ? feetY : lieY) + (this.detailed ? SELF_BACK.up : 0);
+    if (tip > 0) { const lx = headPos.x, lz = headPos.z; /* lying: the model's root at the head, the body along the floor behind it */ hd.position.set(standX + (lx - standX) * tip, standY + (lieY - standY) * tip, standZ + (lz - standZ) * tip); }
+    else hd.position.set(standX, standY, standZ);   // your own body: 13 cm behind the eyes
     hd.updateMatrixWorld(true);
-    const drop = down ? 0 : Math.max(0, Math.min(0.85, e.y - (headPos.y - feetY))); sk.hipsOff.set(0, -drop, 0);
+    const buckle = Math.min(1, fe / 0.25) * (1 - tip), drop = Math.max(o.down ? 0 : Math.max(0, Math.min(0.85, e.y - (this.detailed ? 0 : 0.12) - (headPos.y - feetY))), buckle * 0.55) * (1 - tip);   // others: a little slack, so a short player does not stand bent-kneed
+    this.gaitFeet(dt, drop, feetY, o); sk.hipsOff.set(Gt.hipX, -drop - Gt.hipDrop, 0);
     // head: the headset's rotation in the model's frame; chest and spine take part of the pitch, and lean in a crouch
-    const Dh = _q2.copy(ihq).multiply(headQ || _q3.setFromAxisAngle(UPY, yaw)).multiply(_qPi);
-    _eul.setFromQuaternion(Dh, 'YXZ'); const pitch = down ? 0 : _eul.x, lean = drop * 0.55;
+    const Dh = down ? _q2.identity() : _q2.copy(ihq).multiply(headQ || _q3.setFromAxisAngle(UPY, yaw)).multiply(_qPi);
+    _eul.setFromQuaternion(Dh, 'YXZ'); const pitch = down ? 0 : _eul.x, lean = drop * 0.55 + Gt.lean;
     W.clear(); let n = 0; const Q = this.q;
     const sp = Q[n++].setFromAxisAngle(_ax, pitch * 0.3 + lean); r.spine.forEach((i, k) => W.set(i, sk.rig(i, _q3.identity().slerp(sp, (k + 1) / r.spine.length), Q[3 + Math.min(2, k)])));
     W.set(r.neck, sk.rig(r.neck, _q3.copy(sp).slerp(Dh, 0.5), Q[n++])); W.set(r.head, sk.rig(r.head, Dh, Q[n++]));
     for (const [S, k] of [['L', 0], ['R', 1]]) {
-      const H = this.H[S], h = hands[k]; H.on = !!h && !down;
+      const H = this.H[S], h = hands[k]; H.on = !!h && !down;   // (down = mostly fallen over)
       if (H.on) {
         // a hand round a controller (or a grip) is a fist on its side: back of the hand faces out and a little up, knuckles forward
         const sx = S === 'R' ? 1 : -1; H.wq.copy(ihq).multiply(h.quat); const f1 = a3.set(0, -0.25, -1).normalize().applyQuaternion(H.wq), b1 = a4.set(sx * HAND_BACK[0], HAND_BACK[1], HAND_BACK[2]).normalize().applyQuaternion(H.wq);
@@ -355,10 +397,52 @@ export class Body {
     }
     sk.solve(W);
   }
-  // hands: [left, right], each { pos, quat, pose? } or null
-  update(headPos, yaw, hands, feetY, headQ) {
+  // Feet for the leg solve, in the model's frame (+z forward, -x its right): a stride cycle from the real ground velocity (so forward,
+  // backward and sideways all step the right way, and the step length matches the speed), steps when turning on the spot,
+  // weight shifts when standing, a kick, and each foot set on its own ground (stairs, slopes) with the hips lowered to reach.
+  gaitFeet(dt, drop, feetY, o) {
+    const Gt = this.G, Hl = this.H.legL, Hr = this.H.legR, hd = this.holder, wd = this.detailed ? SELF_BACK.wide : 1, th = hd.rotation.y, c = Math.cos(th), s = Math.sin(th);
+    const lvx = (Gt.vx * c - Gt.vz * s) / wd, lvz = (Gt.vx * s + Gt.vz * c) / wd, spd = Gt.spd, still = o.down || Gt.fall > 0.05;
+    const scale = o.stride ?? 1, w = still ? 0 : Math.min(1, spd / 0.9), run = Math.max(0, Math.min(1, (spd - 2.2) / 1.6)), lowK = drop > 0.25 ? 0.75 : 1;
+    let A = still || spd < 0.15 ? 0 : Math.min(0.4, 0.1 + spd * 0.15) * scale * lowK, dx = 0, dz = 1;
+    if (spd > 0.01) { dx = lvx / (spd / wd); dz = lvz / (spd / wd); }
+    if (A > 0) Gt.ph += (spd * dt) / (4 * Math.max(0.08, A / scale)) * 2 * Math.PI;
+    // turning on the spot: the feet stay put while the body turns, then step round to catch up
+    if (A > 0 || still) Gt.lag *= Math.exp(-dt * 8);
+    else if (Math.abs(Gt.lag) > 0.45 && Gt.step <= 0) Gt.step = 0.42;
+    if (Gt.step > 0) { Gt.step -= dt; Gt.lag *= Math.exp(-dt * 9); }
+    const lift = (0.07 + 0.09 * run) * w * lowK * scale, sh = Gt.step > 0 ? Math.sin(Math.PI * (1 - Gt.step / 0.42) * 2) : 0;
+    const shift = A > 0 || still ? 0 : Math.sin(Gt.idle * 0.33);   // standing: weight on one leg, then the other
+    Gt.hipX = (A > 0 ? 0.025 * Math.sin(Gt.ph) * w : 0.02 * shift); Gt.lean = (0.1 * run + 0.04 * w) * Math.max(0, dz) - 0.05 * w * Math.max(0, -dz);
+    const kick = Gt.kick > 0 ? Math.sin(Math.PI * (1 - Gt.kick / 0.5)) : 0; if (Gt.kick > 0) Gt.kick -= dt;
+    const cl = Math.cos(Gt.lag), sl = Math.sin(Gt.lag);
+    for (let k = 0; k < 2; k++) {
+      const Lg = k ? Hr : Hl, sg = k ? -1 : 1, ph = Gt.ph + (k ? Math.PI : 0), f = Lg.ft.copy(Lg.foot);
+      const x0 = f.x, z0 = f.z; f.x = x0 * cl - z0 * sl; f.z = x0 * sl + z0 * cl;   // feet left behind by a turn
+      f.x += dx * A * Math.sin(ph); f.z += dz * A * Math.sin(ph); f.y += lift * Math.max(0, Math.cos(ph)) + (Gt.step > 0 ? Math.max(0, k ? -sh : sh) * 0.08 : 0);
+      if (shift) { const relax = Math.max(0, k ? -shift : shift); f.y += 0.035 * relax; f.z += 0.05 * relax; }
+      if (k === 1 && kick) { f.z += 0.55 * kick; f.y += 0.5 * kick; }   // the right boot into the door
+      Gt.feet[k].copy(f);
+    }
+    // stairs and slopes: drop each foot to the ground under it; the hips come down to the lower one
+    Gt.hipDrop = 0;
+    if (GROUND.y && !still && feetY < 50) {
+      let lo = 0; const d = [0, 0];
+      for (let k = 0; k < 2; k++) { const f = (k ? Hr : Hl).ft, wpos = a3.copy(f).applyMatrix4(hd.matrixWorld), gy = GROUND.y(wpos.x, wpos.z, feetY + 0.5); d[k] = gy === null || !Number.isFinite(gy) ? 0 : Math.max(-0.45, Math.min(0.45, gy - feetY)); lo = Math.min(lo, d[k]); }
+      Hl.ft.y += d[0]; Hr.ft.y += d[1]; Gt.sink += (lo - Gt.sink) * Math.min(1, dt * 10); Gt.hipDrop = -Gt.sink;
+    }
+    Gt.hipDrop += A > 0 ? (A * A) / (this.legLen * 2) + Math.abs(Math.sin(Gt.ph)) * 0.015 * w : 0;
+  }
+  kick() { this.G.kick = 0.5; }
+  // hands: [left, right], each { pos, quat, pose? } or null. o: { down, stride (0..1, your own legs walk smaller) }
+  update(headPos, yaw, hands, feetY, headQ, o = {}) {
     const s = Math.sin(yaw), c = Math.cos(yaw), now = performance.now(), dt = Math.min(0.1, (now - this.lastT) / 1000); this.lastT = now;
-    if (this.skin) this.poseSkin(headPos, yaw, hands, feetY, headQ, dt);
+    const Gt = this.G; if (o.down === undefined) o.down = feetY > 50;
+    if (Gt.last) { const vx = (headPos.x - Gt.last.x) / Math.max(dt, 1e-3), vz = (headPos.z - Gt.last.z) / Math.max(dt, 1e-3), k = Math.min(1, dt * 10); if (Math.hypot(vx, vz) < 12) { Gt.vx += (vx - Gt.vx) * k; Gt.vz += (vz - Gt.vz) * k; } } else Gt.last = new THREE.Vector3();
+    Gt.last.copy(headPos); Gt.spd = Math.hypot(Gt.vx, Gt.vz); Gt.idle += dt;
+    if (Gt.lastYaw !== null) { let dy = yaw - Gt.lastYaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; Gt.lag = Math.max(-1.2, Math.min(1.2, Gt.lag - dy)); } Gt.lastYaw = yaw;
+    Gt.fall = Math.max(0, Math.min(1, Gt.fall + (o.down ? dt / 0.75 : -dt / 0.95)));
+    if (this.skin) this.poseSkin(headPos, yaw, hands, feetY, headQ, dt, o);
     const tb = 0.05 + (this.back || 0) - (this.detailed && this.skin ? SELF_BACK.gear : 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up : 0), headPos.z + c * tb); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;   // vest gear moves back with the body, matching the grab zones (bodyPt), and turns with it
     this.arms.forEach((a, i) => {
       if (a.off) return; const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
@@ -382,10 +466,26 @@ export class Officer {   // another player
     this.tag = tag; tag.position.y = 0.3; this.head.add(tag);
     this.g.add(this.head, this.body.g, ...this.items); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ'); this.hp = [{ pos: new THREE.Vector3(), quat: new THREE.Quaternion() }, { pos: new THREE.Vector3(), quat: new THREE.Quaternion() }];
   }
+  // A snapshot arrives ~15 times a second; tick() draws the officer a little in the past, between the last two, so he moves
+  // smoothly instead of hopping (and the legs see a steady speed to step to).
   set(h, l, r, items, down) {
-    if (!h) return; this.head.position.set(h[0], h[1], h[2]); this.q.set(h[3], h[4], h[5], h[6]); this.head.quaternion.slerp(this.q, 0.6); this.e.setFromQuaternion(this.q);
-    const hands = [l, r].map((a, i) => { const g = this.items[i]; g.visible = !!a; if (!a) return null; const o = this.hp[i]; o.pos.set(a[0], a[1], a[2]); o.quat.set(a[3], a[4], a[5], a[6]); g.position.copy(o.pos); g.quaternion.copy(o.quat); g.userData.items.forEach((m, k) => { if (m) m.visible = k === (items ? items[i] : 0); }); return o; });
-    this.body.update(this.head.position, this.e.y, hands, down ? 99 : h[1] - 1.7, this.head.quaternion);
+    if (!h) return; const now = performance.now() / 1000, sm = this.smp || (this.smp = []);
+    sm.push({ t: now, h: h.slice(), l: l ? l.slice() : null, r: r ? r.slice() : null, items, down: !!down }); while (sm.length > 4) sm.shift();
+    if (sm.length === 1) this.tick(0, now);
+  }
+  tick(dt, now = performance.now() / 1000) {
+    const sm = this.smp; if (!sm || !sm.length) return;
+    const gap = sm.length > 1 ? Math.min(0.25, Math.max(0.04, (sm[sm.length - 1].t - sm[0].t) / (sm.length - 1))) : 0.067, rt = now - gap * 1.25;
+    let a = sm[0], b = sm[0]; for (let i = 0; i < sm.length - 1; i++) if (sm[i].t <= rt) { a = sm[i]; b = sm[i + 1]; }
+    if (rt >= sm[sm.length - 1].t) a = b = sm[sm.length - 1];
+    const u = b === a ? 1 : Math.max(0, Math.min(1, (rt - a.t) / (b.t - a.t))), jump = Math.hypot(b.h[0] - a.h[0], b.h[2] - a.h[2]) > 3;   // a respawn or teleport: no sliding across the map
+    const k = jump ? 1 : u, lp = (x, y) => x + (y - x) * k;
+    this.head.position.set(lp(a.h[0], b.h[0]), lp(a.h[1], b.h[1]), lp(a.h[2], b.h[2])); this.head.quaternion.set(a.h[3], a.h[4], a.h[5], a.h[6]).slerp(this.q.set(b.h[3], b.h[4], b.h[5], b.h[6]), k); this.e.setFromQuaternion(this.head.quaternion, 'YXZ');
+    const hands = [0, 1].map(i => { const g = this.items[i], A = i ? a.r : a.l, B = i ? b.r : b.l, X = B || A; g.visible = !!X; if (!X) return null; const o = this.hp[i], P = A && B ? A : X;
+      o.pos.set(lp(P[0], X[0]), lp(P[1], X[1]), lp(P[2], X[2])); o.quat.set(P[3], P[4], P[5], P[6]).slerp(_q.set(X[3], X[4], X[5], X[6]), k); g.position.copy(o.pos); g.quaternion.copy(o.quat);
+      g.userData.items.forEach((m, j) => { if (m) m.visible = j === (b.items ? b.items[i] : 0); }); return o; });
+    const hp = this.head.position, gy = GROUND.y ? GROUND.y(hp.x, hp.z, hp.y - (b.down ? 0.1 : 0.9)) : null, feet = gy !== null && Number.isFinite(gy) && hp.y - gy < 2.2 ? gy : hp.y - (b.down ? 0.3 : 1.7);
+    this.body.update(hp, this.e.y, hands, feet, this.head.quaternion, { down: b.down });
     if (this.body.skin && !this.hid) { this.hid = true; this.head.material = new THREE.MeshBasicMaterial({ visible: false }); }
   }
 }
