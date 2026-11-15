@@ -130,9 +130,9 @@ const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(ki
 const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol(true, true)) };
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
 const PISTOL_TILT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.3);
-const HOLSTER = RIG, HOLSTER_ROT = { rifle: [-1.3, 0, 0.5], pistol: [-1.5, 0, 0] }, _he = new THREE.Euler();   // grab zones sit exactly where the holders are drawn on the vest and belt
+const HOLSTER = RIG, HOLSTER_ROT = { rifle: [0, 1.45, 0.25, 'ZYX'], pistol: [-1.5, 0, 0, 'XYZ'] }, _he = new THREE.Euler();   // the rifle hangs across your front, muzzle to the left and a little down   // grab zones sit exactly where the holders are drawn on the vest and belt
 const bodyPt = (off, out) => out.set(off[0], 0, off[2] + (S.mode === 'vr' ? (myBody.back || 0) - (myBody.skin ? SELF_BACK.gear : 0) : 0)).applyAxisAngle(UP, S.bodyYaw)   // gear moves back with your body as you look down
-  .add(head.pos).setY(head.pos.y + off[1] + (S.mode === 'vr' ? SELF_BACK.up : 0));
+  .add(head.pos).setY(head.pos.y + off[1] + (S.mode === 'vr' ? SELF_BACK.up + (myBody.skin ? SELF_BACK.gup : 0) : 0));
 const myBody = new Body(true); myBody.g.visible = false; scene.add(myBody.g);
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 const torch = new THREE.SpotLight(0xfff2dd, 16, 30, 0.44, 0.8, 1.6); torch.visible = false; scene.add(torch, torch.target);
@@ -326,18 +326,18 @@ function showBoard() {   // the mission board in the training lobby: pick where 
     [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 // BODY FIT (training board, VR): slide your own body forward/back and up/down under the headset; kept on this device
-const FIT0 = { d: SELF_BACK.d, up: 0, gear: 0 };
-try { const f = JSON.parse(localStorage.getItem('bl_fit') || 'null'); if (f && Number.isFinite(f.d) && Number.isFinite(f.up)) { SELF_BACK.d = f.d; SELF_BACK.up = f.up; SELF_BACK.gear = Number.isFinite(f.gear) ? f.gear : Number.isFinite(f.nade) ? f.nade : 0; } } catch (e) { }
+const FIT0 = { d: SELF_BACK.d, up: 0, gear: 0, gup: 0 };
+try { const f = JSON.parse(localStorage.getItem('bl_fit') || 'null'); if (f && Number.isFinite(f.d) && Number.isFinite(f.up)) { SELF_BACK.d = f.d; SELF_BACK.up = f.up; SELF_BACK.gear = Number.isFinite(f.gear) ? f.gear : Number.isFinite(f.nade) ? f.nade : 0; SELF_BACK.gup = Number.isFinite(f.gup) ? f.gup : 0; } } catch (e) { }
 function fitStep(k) {
-  if (k === 'reset') { SELF_BACK.d = FIT0.d; SELF_BACK.up = FIT0.up; SELF_BACK.gear = FIT0.gear; }
-  else { const [key, dv] = { fwd: ['d', -0.02], back: ['d', 0.02], up: ['up', 0.02], down: ['up', -0.02], nfwd: ['gear', 0.02], nback: ['gear', -0.02] }[k]; SELF_BACK[key] = Math.round(Math.max(-0.2, Math.min(0.3, SELF_BACK[key] + dv)) * 100) / 100; }
-  try { localStorage.setItem('bl_fit', JSON.stringify({ d: SELF_BACK.d, up: SELF_BACK.up, gear: SELF_BACK.gear })); } catch (e) { } sfx.click();
+  if (k === 'reset') { SELF_BACK.d = FIT0.d; SELF_BACK.up = FIT0.up; SELF_BACK.gear = FIT0.gear; SELF_BACK.gup = FIT0.gup; }
+  else { const [key, dv] = { fwd: ['d', -0.02], back: ['d', 0.02], up: ['up', 0.02], down: ['up', -0.02], nfwd: ['gear', 0.02], nback: ['gear', -0.02], gup: ['gup', 0.02], gdown: ['gup', -0.02] }[k]; SELF_BACK[key] = Math.round(Math.max(-0.2, Math.min(0.3, SELF_BACK[key] + dv)) * 100) / 100; }
+  try { localStorage.setItem('bl_fit', JSON.stringify({ d: SELF_BACK.d, up: SELF_BACK.up, gear: SELF_BACK.gear, gup: SELF_BACK.gup })); } catch (e) { } sfx.click();
 }
 function showFit(place = true) {
   S.panel = 'fit'; panel.mesh.visible = true; if (place) frontOfHead(1.1);
   const cm = v => (v >= 0 ? '+' : '') + Math.round(v * 100) + ' cm';
-  panel.draw('BODY FIT', 'Look down at yourself, then nudge the body until it sits right', ['Back / forward: ' + cm(SELF_BACK.d - FIT0.d) + '   (more BACK hides your shoulders and neck)', 'Up / down: ' + cm(SELF_BACK.up) + '   (DOWN lowers the chest and gear)', 'Gear: ' + cm(SELF_BACK.gear) + '   (everything on the vest and belt, and where you grab it)', 'Saved on this headset. RESET goes back to the default.'],
-    [['BODY BACK', 'fit:back'], ['BODY FORWARD', 'fit:fwd'], ['BODY UP', 'fit:up'], ['BODY DOWN', 'fit:down'], ['GEAR FORWARD', 'fit:nfwd'], ['GEAR BACK', 'fit:nback'], ['RESET', 'fit:reset'], ['DONE', 'fit:done']]);
+  panel.draw('BODY FIT', 'Look down at yourself, then nudge the body until it sits right', ['Body  back ' + cm(SELF_BACK.d - FIT0.d) + ', up ' + cm(SELF_BACK.up) + '     Gear  forward ' + cm(SELF_BACK.gear) + ', up ' + cm(SELF_BACK.gup), 'GEAR moves everything on the vest and belt and where you grab it.'],
+    [['BODY BACK', 'fit:back'], ['BODY FORWARD', 'fit:fwd'], ['BODY UP', 'fit:up'], ['BODY DOWN', 'fit:down'], ['GEAR FORWARD', 'fit:nfwd'], ['GEAR BACK', 'fit:nback'], ['GEAR UP', 'fit:gup'], ['GEAR DOWN', 'fit:gdown'], ['RESET', 'fit:reset'], ['DONE', 'fit:done']]);
 }
 function showEndPanel() {
   const R = S.report; if (!R || S.menu) return; S.panel = 'end'; panel.mesh.visible = true; frontOfHead(1.9);
@@ -632,7 +632,7 @@ function placeGuns(dt) {
   for (const k in guns) {
     const G = guns[k], m = G.mesh; G.kick *= Math.exp(-14 * dt);
     if (G.where === 'holster') {
-      m.visible = S.mode === 'vr'; bodyPt(HOLSTER[k], m.position); q1.setFromAxisAngle(UP, head.yaw); m.quaternion.copy(q1).multiply(q1.setFromEuler(_he.set(...HOLSTER_ROT[k])));
+      m.visible = S.mode === 'vr'; bodyPt(HOLSTER[k], m.position); q1.setFromAxisAngle(UP, head.yaw); m.quaternion.copy(q1).multiply(q1.setFromEuler(_he.set(...HOLSTER_ROT[k])));   // (x, y, z, order)
     } else {
       const h = hands[G.where], o = hands[1 - G.where]; m.visible = true; m.position.copy(h.pos);
       if (k === 'rifle' && o.support) { v1.set(0, 1, 0).applyQuaternion(h.quat); m1.lookAt(h.pos, v2.copy(o.pos).addScaledVector(v1, -0.02), v1); m.quaternion.setFromRotationMatrix(m1); }
@@ -984,9 +984,9 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v47';
+const BUILD = 'v48';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { get wheel() { return wheel; }, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

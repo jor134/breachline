@@ -265,7 +265,7 @@ const POSE = {
 // ---------- officer body: vest, belt, holders, legs, and arms that reach to the hands ----------
 // Offsets are from the head, with -z forward. These are also the grab zones used by the game.
 export const HAND_BACK = [0.85, 0.5, -0.1], HAND_KN = [0.018, -0.012, -0.01];   // back-of-hand direction and knuckle point in the controller's frame (x mirrored for the left hand)
-export const SELF_BACK = { d: 0.02, tilt: 0.25, wide: 7 / 6, up: 0, gear: 0 };   // up / gear: BODY FIT height offset, all vest and belt gear forward   // up: BODY FIT height offset   // your own body sits this far behind your eyes, and is this much broader and deeper
+export const SELF_BACK = { d: 0.02, tilt: 0.25, wide: 7 / 6, up: 0, gear: 0, gup: 0 };   // up / gear: BODY FIT height offset, all vest and belt gear forward   // up: BODY FIT height offset   // your own body sits this far behind your eyes, and is this much broader and deeper
 // Looking down, real eyes swing forward over the chest; the body here follows the eyes, so it is pushed back by up to
 // SELF_BACK.tilt more as the head tilts down: you see your chest and gear, not the tops of your shoulders and the collar.
 export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.0, -0.76, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
@@ -443,7 +443,7 @@ export class Body {
     if (Gt.lastYaw !== null) { let dy = yaw - Gt.lastYaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; Gt.lag = Math.max(-1.2, Math.min(1.2, Gt.lag - dy)); } Gt.lastYaw = yaw;
     Gt.fall = Math.max(0, Math.min(1, Gt.fall + (o.down ? dt / 0.75 : -dt / 0.95)));
     if (this.skin) this.poseSkin(headPos, yaw, hands, feetY, headQ, dt, o);
-    const tb = 0.05 + (this.back || 0) - (this.detailed && this.skin ? SELF_BACK.gear : 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up : 0), headPos.z + c * tb); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;   // vest gear moves back with the body, matching the grab zones (bodyPt), and turns with it
+    const tb = 0.05 + (this.back || 0) - (this.detailed && this.skin ? SELF_BACK.gear : 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up + (this.skin ? SELF_BACK.gup : 0) : 0), headPos.z + c * tb); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;   // vest gear moves back with the body, matching the grab zones (bodyPt), and turns with it
     this.arms.forEach((a, i) => {
       if (a.off) return; const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
       const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat).multiply(_q2.setFromAxisAngle(a4.set(0, 0, 1), -a.sx * 1.05)); if (this.detailed && h.pose) poseHand(a.glove, h.pose, dt);
