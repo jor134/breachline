@@ -389,6 +389,7 @@ export class Sim {
       else if (n.st === 's' && n.tS > 1.2 && !n.fake) n.st = 'k';
       return;
     }
+    if (n.medic && this.tickMedic(n, dt)) return;
     // a fleeing target runs for his way out (the airport's jet) as soon as he knows the squad is here, then digs in there
     if (n.hvt && this.M.hvt.flee && !n.fled && n.st !== 'g') { const [f, x, z] = this.M.hvt.flee; n.fled = true; n.cov = null; n.crouch = false; n.exec = null; n.strafe = false; if (this.goto(n, x, z, f * this.M.H)) { n.fleeing = true; this.ev({ e: 'hvtrun', n: n.id }); } }
     if (n.fleeing) { const [f, x, z] = this.M.hvt.flee; if (!n.path && Math.hypot(n.x - x, n.z - z) > 1.5 && !this.goto(n, x, z, f * this.M.H)) n.fleeing = false; if (n.fleeing && !this.walk(n, dt, 3.3)) { n.fleeing = false; n.post = [x, z, f * this.M.H]; n.st = 'a'; n.tA = 0; n.hold = true; n.crouch = true; n.lk = [x, z + 6, n.y]; } return; }
@@ -430,6 +431,35 @@ export class Sim {
       }
     }
   }
+  // PvP: a downed human terrorist gets the nearest free suspect (within 25 m, a floor either way) running over to get him back up.
+  // Each terrorist can be revived MEDIC_MAX times a mission. A medic who sees SWAT drops it and fights; another may come.
+  assignMedics() {
+    for (const p of this.players.values()) {
+      if (p.team !== 'tango' || p.bot) continue;
+      const cur = p.medBy && this.npcs.find(n => n.id === p.medBy);
+      if (!p.down) { if (cur && cur.medic === p.id) { cur.medic = null; cur.crouch = false; } p.medBy = null; continue; }
+      if (cur && cur.medic === p.id && !DONE[cur.st] && cur.st !== 's' && cur.st !== 'k') continue;
+      p.medBy = null; if ((p.revives || 0) >= Sim.MEDIC_MAX) continue;
+      if ((p.medAsk = (p.medAsk || 0) - 1) > 0) continue; p.medAsk = 8;   // look for one about twice a second
+      let best = null, bd = 25;
+      for (const n of this.npcs) { if (n.kind !== 's' || DONE[n.st] || n.st === 's' || n.st === 'k' || n.medic || n.hvt || n.exec || n.stun > 0 || Math.abs(n.y - p.y) > 4) continue; const d = Math.hypot(n.x - p.hx, n.z - p.hz); if (d < bd) { bd = d; best = n; } }
+      if (best && this.goto(best, p.hx, p.hz, p.y)) { best.medic = p.id; best.medT = 0; best.medRe = 1.5; best.cov = null; best.strafe = false; best.hold = false; p.medBy = best.id; this.ev({ e: 'say', n: best.id, k: 'medic' }); }
+    }
+  }
+  tickMedic(n, dt) {
+    const m = this.players.get(n.medic);
+    if (!m || !m.down) { n.medic = null; n.crouch = false; return false; }
+    for (const p of this.players.values()) { if (p.down || !p.has || p.team === 'tango') continue; const d = Math.hypot(p.hx - n.x, p.hy - n.y - 1.5, p.hz - n.z); if (d < 30 && this.sees(n, p, d)) { n.medic = null; m.medBy = null; n.crouch = false; n.path = null; return false; } }   // SWAT in sight: fight first
+    const d = Math.hypot(n.x - m.hx, n.z - m.hz);
+    if (d > 1.1 || Math.abs(n.y - m.y) > 0.8) {
+      n.medT = 0; n.crouch = false; n.medRe -= dt;
+      if (!n.path || n.medRe <= 0) { n.medRe = 1.5; if (!this.goto(n, m.hx, m.hz, m.y)) { n.medic = null; m.medBy = null; return false; } }
+      this.walk(n, dt, 3.2); return true;
+    }
+    n.path = null; n.spd = 0; n.crouch = true; this.face(n, m.hx, m.hz, dt, 6);
+    if ((n.medT += dt) >= Sim.MEDIC_TIME) { m.down = false; m.hp = 40; m.revives = (m.revives || 0) + 1; m.medBy = null; n.medic = null; n.crouch = false; n.st = 'a'; n.tA = 0; n.hold = false; n.lk = [m.hx, m.hz, m.y]; this.ev({ e: 'revive', p: m.id, by: n.id }); }
+    return true;
+  }
   // An unsecured hostage this suspect can see on the same floor, nearest first.
   hostageNear(n) {
     let best = null, bd = 8;
@@ -468,6 +498,7 @@ export class Sim {
     this.timer -= dt; if (this.gren.length || this.smokes.length) this.tickGrenades(dt);
     if (this.M.race) this.tickRace();
     for (const p of this.players.values()) if (p.hold) this.carry(p);
+    if (this.pvp) this.assignMedics();
     for (const n of this.npcs) if (n.kind === 's') this.tickSuspect(n, dt);
     this.tickBots(dt);
     const sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c'), ps = [...this.players.values()];
@@ -538,3 +569,4 @@ export class Sim {
   }
 }
 Object.assign(Sim.prototype, BotMixin);   // SWAT bots: core/bots.js
+Sim.MEDIC_MAX = 3; Sim.MEDIC_TIME = 4;   // PvP: AI suspects revive a downed human terrorist up to 3 times a mission, 4 s each

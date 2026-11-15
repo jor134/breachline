@@ -559,4 +559,15 @@ await t('a terrorist can down every bot, leg shots included', () => {
   }
   for (const b of s.bots()) assert.ok(b.down, b.name + ' went down');
 });
+await t('PvP: a nearby suspect revives a downed terrorist, up to three times a mission, and fights instead if SWAT is in sight', () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'T'); s.setTeam(1, 'tango'); s.start(9, false, 'clear', 'mansion'); const me = s.players.get(1);
+  const park = s.bots().map(b => [b.bot.x, b.bot.z]), step = () => { s.tick(1 / 15); s.bots().forEach((b, i) => { b.bot.x = park[i][0]; b.bot.z = park[i][1]; b.bot.path = null; }); };
+  const downFor = sec => { me.hp = 0; me.down = true; let t = 0; while (t < sec && me.down) { step(); t += 1 / 15; } return t; };
+  const t1 = downFor(40); assert.ok(!me.down && me.hp === 40, 'back up at 40 hp'); assert.ok(t1 > Sim.MEDIC_TIME, 'it takes the medic time');
+  downFor(40); downFor(40); assert.equal(me.revives, 3); downFor(15); assert.ok(me.down, 'no fourth revive');
+  // a medic who can see SWAT drops it
+  const s2 = new Sim('mansion'); s2.addPlayer(1, 'T'); s2.setTeam(1, 'tango'); s2.start(9, false, 'clear', 'mansion'); const m2 = s2.players.get(1); m2.hp = 0; m2.down = true;
+  for (let k = 0; k < 10; k++) s2.tick(1 / 15); const med = s2.npcs.find(n => n.medic === 1); assert.ok(med, 'a medic is on the way');
+  const b = s2.bots()[0], dd = Math.hypot(m2.hx - med.x, m2.hz - med.z); b.bot.x = med.x + (m2.hx - med.x) / dd * 1.5; b.bot.z = med.z + (m2.hz - med.z) / dd * 1.5; b.bot.y = med.y;   // in his way s2.botPose(b); s2.tickMedic(med, 1 / 15); assert.equal(med.medic, null, 'sees SWAT: fights instead');
+});
 console.log(n + ' tests passed');

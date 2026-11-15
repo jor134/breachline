@@ -24,6 +24,8 @@ Sound effects are recorded CC0 libraries from GitHub (Free Firearm Sound Library
 ## Not in yet
 Voice chat, climbing (container tops, crane ladders), downloaded furniture and character models, AI teammates.
 
+PvP revives: a downed human terrorist gets the nearest free AI suspect (25 m, a floor either way) running to revive him: 4 s kneeling, back at 40 hp, at most 3 times a mission (`Sim.MEDIC_TIME`, `Sim.MEDIC_MAX` in `core/sim.js`). A medic who sees SWAT drops it and fights; another is sent.
+
 ## Tutorial
 
 `js/tutorial.js`: a guided, hands-on tutorial. Start it from TUTORIAL on the start screen (also offered on the first visit, or `?tut=1`), or from the mission board (VR / desktop board, phone top row). Part one in the training facility (move, turn, rifle, shoot, reload, pistol, light, doors, kick, shout, tool wheel, wrist / radio menu, mission board), part two on a first mission (squad orders, arrest, finish). Each step waits until the player does it (green marker for where to go), worded for VR, phone or desktop; SKIP / EXIT always available (desktop: K). Extra lessons: body fit, night vision, grenades, locks and traps, bomb, kill house, playing with friends / PvP, level editor. VR shows a floating coach panel; phone and desktop an overlay. `howto.html` is the readable guide (controls for all three platforms, missions, squad orders, setup, online, PvP, editor).
