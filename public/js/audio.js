@@ -95,7 +95,9 @@ export const sfx = {
   kick(pos, ok) { if (!sample('kick', pos, 1.6)) tone(pos, 90, 35, 0.25, 1.6); if (ok) sample('door_open', pos, 1.3, { rate: 1.6, delay: 0.05 }); },
   cuff(pos) { sample('cuff', pos, 1.2) || burst(pos, 0.03, 5000, 0.5, 'highpass'); },
   cut(pos, ok) { sample('snip', pos, 1.1); if (ok) sample('ok', pos, 0.5, { delay: 0.15 }); else sample('error', pos, 0.8, { delay: 0.1 }) || tone(pos, 220, 110, 0.5, 0.35, 'square'); },
+  shatter(pos) { sample('impact_glass', pos, 2.2, { rate: 0.6 }); sample('impact_glass', pos, 1.6, { rate: 0.85, delay: 0.06 }) || burst(pos, 0.5, 4200, 1.2, 'highpass'); burst(pos, 0.9, 6000, 0.5, 'highpass'); },
   impact(pos, glass) { sample(glass ? 'impact_glass' : 'impact', pos, 0.9) || burst(pos, 0.05, 3500, 0.35, 'bandpass', 1.5); },
+  chime(pos) { tone(pos, 1318, 1316, 0.5, 0.3); setTimeout(() => tone(pos, 1046, 1044, 0.7, 0.3), 220); },   // the lift's arrival bell
   clink(pos) { sample('clink', pos, 1.1) || burst(pos, 0.05, 4000, 0.3, 'bandpass', 2); },
   step(pos, mat, gain) { sample('step_' + mat, pos, gain, { wet: 0.5 }); },
   hurt() { sample('hurt', null, 1.1, { wet: 0 }); tone(null, 110, 50, 0.3, 0.5, 'sawtooth'); },

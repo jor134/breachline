@@ -8,8 +8,10 @@ import terminalGfx from './maps/terminal-gfx.js';
 import trainingGfx from './maps/training-gfx.js';
 import grandprixGfx from './maps/grandprix-gfx.js';
 import airportGfx from './maps/airport-gfx.js';
+import casinoGfx from './maps/casino-gfx.js';
 import { customGfx } from './maps/custom-gfx.js';
-const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx };
+const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx, casino: casinoGfx };
+let MAPFURN = null;   // a map's own furniture pieces (gfx.furn): sub -> builder
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
 export function initMats() {
@@ -74,6 +76,11 @@ function furnish(b, w) {
   const P = (m, u0, u1, v0, v1, a, c, faces = ALL, s = 1) => acrossX
     ? b(m).box(x0 + u0, x0 + u1, y0 + a, y0 + c, neg ? z1 - v1 : z0 + v0, neg ? z1 - v0 : z0 + v1, faces, s)
     : b(m).box(neg ? x1 - v1 : x0 + v0, neg ? x1 - v0 : x0 + v1, y0 + a, y0 + c, z0 + u0, z0 + u1, faces, s);
+  if (MAPFURN && MAPFURN[w.sub]) {   // W(u, v, y): a point u across the front, v from the back, y up, in world space; Q(m, a, b, c, d, uv4): one quad
+    const W = (u, v, y) => acrossX ? [x0 + u, y0 + y, neg ? z1 - v : z0 + v] : [neg ? x1 - v : x0 + v, y0 + y, z0 + u];
+    const fn = [acrossX ? 0 : (neg ? -1 : 1), 0, acrossX ? (neg ? -1 : 1) : 0];
+    return MAPFURN[w.sub]({ P, b, W, len, dep, h, w, fn, face, ALL });
+  }
   switch (w.sub) {
     case 'sofa': { const n = Math.max(1, Math.round((len - 0.4) / 0.8)), cw = (len - 0.4) / n;
       P('fabric', 0, len, 0, dep, 0.08, 0.4); P('fabric', 0, len, 0, 0.2, 0.4, h); P('fabric', 0, 0.2, 0.2, dep, 0.4, 0.62); P('fabric', len - 0.2, len, 0.2, dep, 0.4, 0.62);
@@ -120,7 +127,7 @@ function furnish(b, w) {
 export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   initMats();
   const level = buildLevel(id), map = level.map, H = map.H, YARD = map.YARD, G = MAPGFX[level.id] || (map.custom ? (map.gfx = map.gfx || customGfx(map)) : MAPGFX.mansion); if (G.setTod) G.setTod(tod); const env = G.env, root = new THREE.Group(), B = {}; root.name = 'world'; scene.add(root);
-  if (G.mats) G.mats(MATS);
+  if (G.mats) G.mats(MATS); MAPFURN = G.furn || null;
   const b = k => B[k] || (B[k] = new Builder()), cx = (YARD.x0 + YARD.x1) / 2, cz = (YARD.z0 + YARD.z1) / 2;
   // sky dome (gradient), stars, moon, far silhouettes
   const sc = document.createElement('canvas'); sc.width = 4; sc.height = 256; const sg = sc.getContext('2d'), gr = sg.createLinearGradient(0, 0, 0, 256);
@@ -137,7 +144,8 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   G.scenery(ctx);
   // floors, ceilings with recessed downlights
   // stairwells: every floor a flight passes through is open over it, except the landing strip at the top of the flight
-  const holes = {}; for (const st of map.stairs || []) for (let k = 1; k <= st.n; k++) (holes[Math.round(st.yb / H) + k] = holes[Math.round(st.yb / H) + k] || []).push([st.x0, st.z0 + (st.z1 - st.z0) * 0.15, st.x1, st.z1]);
+  const holes = {}; for (const [lv, r] of map.holes || []) (holes[lv] = holes[lv] || []).push(r);   // a map's own shafts (open from floor to ceiling)
+  for (const st of map.stairs || []) for (let k = 1; k <= st.n; k++) (holes[Math.round(st.yb / H) + k] = holes[Math.round(st.yb / H) + k] || []).push([st.x0, st.z0 + (st.z1 - st.z0) * 0.15, st.x1, st.z1]);
   const cut = (r, hs) => { let out = [r]; for (const [hx0, hz0, hx1, hz1] of hs || []) { const nx = []; for (const [a, c, e, g] of out) { if (hx1 <= a || hx0 >= e || hz1 <= c || hz0 >= g) { nx.push([a, c, e, g]); continue; }
       if (c < hz0) nx.push([a, c, e, hz0]); if (g > hz1) nx.push([a, hz1, e, g]); const zc = Math.max(c, hz0), zg = Math.min(g, hz1); if (a < hx0) nx.push([a, zc, hx0, zg]); if (e > hx1) nx.push([hx1, zc, e, zg]); } out = nx; } return out; };
   for (const [lv, hs] of Object.entries(holes)) for (const [hx0, hz0, hx1, hz1] of hs) { const y = lv * H; b('fascia').box(hx0, hx1, y - 0.22, y, hz1 - 0.04, hz1, 'Z', 1); b('fascia').box(hx0 - 0.002, hx0 + 0.04, y - 0.22, y, hz0, hz1, 'X', 1); b('fascia').box(hx1 - 0.04, hx1 + 0.002, y - 0.22, y, hz0, hz1, 'x', 1); b('fascia').box(hx0, hx1, y - 0.22, y, hz0, hz0 + 0.04, 'z', 1); }   // slab edges round the opening

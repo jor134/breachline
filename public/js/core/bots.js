@@ -21,7 +21,7 @@ export const BotMixin = {
     for (let i = 0; i < n; i++) {
       let slot = 0; while (used.has(slot)) slot++; used.add(slot);
       const [x, z] = this.M.spawn[slot % this.M.spawn.length], id = 900 + i;
-      const y0 = this.yAt(0, x, z);
+      const y0 = this.M.spawnY ?? this.yAt(0, x, z);
       this.players.set(id, { id, name: BOT_NAMES[i], slot, hp: 100, down: false, hx: x, hy: y0 + 1.62, hz: z, y: y0, h: null, l: null, r: null, g: [0, 1], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: true, w: 0, med: false, fl: 2, sm: 1, team: 'swat', entered: false, locks: 0, traps: 0,
         bot: { i, x, z, y: y0, yaw: Math.PI, path: null, pi: 0, spd: 0, base: 'follow', task: null, st: 0, aim: 0, cool: 0, burst: 3, foe: null, sayT: -9, shoutT: -9, repath: 0, seen: {}, hold: null, crouch: false, pitch: 0, lead: null, heard: null } });
       this.botPose(this.players.get(id));
@@ -60,7 +60,7 @@ export const BotMixin = {
     bots.forEach((p, k) => { if (!p.down) this.tickBot(p, dt, auto, humans, bots, k); this.botPose(p); });
   },
   tickBot(p, dt, auto, humans, bots, k) {
-    const b = p.bot; b.st = b.task ? { move: 2, door: 3, defuse: 4, detain: 5, revive: 6 }[b.task.k] : b.base === 'hold' ? 1 : 0;
+    const b = p.bot; if (b.rope) { b.st = 2; this.botRope(p, dt); return; }   // on a rope: nothing else until off it b.st = b.task ? { move: 2, door: 3, defuse: 4, detain: 5, revive: 6 }[b.task.k] : b.base === 'hold' ? 1 : 0;
     // 1. threats come first: shoot a suspect who is shooting or about to execute; challenge an armed one who is not
     const foe = this.botFoe(p);
     if (foe) { b.st = 7; this.botFight(p, foe, dt); return; }
@@ -191,18 +191,49 @@ export const BotMixin = {
   botSpots(p, did) { const b = p.bot; if (b.seen[did] === undefined) b.seen[did] = this.rnd() < 0.85; return b.seen[did]; },
   botFace(p, x, z, dt) { const b = p.bot, a = Math.atan2(x - b.x, z - b.z), d = ang(a, b.yaw), s = 6 * dt; b.yaw += Math.abs(d) < s ? d : Math.sign(d) * s; b.pitch *= 0.9; },
   botLook(p, dt) { const b = p.bot; b.pitch *= 0.9; if (b.heard && this.t - b.heard[3] < 4) this.botFace(p, b.heard[0], b.heard[1], dt); },
-  botPath(p, x, z, y) { const b = p.bot; b.path = findPath(this.level, b.x, b.z, b.y, x, z, y); b.pi = 1; return !!b.path; },
+  botPath(p, x, z, y) {
+    const b = p.bot; b.path = findPath(this.level, b.x, b.z, b.y, x, z, y); b.pi = 1; b.ropeGo = null;
+    if (!b.path && this.M.ropes) { const r = this.ropePlan(b.x, b.z, b.y, x, z, y, 2); if (r) { b.path = r.path; b.ropeGo = r.i; b.pi = 1; } }   // no way on foot: down a rope
+    return !!b.path;
+  },
+  // The first rope on the way from (sx, sz, sy) to (tx, tz, ty): reachable on foot, and from where it lands the target is
+  // reachable on foot or by another rope (depth ropes at most). Returns { i, path } (the walk to the rope's top) or null.
+  ropePlan(sx, sz, sy, tx, tz, ty, depth) {
+    let best = null, bc = Infinity;   // the cheapest: a short walk, landing near the target, and a rope nobody else is on
+    for (const [i, r] of this.M.ropes.entries()) {
+      if (Math.abs(r.top - sy) > 1.6) continue; const path = findPath(this.level, sx, sz, sy, r.top0[0], r.top0[1], r.top0[2]); if (!path) continue;
+      const e = path[path.length - 1]; if (Math.hypot(e[0] - r.top0[0], e[1] - r.top0[1]) > 1.2) continue;
+      const [x2, z2, y2] = r.step, on = findPath(this.level, x2, z2, y2, tx, tz, ty), ok = on && Math.hypot(on[on.length - 1][0] - tx, on[on.length - 1][1] - tz) < 1.5;
+      if (!ok && !(depth > 1 && this.ropePlan(x2, z2, y2, tx, tz, ty, depth - 1))) continue;
+      const users = this.bots().filter(q => q.bot.rope ? q.bot.rope.i === i : q.bot.ropeGo === i).length, c = path.length * 0.5 + (ok ? on.length * 0.5 : 20) + users * 8;
+      if (c < bc) { bc = c; best = { i, path }; }
+    }
+    return best;
+  },
+  // Rappelling: hang off the rope facing the building and let it run, break the window at the bottom, step in (or onto the roof).
+  botRope(p, dt) {
+    const b = p.bot, R = b.rope, r = this.M.ropes[R.i], hx = r.x + r.out[0] * 0.4, hz = r.z + r.out[1] * 0.4;
+    b.x += (hx - b.x) * Math.min(1, dt * 6); b.z += (hz - b.z) * Math.min(1, dt * 6); b.yaw = Math.atan2(-r.out[0], -r.out[1]); b.crouch = false; b.spd = 0; b.aim = 0;
+    if (R.ph === 'down') { b.y = Math.max(r.bot, b.y - 1.7 * dt); if (b.y <= r.bot) { R.ph = 'win'; R.t = 0; } }
+    else if ((R.t += dt) > 0.5) {
+      const w = r.winAt ? this.level.doors.find(d => d.win && Math.abs(d.cx - r.winAt[0]) < 0.1 && Math.abs(d.cz - r.winAt[1]) < 0.1) : null;
+      if (w && !this.doorOpen[w.id]) { p.y = b.y; this.shatter(w.id, p); this.ev({ e: 'kick', d: w.id, ok: true, p: p.id }); R.t = 0.2; }
+      else { [b.x, b.z, b.y] = r.step; b.rope = null; b.path = null; b.ropeGo = null; }
+    }
+    p.hx = b.x; p.hz = b.z; p.y = b.y;
+  },
   botGo(p, x, z, y, dt, sp) { const b = p.bot; if (!b.path && !this.botPath(p, x, z, y)) return false; return this.botWalk(p, dt, sp, 0); },
   // Walk the path, stopping `stop` metres short; a closed door on the way is handled on the spot (wire check, pick or kick, open).
   botWalk(p, dt, sp, stop, skipDoor = -1, inner = false) {
     const b = p.bot; if (!b.path) return false;
-    if (stop > 0) { const e = b.path[b.path.length - 1]; if (Math.hypot(e[0] - b.x, e[1] - b.z) < stop) { b.path = null; b.spd = 0; return false; } }
+    if (stop > 0 && b.ropeGo == null) { const e = b.path[b.path.length - 1]; if (Math.hypot(e[0] - b.x, e[1] - b.z) < stop) { b.path = null; b.spd = 0; return false; } }
     if (!inner && b.doorT == null) for (let i = b.pi; i < Math.min(b.path.length, b.pi + 5); i++) {
       const [wx, wz] = b.path[i]; if (Math.hypot(wx - b.x, wz - b.z) > 2.2) break;
-      const did = this.level.doors.findIndex((D, j) => j !== skipDoor && !this.doorOpen[j] && Math.abs(D.y - b.y) < 1 && Math.hypot(D.cx - wx, D.cz - wz) < 0.75);
+      const did = this.level.doors.findIndex((D, j) => j !== skipDoor && !D.win && D.lift === undefined && !this.doorOpen[j] && Math.abs(D.y - b.y) < 1 && Math.hypot(D.cx - wx, D.cz - wz) < 0.75);
       if (did >= 0) { const T = { k: 'door', how: this.doorLocked[did] ? 'pick' : 'open', d: did, ph: 'go', t: 0, sub: true }; b.sub = { T }; b.doorT = 0; break; }
     }
     if (!inner && b.sub) { const s = b.sub; if (!this.botDoor(p, s.T, dt)) return true; b.sub = null; b.doorT = null; b.path = null; return false; }   // a fresh path from here once it is open
+    if (b.ropeGo != null) { const r = this.M.ropes[b.ropeGo]; if (Math.hypot(r.top0[0] - b.x, r.top0[1] - b.z) < 0.9 && Math.abs(r.top - b.y) < 1) { b.rope = { i: b.ropeGo, ph: 'down', t: 0 }; b.ropeGo = null; b.path = null; this.ev({ e: 'clip', p: p.id }); return true; } }   // at the anchor: clip in
     const moving = this.walk(b, dt, sp, false, true);
     p.hx = b.x; p.hz = b.z; p.y = b.y;
     return moving;
@@ -225,6 +256,7 @@ export const BotMixin = {
       Lh = u < 0.25 ? lerp3(L0, MW, ease(u / 0.25)) : u < 0.5 ? lerp3(MW, BELT, ease((u - 0.25) / 0.25)) : u < 0.75 ? lerp3(BELT, MW, ease((u - 0.5) / 0.25)) : lerp3(MW, L0, ease((u - 0.75) / 0.25)); R = [0.15, -0.33, 0.2]; }
     else if (this.t - (b.throwT ?? -9) < 0.7) { const u = (this.t - b.throwT) / 0.7; Lh = u < 0.4 ? lerp3(L0, [-0.28, 0.12, -0.2], ease(u / 0.4)) : lerp3([-0.28, 0.12, -0.2], [-0.12, -0.05, 0.75], ease(Math.min(1, (u - 0.4) / 0.3))); }
     else if (this.t - (b.reachT ?? -9) < 0.6 && b.reachAt) { const u = Math.sin(Math.PI * (this.t - b.reachT) / 0.6); lw = b.reachAt; Lh = null; p.l = [...[0, 1, 2].map(i => r2(at(...L0)[i] + (lw[i] - at(...L0)[i]) * u)), ...q]; }
+    if (b.rope) { R = [0.06, 0.25, 0.3]; Lh = [-0.04, -0.15, 0.32]; }   // hands on the rope above and at the chest
     p.r = [...at(...R), ...q]; if (Lh) p.l = [...at(...Lh), ...q]; p.g = [0, 1];
   },
   // Gunfire from a terrorist player is something the bots hear and turn toward.

@@ -5,7 +5,8 @@ import terminal from './maps/terminal.js';
 import training from './maps/training.js';
 import grandprix from './maps/grandprix.js';
 import airport from './maps/airport.js';
-export const MAPS = { training, mansion, terminal, grandprix, airport };
+import casino from './maps/casino.js';
+export const MAPS = { training, mansion, terminal, grandprix, airport, casino };
 const cache = new Map();
 export const MAP_IDS = Object.keys(MAPS);
 export const MISSION_IDS = MAP_IDS.filter(k => !MAPS[k].training);
@@ -164,6 +165,7 @@ function rayBox(b, ox, oy, oz, dx, dy, dz, max) {
 // Distance along a unit ray to the first solid surface (walls, furniture, closed doors, floors), or max.
 // Walks the spatial index cell by cell along the ray (2D DDA) and stops once the next cell starts beyond the nearest hit.
 // solidGlass: true = glass stops it (sight that glass blocks), 'bullet' = a bullet (passes glass, fences and screens: wood fences, shrubs), else sight
+export { rayBox };
 export function rayStatic(level, doorOpen, ox, oy, oz, dx, dy, dz, max, solidGlass = false) {
   let best = max; const bullet = solidGlass === 'bullet'; const G = level.grid, stamp = ++G.stamp, cs = G.cs, boxes = level.boxes;
   let ci = Math.floor((ox - G.x0) / cs), cj = Math.floor((oz - G.z0) / cs);
