@@ -14,12 +14,12 @@ export const FOOT = { x0: 0, z0: 0, x1: 72, z1: 56 };              // the casino
 export const WING = { x0: 16, z0: 0, x1: 56, z1: 20 };             // the sky-suite wing above it
 export const MAIN = { x0: 14, z0: 8, x1: 60, z1: 48 };             // the double-height casino floor
 export const F3 = 3 * H, ROOF = 6 * H, POD = 2 * H;               // suites floor, wing roof, podium roof
-export const HELI = { x0: 33.6, x1: 38.4, z0: 7.0, z1: 9.6, y: ROOF + 4.5, door: [34.6, 37.4] };   // cabin floor; the door is the south side
+export const HELI = { x0: 33.8, x1: 38.2, z0: 7.0, z1: 9.6, y: ROOF + 4.5, door: [34.6, 37.4] };   // cabin floor; the door is the south side (fits the Black Hawk's cabin)
 export const SHAFT = { x0: 26, x1: 32, z0: 0, z1: 8, n: 2.4, s: 6.6, mid: 29 };                    // scissor stair: north and south landing strips
 export const CAR = { x0: 40, x1: 43, z0: 0, z1: 3.2 };            // service lift car (at the casino and at the suites)
 export const YARD = { x0: -30, z0: -50, x1: 102, z1: 100 };
 export const CANOPY = { x0: 18, x1: 54, z0: 56, z1: 74, y: 8.5 };  // the white ribbed porte-cochere
-export const SPAWN = [[34.4, 8.2], [35.6, 8.2], [36.8, 8.2], [38.0, 8.2]];
+export const SPAWN = [[34.7, 8.3], [35.6, 8.3], [36.5, 8.3], [37.4, 8.3]];
 export const EXIT = { x0: 28, x1: 44, z0: 60, z1: 70 };
 export const BREAKER = { x: 65.87, y: 1.4, z: 4 };
 export const WINX = [22, 32, 37, 51];                              // the four breach windows (2 m wide) in the suites' south glass

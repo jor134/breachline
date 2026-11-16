@@ -4,7 +4,8 @@
 // slots and table games, a gold high-limit room, the barred cashier cage and a live CCTV wall in the security office.
 // The helicopter hovers over the wing roof until the squad is off it, then flies away. Looks: dusk and night.
 import * as THREE from '../../vendor/three.module.min.js';
-import { sheen, tex, grid } from '../mats.js';
+import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
+import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli } from '../core/maps/casino.js';
 
 let tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null;
@@ -144,8 +145,9 @@ const inCove = (x, z, m = 0.25) => COVES.some(([cx, cz, rx, rz, a]) => { const d
 const coveAt = ([cx, cz, rx, rz, a], t, d = 0) => { const u = (rx + d) * Math.cos(t), v = (rz + d) * Math.sin(t); return [cx + u * Math.cos(a) - v * Math.sin(a), cz + u * Math.sin(a) + v * Math.cos(a)]; };
 
 function buildHeli(MATS) {
-  const g = new THREE.Group(), body = sheen({ color: 0x1b2330 }, 'paint'), stripe = sheen({ color: 0x3a7ad8 }, 'paint'), dark = new THREE.MeshLambertMaterial({ color: 0x0e1014 }), metal = sheen({ color: 0x8a9098 }, 'metal');
-  const bx = (w, h, d, x, y, z, m = body) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  const g = new THREE.Group(), box = new THREE.Group(), body = sheen({ color: 0x1b2330 }, 'paint'), stripe = sheen({ color: 0x3a7ad8 }, 'paint'), dark = new THREE.MeshLambertMaterial({ color: 0x0e1014 }), metal = sheen({ color: 0x8a9098 }, 'metal');
+  g.add(box);   // the stand-in built from boxes, until the Black Hawk model arrives (and in ?lite=1 tests)
+  const bx = (w, h, d, x, y, z, m = body, to = box) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; to.add(o); return o; };
   const L = HELI.x1 - HELI.x0, D = HELI.z1 - HELI.z0, dl = HELI.door[0] - (HELI.x0 + HELI.x1) / 2, dr = HELI.door[1] - (HELI.x0 + HELI.x1) / 2;
   bx(L + 0.2, 0.3, D + 0.2, 0, -0.15, 0, dark); bx(L + 0.2, 0.3, D + 0.2, 0, 2.15, 0);                              // floor, roof (the collision boxes)
   bx(0.1, 2, D, -L / 2 - 0.05, 1, 0); bx(0.1, 2, D, L / 2 + 0.05, 1, 0); bx(L, 2, 0.1, 0, 1, -D / 2 - 0.05);          // bulkheads, far side
@@ -153,24 +155,24 @@ function buildHeli(MATS) {
   bx(L + 0.22, 0.14, 0.04, 0, 0.55, D / 2 + 0.12, stripe); bx(L + 0.22, 0.14, 0.04, 0, 0.55, -D / 2 - 0.12, stripe);
   for (const x of [-1.6, 0, 1.6]) bx(0.9, 0.6, 0.03, x, 1.35, -D / 2 - 0.11, MATS.glass);                           // far-side windows
   bx(3.4, 0.42, 0.5, 0, 0.21, -D / 2 + 0.3, sheen({ color: 0x2a2e36 }, 'cloth')); bx(3.4, 0.6, 0.12, 0, 0.75, -D / 2 + 0.08, sheen({ color: 0x2a2e36 }, 'cloth'));   // bench
-  bx(L - 0.4, 0.03, 0.08, 0, 1.98, 0, new THREE.MeshBasicMaterial({ color: 0xff3a2a }));                             // red cabin light
+  bx(L - 0.6, 0.03, 0.08, 0, 1.86, 0, new THREE.MeshBasicMaterial({ color: 0xff3a2a }), g);                          // red cabin light
   bx(2.0, 1.9, D, -L / 2 - 1.05, 0.95, 0); bx(1.1, 1.25, D - 0.2, -L / 2 - 2.4, 1.25, 0, MATS.glass);                    // cockpit, windscreen
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), body); nose.scale.set(1.1, 0.85, D / 2 - 0.05); nose.position.set(-L / 2 - 2.5, 0.55, 0); g.add(nose);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), body); nose.scale.set(1.1, 0.85, D / 2 - 0.05); nose.position.set(-L / 2 - 2.5, 0.55, 0); box.add(nose);
   bx(L + 2.2, 0.5, D - 0.2, -1.0, -0.55, 0);                                                                         // belly
   bx(3.2, 0.7, 1.6, 0.3, 2.65, 0); bx(0.5, 0.3, 0.4, 1.9, 2.7, 0.5, dark); bx(0.5, 0.3, 0.4, 1.9, 2.7, -0.5, dark);       // engines, exhausts
-  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.55, 8, 10), body); boom.rotation.z = -Math.PI / 2; boom.position.set(L / 2 + 4, 1.4, 0); g.add(boom);
+  const boom = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.55, 8, 10), body); boom.rotation.z = -Math.PI / 2; boom.position.set(L / 2 + 4, 1.4, 0); box.add(boom);
   bx(1.0, 1.7, 0.12, L / 2 + 7.8, 2.2, 0); bx(0.7, 0.08, 2.0, L / 2 + 7.2, 1.45, 0);
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2020 })); beacon.position.set(L / 2 + 8.2, 3.1, 0); g.add(beacon);
-  for (const z of [-1.25, 1.25]) { const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 5.6, 8), metal); sk.rotation.z = Math.PI / 2; sk.position.set(-0.4, -1.1, z); g.add(sk); for (const x of [-1.6, 1.4]) bx(0.08, 0.85, 0.08, x, -0.68, z * 0.9, metal); }
-  bx(0.08, 0.08, 1.05, 0, 2.06, D / 2 + 0.5, metal);                                                                  // the fast-rope arm over the door
+  for (const z of [-1.25, 1.25]) { const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 5.6, 8), metal); sk.rotation.z = Math.PI / 2; sk.position.set(-0.4, -1.1, z); box.add(sk); for (const x of [-1.6, 1.4]) bx(0.08, 0.85, 0.08, x, -0.68, z * 0.9, metal); }
+  bx(0.08, 0.08, 1.05, 0, 2.06, D / 2 + 0.5, metal, g);                                                               // the fast-rope arm over the door
   const rope = ROPES.find(r => r.heli), drop = rope.top + 2.06 - rope.bot - 0.05, rp = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, drop, 6), sheen({ color: 0x8c7a56 }, 'cloth'));
   rp.position.set(rope.x - 36, 2.06 - drop / 2, rope.z - (HELI.z0 + HELI.z1) / 2); g.add(rp);
-  const rotor = new THREE.Group(); rotor.position.set(0.3, 3.2, 0); g.add(rotor); bx(0.18, 0.4, 0.18, 0.3, 3.0, 0, metal);
+  const rotor = new THREE.Group(); rotor.position.set(0.3, 3.2, 0); box.add(rotor); bx(0.18, 0.4, 0.18, 0.3, 3.0, 0, metal);
   for (let k = 0; k < 4; k++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.05, 0.36), dark); bl.geometry.translate(3.1, 0, 0); bl.rotation.y = k * Math.PI / 2; rotor.add(bl); }
   const disc = new THREE.Mesh(new THREE.CircleGeometry(6.3, 40), new THREE.MeshBasicMaterial({ color: 0x101216, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide })); disc.rotation.x = -Math.PI / 2; rotor.add(disc);
-  const tail = new THREE.Group(); tail.position.set(L / 2 + 8.1, 2.4, 0.16); g.add(tail); for (let k = 0; k < 2; k++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.7, 0.03), dark); bl.rotation.z = k * Math.PI / 2; tail.add(bl); }
+  const tail = new THREE.Group(); tail.position.set(L / 2 + 8.1, 2.4, 0.16); box.add(tail); for (let k = 0; k < 2; k++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.7, 0.03), dark); bl.rotation.z = k * Math.PI / 2; tail.add(bl); }
   g.position.set((HELI.x0 + HELI.x1) / 2, HELI.y, (HELI.z0 + HELI.z1) / 2);
-  return { g, rotor, tail, beacon, idle: 0, gone: 0, home: g.position.clone() };
+  return { g, box, rotor, tail, beacon, idle: 0, gone: 0, home: g.position.clone() };
 }
 
 // ---------- CCTV: six cameras round the building, shown on the security office's wall ----------
@@ -193,6 +195,20 @@ export default {
   get env() { return tod === 'night' ? NIGHT : DUSK; },
   envs: { dusk: DUSK, night: NIGHT },
   setTod(t) { tod = t === 'night' ? 'night' : 'dusk'; },
+  // The Black Hawk (models/heli/uh60.glb, built by tools/heli_glb.py): cabin floor at y = 0, the door on +z from x -0.6 to 2.2, nose toward -x.
+  // It goes into the helicopter group in place of the box stand-in, so it hovers and flies away with it; its rotor node spins.
+  load() {
+    const h = heli; if (!h) return Promise.resolve(null);
+    return new Promise((res, rej) => new GLTFLoader().load('models/heli/uh60.glb', gl => {
+      const m = gl.scene; m.position.set(HELI.door[0] + 0.6 - (HELI.x0 + HELI.x1) / 2, 0, 0);
+      m.traverse(o => { if (!o.isMesh) return; const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const mt of mats) { mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.6; if (!pbrMats.includes(mt)) pbrMats.push(mt); if (mt.transparent) mt.depthWrite = false; }
+        o.castShadow = true; o.receiveShadow = true; });
+      const rotor = m.getObjectByName('rotor'); if (rotor) { const disc = new THREE.Mesh(new THREE.CircleGeometry(10.4, 48), new THREE.MeshBasicMaterial({ color: 0x101216, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide })); disc.rotation.x = -Math.PI / 2; rotor.add(disc); h.rotor = rotor; }
+      h.tail = new THREE.Object3D(); h.box.visible = false; h.beacon.position.set(m.position.x + 15.6, 5.2, 0); h.g.add(m);
+      res(new THREE.Group());   // the caller adds what it gets to the scene; the model itself stays in the helicopter group
+    }, undefined, rej));
+  },
   noshade: { cglow: 1, crystal: 1, slotscreen: 1, slotgold: 1, lane: 1, padY: 1, slotbtn: 1, lampshade: 1 },
   noCast: ['cground', 'asph', 'pave', 'roofM', 'tglassT', 'cmarble', 'rugW', 'csoffit', 'quilt', 'lane', 'padY', 'gravel'],
   tread: 'concrete',
