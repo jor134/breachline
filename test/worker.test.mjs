@@ -25,6 +25,14 @@ const n1 = a.msgs.filter(m => m.t === 's').length; await sleep(400); const rate 
 const idA = a.msgs[0].id, idB = b.msgs[0].id; a.ws.send(JSON.stringify({ t: 'sig', to: idB, data: { desc: { type: 'offer', sdp: 'v=0' } } })); await sleep(100);
 const sig = b.msgs.find(m => m.t === 'sig'); assert.ok(sig && sig.from === idA && sig.data.desc.type === 'offer', 'signal relayed'); assert.ok(!c.msgs.some(m => m.t === 'sig'), 'only to the addressee');
 for (let i = 0; i < 4; i++) await join('/ws/FULL?name=p' + i); const extra = await join('/ws/FULL?name=late'); await sleep(100); assert.equal(extra.msgs[0].t, 'full');
+// quest-store: the first player in owns the room; only they can remove someone, and the owner passes on when they leave
+{ const o = await join('/ws/OWNR?name=Owner'), g = await join('/ws/OWNR?name=Guest'), h = await join('/ws/OWNR?name=Third'); await sleep(100);
+  const oid = o.msgs[0].id, gid = g.msgs[0].id, hid = h.msgs[0].id;
+  assert.equal(g.msgs.filter(m => m.t === 'owner').at(-1).id, oid, 'everyone is told the owner');
+  g.ws.send(JSON.stringify({ t: 'boot', p: oid })); await sleep(100); assert.ok(!o.msgs.some(m => m.t === 'booted'), 'a guest cannot remove anyone');
+  o.ws.send(JSON.stringify({ t: 'boot', p: hid })); await sleep(150); assert.ok(h.msgs.some(m => m.t === 'booted'), 'the owner removes a player'); assert.equal(h.ws.open, false);
+  assert.equal(o.msgs.filter(m => m.t === 's').at(-1).P.filter(p => !(p[9] & 1 << 17)).length, 2, 'removed player leaves the mission');
+  o.ws.close(); await sleep(150); assert.equal(g.msgs.filter(m => m.t === 'owner').at(-1).id, gid, 'ownership passes on'); g.ws.close(); }
 b.ws.close(); await sleep(200); assert.equal(a.msgs.filter(m => m.t === 's').at(-1).P.filter(p => !(p[9] & 1 << 17)).length, 1); assert.equal(s2.P.filter(p => p[9] & 1 << 17).length, 2, 'two humans: two bots');
 a.ws.close(); await sleep(200); assert.equal(rooms.get('ABCD').timer, null, 'room stops ticking when empty');
 console.log('worker tests passed'); process.exit(0);

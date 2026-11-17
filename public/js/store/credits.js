@@ -1,0 +1,25 @@
+// Attributions shown in the game (MENU > CREDITS) and on credits.html. CC BY 4.0 needs title, author, source and licence,
+// and a note that the work was changed. Keep this in step with the LICENSE.md in each public/models folder.
+const BY = 'CC BY 4.0', CHG = 'modified for BREACHLINE';
+export const CREDITS = [
+  { use: 'SWAT officers', title: 'S.W.A.T. Operator', by: 'Mateusz Woliński', lic: BY, url: 'https://sketchfab.com/3d-models/swat-operator-9e82fabf26194896b5ad4a364d864eab', chg: CHG },
+  { use: 'Suspect', title: 'terrorist', by: 'DJMaesen', lic: BY, url: 'https://sketchfab.com/3d-models/terrorist-ccce1abd9086451da3bed9ec30c82c37', chg: CHG },
+  { use: 'Suspect', title: 'Terrorist 4', by: 'Upgrade titan camera man', lic: BY, url: 'https://sketchfab.com/3d-models/terrorist-4-5c7aa149588f418eacb72adc9beea1ec', chg: CHG },
+  { use: 'High-value target', title: 'Business Man', by: 'qsardor', lic: BY, url: 'https://sketchfab.com/3d-models/business-man-71abfba65139471dabac10ffeb5bf2bb', chg: CHG },
+  { use: 'Civilians and police hostages', title: 'Male civilian v1, v2, v5; Female civilian v1, v4; Male police v1', by: 'Michael Constantine', lic: BY, url: 'https://sketchfab.com/devdesgames', chg: CHG },
+  { use: 'Officers\' rifle', title: 'Assault rifle M4A1', by: 'bobeer', lic: BY, url: 'https://sketchfab.com/3d-models/assault-rifle-m4a1-1b858701dd7142d9b82bbe3fd121a97b', chg: CHG },
+  { use: 'Officers\' pistol', title: 'tactical pistol with red dot', by: 'N3ON_fx', lic: 'Sketchfab Standard', url: 'https://sketchfab.com/3d-models/tactical-pistol-with-red-dot-free-9316252a82e045299d561c8ec02a0360', chg: CHG },
+  { use: 'Airport jet', title: 'British Aerospace 146', by: 'helijah', lic: 'Sketchfab Standard', url: 'https://sketchfab.com/3d-models/british-aerospace-146-8ea4b2716a314fb6ad1aee15c0bd1922', chg: CHG },
+  { use: 'Casino helicopter', title: 'Bell Huey helicopter', by: 'Duane\'s Mind', lic: BY, url: 'https://sketchfab.com/3d-models/bell-huey-helicopter-755d8518a06e41b19752c1b54c0da588', chg: CHG },
+  { use: 'Casino lift', title: 'Elevator', by: 'ART_LOLL', lic: BY, url: 'https://sketchfab.com/3d-models/elevator-221312f2fd7f47af8ba0003f4573f1dd', chg: CHG },
+  { use: 'Race cars', title: 'F1 2022 Generic Free (for @TheoDevF12)', by: 'Posti Cloudmuziq Mästaré Formula 1 Team', lic: BY, url: 'https://sketchfab.com/3d-models/f1-2022-generic-free-for-theodevf12-03a7c467b67e48ca9d0b6e9272ef0732', chg: CHG },
+  { use: 'Parked cars', title: 'Generic passenger car pack', by: 'Comrade1280', lic: BY, url: 'https://sketchfab.com/3d-models/generic-passenger-car-pack-20f9af9b8a404d5cb022ac6fe87f21f5', chg: CHG },
+  { use: 'Mansion sports car', title: 'Car Concept', by: 'Eric Chadwick, (c) 2024 Darmstadt Graphics Group GmbH', lic: BY, url: 'https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept', chg: CHG },
+  { use: 'Trucks', title: 'semi truck', by: 'zairiqzairiq', lic: BY, url: 'https://sketchfab.com/3d-models/semi-truck-672abd5b5e5b4cd9baf20c528a9e2f77', chg: CHG },
+  { use: 'Plants', title: 'low poly nature pack', by: 'flo-bit', lic: 'CC0', url: 'https://github.com/flo-bit/low-poly-asset-packs' },
+  { use: 'Gun sounds', title: 'The Free Firearm Sound Library', by: 'its recordists (mirror by buddingmonkey)',lic: 'CC0', url: 'https://github.com/buddingmonkey/FreeFirearmsSFXLibrary' },
+  { use: 'Doors, impacts, explosions, interface', title: 'RPG Audio, Impact Sounds, Sci-Fi Sounds, Interface Sounds', by: 'Kenney', lic: 'CC0', url: 'https://kenney.nl' },
+  { use: 'Race-car engine', title: 'grandprix', by: 'freesound_community (Pixabay)', lic: 'Pixabay Content License', url: 'https://pixabay.com' },
+  { use: 'Engine', title: 'three.js', by: 'three.js authors', lic: 'MIT', url: 'https://threejs.org' },
+];
+export const LICENCE_URLS = { 'CC BY 4.0': 'https://creativecommons.org/licenses/by/4.0/', 'Sketchfab Standard': 'https://sketchfab.com/licenses', CC0: 'https://creativecommons.org/publicdomain/zero/1.0/', MIT: 'https://opensource.org/license/mit' };

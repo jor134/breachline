@@ -22,6 +22,9 @@ export function createVoice(send) {
     catch (e) { V.mic = null; V.err = e && e.name === 'NotAllowedError' ? 'Microphone blocked: you can still listen. Allow the mic in the browser\'s site settings to talk.' : 'No microphone found: you can still listen.'; return false; }
   };
   V.setOn = v => { V.on = v; localStorage.setItem('bl_voice', v ? '1' : '0'); if (!v) { V.stop(); } };
+  V.peerMuted = new Set();   // quest-store: people this player has muted (PLAYERS menu); only changes what they hear
+  V.isPeerMuted = id => V.peerMuted.has(id);
+  V.mutePeer = (id, v) => { if (v) V.peerMuted.add(id); else V.peerMuted.delete(id); const a = V.audio.get(id); if (a) a.el.muted = v; };
   V.setMuted = v => { V.muted = v; if (V.mic) V.mic.getAudioTracks().forEach(t => { t.enabled = !v; }); };
   V.getIce = async () => { if (V.ice) return V.ice; try { const r = await fetch('api/ice', { cache: 'no-store' }); V.ice = r.ok ? await r.json() : null; } catch (e) { V.ice = null; } if (!V.ice) V.ice = { iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }] }; return V.ice; };
   V.unlock = () => { ctx(); for (const a of V.audio.values()) a.el.play().then(() => { V.needTap = false; }).catch(() => { V.needTap = true; }); };
@@ -53,6 +56,7 @@ export function createVoice(send) {
   function attach(id, stream) {
     let a = V.audio.get(id);
     if (!a) { const el = document.createElement('audio'); el.autoplay = true; el.playsInline = true; el.setAttribute('playsinline', ''); el.style.display = 'none'; document.body.appendChild(el); a = { el, level: () => 0 }; V.audio.set(id, a); }
+    a.el.muted = V.peerMuted.has(id);
     if (a.el.srcObject !== stream) { a.el.srcObject = stream; a.level = meter(stream); a.el.play().then(() => { V.needTap = false; }).catch(() => { V.needTap = true; }); }
   }
   function drop(id) { const st = V.pcs.get(id); if (st) { try { st.pc.close(); } catch (e) { } V.pcs.delete(id); } const a = V.audio.get(id); if (a) { a.el.srcObject = null; a.el.remove(); V.audio.delete(id); } }

@@ -16,6 +16,7 @@ import { createRopes } from './rope.js';
 import { createVREditor } from './vredit.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
+import { makeStoreUI } from './store/ui.js';   // quest-store: PLAYERS (mute / remove) and CREDITS in the VR menu
 
 const $ = id => document.getElementById(id), Q = new URLSearchParams(location.search);
 const V = () => new THREE.Vector3(), v1 = V(), v2 = V(), v3 = V(), v4 = V(), q1 = new THREE.Quaternion(), m1 = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
@@ -365,6 +366,7 @@ class Panel {
   }
 }
 const panel = new Panel();
+const storeUI = makeStoreUI({ panel, S, voice, net, sfx, status, back: () => toggleMenu(true) });
 const coach = new Panel(); coach.mesh.scale.setScalar(0.7); coach.mesh.visible = false;   // the tutorial's own panel (VR)
 const tut = window.__tut = createTutorial({ THREE, scene, S, M: () => M, head, coach, sfx,
   hits: () => trainLine().hits, mag: k => guns[k].st.mag, yaw: () => S.mode === 'vr' ? head.yaw : S.yaw, holding: k => hands.some(h => h.item === k), botsUp: () => botsUp(),
@@ -413,7 +415,7 @@ function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel
 function goHome() { const to = DRAFT ? 'editor.html' : './'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
@@ -422,6 +424,7 @@ function tryPanel(o, d) {
   if (act === 'tut') { sfx.click(); tut.showMenu(); return true; }
   if (act === 'edit') { if (S.menu) toggleMenu(false); openEditor(); return true; }   // a pull on the panel background is swallowed, not fired
   if (act === 'mic') { toggleMic(); toggleMenu(true); return true; }
+  if (storeUI.act(act)) return true;
   if (act === 'home') { goHome(); return true; }
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
   if (act === 'tod') { cycleTod(); showLobbyPanel(); return true; }
@@ -500,6 +503,7 @@ function onMsg(m) {
 }
 function onMsg2(m) {
   if (m.t === 'sig') { voice.signal(m.from, m.data); return; }
+  if (storeUI.onMsg(m)) return;
   if (m.t === 'welcome') { const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && (m.ph !== 'active' || m.init.map === 'training') && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
   else if (m.t === 'init') { applyInit(m.init); if (S.phase !== 'active' || M.training) showLobbyPanel(); }
   else if (m.t === 'full') status('That room is full (4 officers). Try another code.');
@@ -1081,9 +1085,9 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v63';
+const BUILD = 'q1';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { storeUI, toggleMenu, ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

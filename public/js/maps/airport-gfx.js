@@ -5,6 +5,7 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, vertexSheen } from '../mats.js';
 import { GLTFLoader } from '../../vendor/GLTFLoader.js';
+import { ObfLoader } from '../store/obf.js';   // quest-store: the jet ships obfuscated (Sketchfab Standard licence)
 import { envMap, pbrMats } from '../mats.js';
 import { H, FOOT, UP_Z, HALL, HANGAR, JET, CAB, HOLD, AIRSTAIR, CANOPY, TREES, GAPLANES, JX, JZ } from '../core/maps/airport.js';
 
@@ -36,7 +37,7 @@ export default {
   setTod(t) { tod = t === 'night' ? 'night' : 'day'; },
   // The BAe 146 (models/jet/bae146.glb): already scaled and cleaned by tools/jet_glb.py; placed with its own origin at (JX, 0, JZ).
   load() {
-    return new Promise((res, rej) => new GLTFLoader().load('models/jet/bae146.glb', g => {
+    return new Promise((res, rej) => new ObfLoader().load('models/jet/bae146.glb', g => {
       const m = g.scene; m.position.set(JX, 0, JZ);
       m.traverse(o => { if (!o.isMesh) return; const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const mt of mats) { mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.3; if (!pbrMats.includes(mt)) pbrMats.push(mt); if (mt.transparent) { mt.depthWrite = false; } }

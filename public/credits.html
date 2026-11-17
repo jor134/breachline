@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BREACHLINE - Credits</title>
+<meta name="theme-color" content="#0a1020">
+<link rel="icon" href="icon-192.png">
+<style>
+html,body{margin:0;background:#0a1020;color:#dfe7f0;font:15px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:24px 18px 60px}h1{letter-spacing:.12em;font-size:24px}a{color:#7dd0ff}
+table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #1c2c40;padding:8px 6px;text-align:left;vertical-align:top}th{color:#8fb4dc;font-size:12px;text-transform:uppercase}
+</style>
+</head>
+<body><main>
+<h1>BREACHLINE CREDITS</h1>
+<p>Game by [DEVELOPER LEGAL NAME]. BREACHLINE uses these works by other creators. Thank you. Works marked "modified" were changed for the game (simplified, re-textured, logos removed, split into parts).</p>
+<table><thead><tr><th>Used for</th><th>Work</th><th>Author</th><th>Licence</th></tr></thead><tbody id="rows"></tbody></table>
+<script type="module">
+import { CREDITS, LICENCE_URLS } from './js/store/credits.js';
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+document.getElementById('rows').innerHTML = CREDITS.map(c => `<tr><td>${esc(c.use)}</td><td><a href="${esc(c.url)}">${esc(c.title)}</a>${c.chg ? ' (modified)' : ''}</td><td>${esc(c.by)}</td><td>${LICENCE_URLS[c.lic] ? `<a href="${LICENCE_URLS[c.lic]}">${esc(c.lic)}</a>` : esc(c.lic)}</td></tr>`).join('');
+</script>
+</main></body>
+</html>

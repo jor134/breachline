@@ -92,15 +92,27 @@ export class Room {
     const r = await library(this.env).fetch(new Request('https://library/api/maps/' + mid.slice(2))); if (!r.ok) return;
     registerMap(compile(await r.json(), mid));
   }
+  // quest-store: the longest-connected player owns the room and may remove others (store policy: players need a way to deal
+  // with someone abusive in a lobby). Everyone is told who the owner is whenever it can change.
+  owner() { for (const id of this.socks.keys()) return id; return 0; }
+  announceOwner() { const s = JSON.stringify({ t: 'owner', id: this.owner() }); for (const ws of this.socks.values()) try { ws.send(s); } catch {} }
+  boot(from, target) {
+    if (from !== this.owner() || target === from) return; const ws = this.socks.get(target); if (!ws) return;
+    try { ws.send(JSON.stringify({ t: 'booted' })); } catch {}
+    try { ws.close(4001, 'Removed by the room owner'); } catch {}
+    if (this.socks.delete(target)) { this.host.leave(target); this.announceOwner(); }
+  }
   async fetch(req) {
     const name = new URL(req.url).searchParams.get('name') || 'Officer';
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
     const id = this.next++; this.socks.set(id, server);
     if (!this.host.join(id, name)) { this.socks.delete(id); server.close(4000, 'Room full'); return new Response(null, { status: 101, webSocket: client }); }
-    const bye = () => { if (!this.socks.delete(id)) return; this.host.leave(id); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } };
+    const bye = () => { if (!this.socks.delete(id)) return; this.host.leave(id); this.announceOwner(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } };
+    this.announceOwner();
     server.addEventListener('message', e => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m && m.t === 'boot') { this.boot(id, m.p); return; }   // quest-store: the room owner removes a player
       if (m && m.t === 'sig') { const to = this.socks.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
       const mid = m && (m.m || m.map);
       if (typeof mid === 'string' && mid.startsWith('u_') && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });

@@ -4,6 +4,7 @@
 // the game draws its own reticle that sits on the point of aim (actors.js).
 import * as THREE from '../vendor/three.module.min.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
+import { ObfLoader } from './store/obf.js';   // quest-store: the pistol ships obfuscated (Sketchfab Standard licence)
 import { envMap, pbrMats } from './mats.js';
 
 export const M4 = { s: 0.01, oy: 0, oz: -0.143 };   // gun = (-x, y, -z) * s + (0, oy, oz)
@@ -55,7 +56,7 @@ function mergeIdx(list) {   // same vertex layout (each is a clone of one part):
 const SIDE = { h: 0.166, bore: 0.040, gripZ: 0.022 };   // overall height (grip foot to the top of the sight), bore over the hand, the grip's middle
 let fnPromise = null;
 export function loadSidearm() {
-  return fnPromise || (fnPromise = new Promise((res, rej) => new GLTFLoader().load('models/pistol/pistol.glb', g => {
+  return fnPromise || (fnPromise = new Promise((res, rej) => new ObfLoader().load('models/pistol/pistol.glb', g => {
     const sc = g.scene; sc.updateMatrixWorld(true); const part = n => { let m = null; sc.traverse(o => { if (o.isMesh && o.parent && o.parent.name === n) m = o; }); return m; };
     const box = o => new THREE.Box3().setFromObject(o), all = box(sc), k = SIDE.h / (all.max.y - all.min.y);
     const rec = box(part('pCylinder6')), grip = box(part('pCube14')).union(box(part('pCube16'))), barrel = box(part('pCylinder8')), dot = box(part('pCube10')), lightB = box(part('pCube13'));
