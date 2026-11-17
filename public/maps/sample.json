@@ -1,4 +1,4 @@
-{"v":1,"name":"Safe House","creator":"BREACHLINE","size":[44,40],"floors":2,"H":3.2,"time":600,"counts":{"s":6,"c":3,"b":1},
+{"v":1,"name":"Safe House","creator":"You Can't Hide","size":[44,40],"floors":2,"H":3.2,"time":600,"counts":{"s":6,"c":3,"b":1},
 "style":{"preset":"house"},
 "rooms":[[0,12,10,22,18,"wood"],[0,22,10,32,18,"tile"],[0,12,18,20,26,"carpet"],[0,20,18,32,26,"wood"],
  [1,12,10,22,18,"carpet"],[1,22,10,32,18,"carpet"],[1,12,18,32,26,"wood"]],

@@ -1,6 +1,6 @@
 // Attributions shown in the game (MENU > CREDITS) and on credits.html. CC BY 4.0 needs title, author, source and licence,
 // and a note that the work was changed. Keep this in step with the LICENSE.md in each public/models folder.
-const BY = 'CC BY 4.0', CHG = 'modified for BREACHLINE';
+const BY = 'CC BY 4.0', CHG = "modified for You Can't Hide";
 export const CREDITS = [
   { use: 'SWAT officers', title: 'S.W.A.T. Operator', by: 'Mateusz Woliński', lic: BY, url: 'https://sketchfab.com/3d-models/swat-operator-9e82fabf26194896b5ad4a364d864eab', chg: CHG },
   { use: 'Suspect', title: 'terrorist', by: 'DJMaesen', lic: BY, url: 'https://sketchfab.com/3d-models/terrorist-ccce1abd9086451da3bed9ec30c82c37', chg: CHG },

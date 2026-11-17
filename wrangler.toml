@@ -1,4 +1,4 @@
-name = "breachline-quest"   # quest-store branch: its own Worker, its own Durable Objects (Quest-only lobbies)
+name = "you-cant-hide"   # quest-store branch: its own Worker, its own Durable Objects (Quest-only lobbies)
 main = "src/worker.js"
 compatibility_date = "2025-09-01"
 

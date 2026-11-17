@@ -8,7 +8,7 @@ const MARK = { line: [10, 15.7], house: [22.5, 17.2], kick: [29.2, 24.4], pick: 
 
 // done(c) is checked every frame; c.base holds what things were when the step began. info steps wait for NEXT.
 const CORE = [
-  { id: 'hello', title: 'WELCOME TO BREACHLINE', info: true, text: T3(
+  { id: 'hello', title: "WELCOME TO YOU CAN'T HIDE", info: true, text: T3(
     'You lead a SWAT squad: rescue hostages, arrest suspects, defuse bombs. Shoot only people who threaten you. This coach panel follows you. Point at a button and pull the trigger to press it. Every step waits until you do it; SKIP if you already know it.',
     'You lead a SWAT squad: rescue hostages, arrest suspects, defuse bombs. Shoot only people who threaten you. Each step waits until you do it; tap SKIP if you already know it.',
     'You lead a SWAT squad: rescue hostages, arrest suspects, defuse bombs. Shoot only people who threaten you. Each step waits until you do it. Press K (or click NEXT / SKIP; Esc frees the mouse).') },
