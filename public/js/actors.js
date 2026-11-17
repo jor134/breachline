@@ -1,6 +1,6 @@
 // Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
-import { loadM4, loadFN509 } from './m4.js';
+import { loadM4, loadSidearm } from './m4.js';
 import { CHARS_ON, SUSPECT_MODELS, loadChar, loadCivilian, Skin, mirror, align2 } from './chars.js';
 const HQ = typeof location === 'undefined' || !new URLSearchParams(location.search).get('lite') || !!new URLSearchParams(location.search).get('m4');   // ?lite=1 (tests) keeps the built-in rifle unless &m4=1
 import { sheen, vertexSheen } from './mats.js';
@@ -80,7 +80,7 @@ export function makeRifle(holo = false, hq = false) {   // built-in M4-pattern c
   return g;
 }
 let pistolGeo = null;
-export function makePistol(holo = false, hq = false) {   // built-in pistol; hq: the downloaded FN 509 once it loads (m4.js), holo: its red dot
+export function makePistol(holo = false, hq = false) {   // built-in pistol; hq: the downloaded pistol once it loads (m4.js), holo: its red dot
   const K = 0x17181a, g = new THREE.Group();
   if (!pistolGeo) pistolGeo = merge([[BOX(0.03, 0.11, 0.046), K, 0, -0.02, 0.018, 0.2], [BOX(0.028, 0.02, 0.15), K, 0, 0.022, -0.045], [BOX(0.008, 0.03, 0.05), K, 0, -0.003, -0.02], [BOX(0.026, 0.02, 0.05), 0x24262a, 0, 0.005, -0.1]], 'plastic').geometry;
   g.add(new THREE.Mesh(pistolGeo, vertexSheen('plastic')));
@@ -88,11 +88,11 @@ export function makePistol(holo = false, hq = false) {   // built-in pistol; hq:
   const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.012, 0.05), sheen({ color: 0x3a3f45 }, 'metal')); mag.position.set(0, -0.082, 0.03); g.add(mag);
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), basic(0xffd070)); flash.position.set(0, 0.045, -0.18); flash.visible = false; g.add(flash);
   g.userData = { kind: 'pistol', mag, slide, slideZ: -0.05, flash, muzzle: new THREE.Vector3(0, 0.045, -0.15), light: new THREE.Vector3(0, 0.02, -0.15), magwell: new THREE.Vector3(0, -0.09, 0.03), rack: new THREE.Vector3(0, 0.05, 0.03), sightY: 0.074 };
-  if (hq && HQ) loadFN509().then(({ frame, slide: sl, plate }) => {   // the FN 509: frame, moving slide with the red dot, magazine floor plate
-    g.children[0].visible = false; slide.visible = false; g.add(frame.clone()); const s2 = sl.clone(); g.add(s2);
+  if (hq && HQ) loadSidearm().then(({ frame, slide: sl, plate, pts: P }) => {   // the downloaded pistol: frame with the red dot, the bolt that locks back, the magazine
+    g.children[0].visible = false; slide.visible = false; const f2 = frame.clone(); g.add(f2); const s2 = sl.clone(); g.add(s2);
     mag.geometry = plate.geo; mag.material = plate.mat; mag.position.set(0, 0, 0);
-    const U = g.userData; U.slide = s2; U.slideZ = 0; U.muzzle.set(0, 0.048, -0.17); U.light.set(0, -0.004, -0.19); U.magwell.set(0, -0.087, 0.02); U.rack.set(0, 0.046, 0.04); U.sightY = 0.0674; flash.position.set(0, 0.048, -0.19);
-    if (holo) { U.ret = makeReticle(s2, 0.0674, 0.0095, 0.007, -0.021, true); U.ret.visible = false; }
+    const U = g.userData; U.slide = s2; U.slideZ = 0; U.muzzle.copy(P.muzzle); U.light.copy(P.light); U.magwell.copy(P.magwell); U.rack.copy(P.rack); U.sightY = P.sightY; flash.position.copy(P.muzzle).add(new THREE.Vector3(0, 0, -0.02));
+    if (holo) { U.ret = makeReticle(f2, P.sightY, P.sightW, P.sightH, P.sightZ, true); U.ret.visible = false; }
   }).catch(e => console.warn('pistol model not loaded', e));
   return g;
 }

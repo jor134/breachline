@@ -21,12 +21,12 @@ export const CHARS = {
   phoenix: { file: 'phoenix.glb', h: 1.8, hips: 'pelvis_01', spine: ['spine_0_016', 'spine_1_017', 'spine_2_018', 'spine_3_020'], neck: 'neck_0_082', head: 'head_0_083',
     thigh: side('leg_upper_L_09', 'leg_upper_R_02'), shin: side('leg_lower_L_012', 'leg_lower_R_05'), foot: side('ankle_L_013', 'ankle_R_06'),
     up: side('arm_upper_L_052', 'arm_upper_R_022'), fore: side('arm_lower_L_055', 'arm_lower_R_025'), hand: side('hand_L_058', 'hand_R_028') },
-  // "Counter terrorist" by davidthe19th: the squad
-  swat: { file: 'swat.glb', h: 1.82, hips: 'ValveBipedBip01_Pelvis_01', spine: ['ValveBipedBip01_Spine_00', 'ValveBipedBip01_Spine1_010', 'ValveBipedBip01_Spine2_011', 'ValveBipedBip01_Spine4_012'], neck: 'ValveBipedBip01_Neck1_013', head: 'ValveBipedBip01_Head1_014',
-    thigh: side('ValveBipedBip01_L_Thigh_02', 'ValveBipedBip01_R_Thigh_06'), shin: side('ValveBipedBip01_L_Calf_03', 'ValveBipedBip01_R_Calf_07'), foot: side('ValveBipedBip01_L_Foot_04', 'ValveBipedBip01_R_Foot_08'),
-    up: side('ValveBipedBip01_L_UpperArm_017', 'ValveBipedBip01_R_UpperArm_032'), fore: side('ValveBipedBip01_L_Forearm_018', 'ValveBipedBip01_R_Forearm_033'), hand: side('ValveBipedBip01_L_Hand_019', 'ValveBipedBip01_R_Hand_034'),
-    fingers: { L: [['ValveBipedBip01_L_Finger1_023', 'ValveBipedBip01_L_Finger11_024', 'ValveBipedBip01_L_Finger12_025'], ['ValveBipedBip01_L_Finger2_020', 'ValveBipedBip01_L_Finger21_021', 'ValveBipedBip01_L_Finger22_022']], R: [['ValveBipedBip01_R_Finger1_038', 'ValveBipedBip01_R_Finger11_039', 'ValveBipedBip01_R_Finger12_040'], ['ValveBipedBip01_R_Finger2_035', 'ValveBipedBip01_R_Finger21_036', 'ValveBipedBip01_R_Finger22_037']] },
-    thumb: { L: ['ValveBipedBip01_L_Finger0_026', 'ValveBipedBip01_L_Finger01_027', 'ValveBipedBip01_L_Finger02_028'], R: ['ValveBipedBip01_R_Finger0_041', 'ValveBipedBip01_R_Finger01_042', 'ValveBipedBip01_R_Finger02_043'] } },
+  // "S.W.A.T. Operator" by Mateusz Wolinski (CC BY 4.0, Mixamo rig): the squad
+  swat: { file: 'swat.glb', h: 1.84, hips: 'mixamorigHips_64', spine: ['mixamorigSpine_53', 'mixamorigSpine1_52', 'mixamorigSpine2_51'], neck: 'mixamorigNeck_2', head: 'mixamorigHead_1',
+    thigh: side('mixamorigLeftUpLeg_58', 'mixamorigRightUpLeg_63'), shin: side('mixamorigLeftLeg_57', 'mixamorigRightLeg_62'), foot: side('mixamorigLeftFoot_56', 'mixamorigRightFoot_61'),
+    up: side('mixamorigLeftArm_25', 'mixamorigRightArm_49'), fore: side('mixamorigLeftForeArm_24', 'mixamorigRightForeArm_48'), hand: side('mixamorigLeftHand_23', 'mixamorigRightHand_47'),
+    fingers: { L: [['mixamorigLeftHandIndex1_10', 'mixamorigLeftHandIndex2_9', 'mixamorigLeftHandIndex3_8'], ['mixamorigLeftHandMiddle1_14', 'mixamorigLeftHandMiddle2_13', 'mixamorigLeftHandMiddle3_12']], R: [['mixamorigRightHandIndex1_34', 'mixamorigRightHandIndex2_33', 'mixamorigRightHandIndex3_32'], ['mixamorigRightHandMiddle1_38', 'mixamorigRightHandMiddle2_37', 'mixamorigRightHandMiddle3_36']] },
+    thumb: { L: ['mixamorigLeftHandThumb1_6', 'mixamorigLeftHandThumb2_5', 'mixamorigLeftHandThumb3_4'], R: ['mixamorigRightHandThumb1_30', 'mixamorigRightHandThumb2_29', 'mixamorigRightHandThumb3_28'] } },
   // "Business Man" by qsardor: the high-value target (Mixamo rig)
   boss: { file: 'boss.glb', h: 1.8, hips: 'mixamorigHips_01', spine: ['mixamorigSpine_02', 'mixamorigSpine1_03', 'mixamorigSpine2_04'], neck: 'mixamorigNeck_05', head: 'mixamorigHead_06',
     thigh: side('mixamorigLeftUpLeg_056', 'mixamorigRightUpLeg_00'), shin: side('mixamorigLeftLeg_057', 'mixamorigRightLeg_061'), foot: side('mixamorigLeftFoot_058', 'mixamorigRightFoot_062'),

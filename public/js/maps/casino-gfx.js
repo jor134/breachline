@@ -147,7 +147,7 @@ const coveAt = ([cx, cz, rx, rz, a], t, d = 0) => { const u = (rx + d) * Math.co
 
 function buildHeli(MATS) {
   const g = new THREE.Group(), box = new THREE.Group(), body = sheen({ color: 0x1b2330 }, 'paint'), stripe = sheen({ color: 0x3a7ad8 }, 'paint'), dark = new THREE.MeshLambertMaterial({ color: 0x0e1014 }), metal = sheen({ color: 0x8a9098 }, 'metal');
-  g.add(box);   // the stand-in built from boxes, until the Black Hawk model arrives (and in ?lite=1 tests)
+  g.add(box);   // the stand-in built from boxes, until the Huey model arrives (and in ?lite=1 tests)
   const bx = (w, h, d, x, y, z, m = body, to = box) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.castShadow = true; to.add(o); return o; };
   const L = HELI.x1 - HELI.x0, D = HELI.z1 - HELI.z0, dl = HELI.door[0] - (HELI.x0 + HELI.x1) / 2, dr = HELI.door[1] - (HELI.x0 + HELI.x1) / 2;
   bx(L + 0.2, 0.3, D + 0.2, 0, -0.15, 0, dark); bx(L + 0.2, 0.3, D + 0.2, 0, 2.15, 0);                              // floor, roof (the collision boxes)
@@ -196,8 +196,6 @@ export default {
   get env() { return tod === 'night' ? NIGHT : DUSK; },
   envs: { dusk: DUSK, night: NIGHT },
   setTod(t) { tod = t === 'night' ? 'night' : 'dusk'; },
-  // The Black Hawk (models/heli/uh60.glb, built by tools/heli_glb.py): cabin floor at y = 0, the door on +z from x -0.6 to 2.2, nose toward -x.
-  // It goes into the helicopter group in place of the box stand-in, so it hovers and flies away with it; its rotor node spins.
   // The lift (models/lift/elevator.glb, "Elevator" by ART_LOLL): one copy at each stop, the cage inside the car's walls and the frame and
   // call button on the landing side. Its door panels slide with the game's lift doors (tick); the game's own door slab is hidden (liftDoors).
   liftDoors() { return !!lifts; },
@@ -215,15 +213,31 @@ export default {
     }, undefined, rej));
   },
   load() { return Promise.all([this.loadHeli(), this.loadLift().catch(() => null)]).then(([a, b]) => { const g = new THREE.Group(); if (a) g.add(a); if (b) g.add(b); return g; }); },
+  // The Huey (models/heli/huey.glb): turned and scaled when it loads into the game frame (cabin floor at y = 0, the cabin's middle at x = 0,
+  // nose toward -x, the cargo door on +z), with that door cut open. It goes into the helicopter group in place of the box stand-in,
+  // so it hovers and flies away with it; its main and tail rotors spin.
   loadHeli() {
     const h = heli; if (!h) return Promise.resolve(null);
-    return new Promise((res, rej) => new GLTFLoader().load('models/heli/uh60.glb', gl => {
-      const m = gl.scene; m.position.set(HELI.door[0] + 0.6 - (HELI.x0 + HELI.x1) / 2, 0, 0);
-      m.traverse(o => { if (!o.isMesh) return; const mats = Array.isArray(o.material) ? o.material : [o.material];
-        for (const mt of mats) { mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.6; if (!pbrMats.includes(mt)) pbrMats.push(mt); if (mt.transparent) mt.depthWrite = false; }
-        o.castShadow = true; o.receiveShadow = true; });
-      const rotor = m.getObjectByName('rotor'); if (rotor) { const disc = new THREE.Mesh(new THREE.CircleGeometry(10.4, 48), new THREE.MeshBasicMaterial({ color: 0x101216, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide })); disc.rotation.x = -Math.PI / 2; rotor.add(disc); h.rotor = rotor; }
-      h.tail = new THREE.Object3D(); h.box.visible = false; h.beacon.position.set(m.position.x + 15.6, 5.2, 0); h.g.add(m);
+    return new Promise((res, rej) => new GLTFLoader().load('models/heli/huey.glb', gl => {
+      const src = gl.scene; src.updateMatrixWorld(true); const s0 = new THREE.Vector3().setFromMatrixScale(src.getObjectByName('Bell_Huey').matrixWorld).x / 0.01;   // undo the file's display scale: model metres
+      src.scale.setScalar(1 / s0); src.updateMatrixWorld(true);
+      const K = 1.05, FL = 0.46, CZ = -0.76, DOOR = { x: 0.9, y0: 0.52, y1: 2.3, z0: -2.0, z1: 1.2 };   // model metres: the cabin floor, the cabin's middle, the cargo door's hole
+      const M = new THREE.Matrix4().makeScale(K, K, K).multiply(new THREE.Matrix4().makeRotationY(-Math.PI / 2)).multiply(new THREE.Matrix4().makeTranslation(0, -FL, -CZ));
+      const m = new THREE.Group(), v = new THREE.Vector3(), c = new THREE.Vector3();
+      const keep = (o, geo) => {   // drop the triangles in the door hole (by their middle, in model metres)
+        const P = geo.attributes.position, I = geo.index, out = [];
+        for (let t = 0; t < I.count; t += 3) { c.set(0, 0, 0); for (let k = 0; k < 3; k++) c.add(v.fromBufferAttribute(P, I.getX(t + k)).applyMatrix4(o.matrixWorld)); c.multiplyScalar(1 / 3);
+          if (!(c.x > DOOR.x && c.y > DOOR.y0 && c.y < DOOR.y1 && c.z > DOOR.z0 && c.z < DOOR.z1)) out.push(I.getX(t), I.getX(t + 1), I.getX(t + 2)); }
+        geo.setIndex(out); return geo; };
+      const part = (o, piv) => { const geo = keep(o, o.geometry.clone()); geo.applyMatrix4(o.matrixWorld); geo.applyMatrix4(M); if (piv) geo.translate(-piv.x, -piv.y, -piv.z);
+        const mt = o.material; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.6; if (!pbrMats.includes(mt)) pbrMats.push(mt); if (mt.transparent) mt.depthWrite = false;
+        mt.side = THREE.DoubleSide; const ms = new THREE.Mesh(geo, mt); ms.castShadow = ms.receiveShadow = !mt.transparent; return ms; };
+      const pivot = n => new THREE.Vector3().setFromMatrixPosition(src.getObjectByName(n).matrixWorld).applyMatrix4(M);
+      const top = pivot('Top_Rotor'), back = pivot('Back_Rotor'), rotor = new THREE.Group(), tail = new THREE.Group(); rotor.position.copy(top); tail.position.copy(back);
+      src.traverse(o => { if (!o.isMesh) return; const n = o.parent.name; if (n === 'Top_Rotor') rotor.add(part(o, top)); else if (n === 'Back_Rotor') tail.add(part(o, back)); else m.add(part(o)); });
+      m.add(rotor, tail);
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(7.0, 48), new THREE.MeshBasicMaterial({ color: 0x101216, transparent: true, opacity: 0.14, depthWrite: false, side: THREE.DoubleSide })); disc.rotation.x = -Math.PI / 2; disc.position.y = 1.45; rotor.add(disc);
+      h.rotor = rotor; h.tail = tail; h.tailAx = 'z'; h.box.visible = false; h.beacon.position.set(8.7, 2.9, 0); h.g.add(m);
       res(new THREE.Group());   // the caller adds what it gets to the scene; the model itself stays in the helicopter group
     }, undefined, rej));
   },
@@ -413,14 +427,14 @@ export default {
     if (inner) { if (!inner.list) inner.list = [...inner.im, ...inner.root.children.filter(m => m.material === inner.mat)]; const on = head.pos.y < 25; if (on !== inner.on) { inner.on = on; for (const m of inner.list) m.visible = on; } }
     if (lifts) for (const L of lifts) { const di = level.doors.findIndex(d => d.lift === L.k), to = S.doorOpen && S.doorOpen[di] ? 1 : 0; if (L.cur === to) continue; L.cur = L.cur < 0 ? to : L.cur + Math.sign(to - L.cur) * Math.min(Math.abs(to - L.cur), dt * 1.1);
       const e = L.cur * L.cur * (3 - 2 * L.cur); for (const d of L.doors) { d.o.position.z = d.s * 0.8 * e; d.o.scale.z = 1 - (d.inner ? 0.45 : 0.3) * e; /* the panels telescope as they open, so they stay inside the wall */ } }
-    if (heli) { const h = heli; h.rotor.rotation.y += dt * 7; h.tail.rotation.z += dt * 30; h.beacon.visible = (performance.now() % 1200) < 150;
+    if (heli) { const h = heli; h.rotor.rotation.y += dt * 7; h.tail.rotation[h.tailAx || 'z'] += dt * 30; h.beacon.visible = (performance.now() % 1200) < 150;
       let aboard = head.pos.y > HELI.y + 0.6 && inHeli(head.pos.x, head.pos.z); if (!aboard) for (const o of officers.values()) { const p = o.head.position; if (p.y > HELI.y + 0.4 && inHeli(p.x, p.z)) { aboard = true; break; } }
       if (S.fly) { const o = FLY.at(S.fly.t), u = Math.min(1, S.fly.t / FLY.T); h.idle = 0; h.gone = 0; h.g.visible = true; h.g.position.set(h.home.x + o[0], h.home.y + o[1], h.home.z + o[2]);
         h.g.rotation.set(Math.sin(S.now * 0.9) * 0.012 * (1 - u), 0, 0.07 * Math.sin(Math.PI * Math.min(1, u * 1.15)));   // nose down coming in, flaring level at the hover
         h.rope.scale.y = Math.max(0.001, Math.min(1, (S.fly.t - FLY.T) / FLY.drop)); }
       else if (aboard || S.phase !== 'active') { h.idle = 0; h.gone = 0; h.g.visible = true; h.g.position.copy(h.home); h.g.rotation.set(0, 0, 0); h.rope.scale.y = 1; }
       else if ((h.idle += dt) > 6) { h.gone += dt; const t = h.gone; h.g.position.set(h.home.x - t * t * 0.9, h.home.y + t * 2.2 + t * t * 0.25, h.home.z - t * t * 0.4); h.g.rotation.set(0, Math.min(0.5, t * 0.08), Math.min(0.18, t * 0.05)); h.g.visible = t < 16; }
-      if (h.g.visible) setRotor(h.g.localToWorld(v0.set(0.97 + HELI.door[0] + 0.6 - (HELI.x0 + HELI.x1) / 2, 3.8, 0)), 1); }
+      if (h.g.visible) setRotor(h.g.localToWorld(v0.set(-0.8, 3.4, 0)), 1); }
     if (cctv && cctv.on && S.mode) { const p = head.pos; if (p.x > 60 && p.x < 72 && p.z > 20 && p.z < 32 && p.y < H) {
       if (cctv.n++ % 3 === 0) { const i = cctv.k++ % cctv.cams.length, xe = renderer.xr.enabled, rt = renderer.getRenderTarget(); renderer.xr.enabled = false;
         renderer.setRenderTarget(cctv.rts[i]); renderer.render(scene, cctv.cams[i]); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; } } }

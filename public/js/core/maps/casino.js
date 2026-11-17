@@ -17,7 +17,7 @@ export const MAIN = { x0: 14, z0: 8, x1: 60, z1: 48 };             // the double
 export const FS = 17, RF = 20;                                     // floor numbers: the suites, the tower roof
 export const F3 = FS * H, ROOF = RF * H, POD = 2 * H;             // suites floor, tower roof, podium (casino) roof
 export const ACCESS = { x0: 26, x1: 32, z0: 8, z1: 20 };           // the roof-access corridor through the plant floor, from the casino roof to the stairs
-export const HELI = { x0: 33.8, x1: 38.2, z0: 7.0, z1: 9.6, y: ROOF + 4.5, door: [34.6, 37.4] };   // cabin floor; the door is the south side (fits the Black Hawk's cabin)
+export const HELI = { x0: 33.9, x1: 38.1, z0: 7.0, z1: 9.6, y: ROOF + 4.5, door: [33.95, 37.3] };   // cabin floor; the door is the south side (fits the Huey's cabin, nose to the west)
 export const SHAFT = { x0: 26, x1: 32, z0: 0, z1: 8, n: 2.4, s: 6.6, mid: 29 };                    // scissor stair: north and south landing strips
 export const CAR = { x0: 40, x1: 43, z0: 0, z1: 3 };            // service lift car (at the casino and at the suites)
 export const YARD = { x0: -30, z0: -50, x1: 102, z1: 100 };
