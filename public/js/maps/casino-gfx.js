@@ -7,9 +7,9 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import { setRotor } from '../audio.js';
-import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli, FLY } from '../core/maps/casino.js';
+import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli, FLY, LIFT } from '../core/maps/casino.js';
 
-let tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null;
+let tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null, lifts = null, liftGlow = [], dark = false;
 const LAMPS = [[37, 5.6, 27, 16, 22], [22, 5.4, 32, 10, 16], [52, 5.4, 32, 10, 16], [37, 5.4, 43, 10, 15], [37, 5.4, 13, 9, 14], [7, 3.0, 20, 7, 13], [34, F3 + 3.0, 15, 6, 12], [36, 8.0, 66, 12, 22]];
 const DUSK = {
   sky: [[0, '#151a3d'], [0.28, '#33336e'], [0.42, '#8c5585'], [0.475, '#ec8558'], [0.5, '#ffbf78'], [0.53, '#2a2330'], [1, '#18161d']], skyR: 430, moon: [130, 120, -150],
@@ -198,7 +198,24 @@ export default {
   setTod(t) { tod = t === 'night' ? 'night' : 'dusk'; },
   // The Black Hawk (models/heli/uh60.glb, built by tools/heli_glb.py): cabin floor at y = 0, the door on +z from x -0.6 to 2.2, nose toward -x.
   // It goes into the helicopter group in place of the box stand-in, so it hovers and flies away with it; its rotor node spins.
-  load() {
+  // The lift (models/lift/elevator.glb, "Elevator" by ART_LOLL): one copy at each stop, the cage inside the car's walls and the frame and
+  // call button on the landing side. Its door panels slide with the game's lift doors (tick); the game's own door slab is hidden (liftDoors).
+  liftDoors() { return !!lifts; },
+  loadLift() {
+    return new Promise((res, rej) => new GLTFLoader().load('models/lift/elevator.glb', gl => {
+      const out = new THREE.Group(), L = [];
+      gl.scene.traverse(o => { if (!o.isMesh) return; const mt = o.material; if (mt.userData.done) return; mt.userData.done = true; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.9; if (!pbrMats.includes(mt)) pbrMats.push(mt);
+        if (mt.name === 'Metal') mt.color.set(0x9aa0a8); if (mt.name === 'Emission') { mt.userData.e = mt.emissiveIntensity = 1.6; liftGlow.push(mt); } });
+      LIFT.stops.forEach((y, k) => { const m = gl.scene.clone(true), kill = [], doors = [];
+        m.traverse(o => { if (/^(Wall_|Plane_)/.test(o.name)) kill.push(o); const d = /^(Left|Right)(Outside|Interior)Door/.exec(o.name); if (d) doors.push({ o, s: d[1] === 'Left' ? 1 : -1, inner: d[2] === 'Interior' }); if (o.isMesh) o.receiveShadow = true; });
+        for (const o of kill) o.parent.remove(o);
+        m.position.set((LIFT.door[0] + LIFT.door[2]) / 2, y, CAR.z1); m.rotation.y = -Math.PI / 2; m.scale.set(1, 0.9, 0.942); out.add(m); L.push({ k, doors, cur: -1 }); });
+      for (const mt of liftGlow) mt.emissiveIntensity = dark ? 0.03 : mt.userData.e;
+      lifts = L; res(out);
+    }, undefined, rej));
+  },
+  load() { return Promise.all([this.loadHeli(), this.loadLift().catch(() => null)]).then(([a, b]) => { const g = new THREE.Group(); if (a) g.add(a); if (b) g.add(b); return g; }); },
+  loadHeli() {
     const h = heli; if (!h) return Promise.resolve(null);
     return new Promise((res, rej) => new GLTFLoader().load('models/heli/uh60.glb', gl => {
       const m = gl.scene; m.position.set(HELI.door[0] + 0.6 - (HELI.x0 + HELI.x1) / 2, 0, 0);
@@ -255,10 +272,11 @@ export default {
     for (const m of signs) m.color.set(nvg ? 0x8cff9c : night ? 0x2a2a2a : 0xffffff);
     if (towerM) { towerM.emissive.set(nvg ? 0x4cff5a : 0xffffff); towerM.emissiveIntensity = night ? 0.18 : 1; }
     if (skyM) skyM.color.set(nvg ? 0x6dff7a : 0xffffff);
+    dark = night; for (const m of liftGlow) m.emissiveIntensity = night ? 0.03 : m.userData.e;
     if (cctv) { cctv.on = !night; for (const m of cctv.mats) m.color.set(night ? 0x000000 : nvg ? 0x8cff9c : 0xb8c8e0); }
   },
   scenery({ b, ao, root, hills, hillM, level, MATS }) {
-    signs = []; seed = 11;
+    signs = []; seed = 11; lifts = null; liftGlow = [];
     const C = curves(b), flat = (m, x0, x1, z0, z1, y = 0, s = 0.2) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
     const down = (m, x0, x1, z0, z1, y, s = 0.5) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, -1, 0], s);
     // ---- ground: paving round the podium, the driveway under the canopy, the boulevard ----
@@ -297,7 +315,7 @@ export default {
       plane(root, 'SUITES 3', 1.2, 0.3, SHAFT.x1 - 0.06, F3 + 2.2, 1.8, -Math.PI / 2, { bg: '#c22a24' }); plane(root, 'CASINO 1', 1.2, 0.3, SHAFT.x0 + 0.06, 2.2, 7.3, Math.PI / 2, { bg: '#c22a24' }); }
     // ---- the service lift: call panels and a hatch light in each car ----
     for (const y of [0, F3]) { B('steelwall', CAR.x1 - 0.06, CAR.x1 - 0.04, y + 1.0, y + 1.5, CAR.z1 - 0.7, CAR.z1 - 0.4, 'x', 1); b('cglow').box(CAR.x1 - 0.07, CAR.x1 - 0.06, y + 1.2, y + 1.3, CAR.z1 - 0.6, CAR.z1 - 0.5, 'x', 1); b('cglow').box(CAR.x0 + 0.5, CAR.x1 - 0.5, y + H - 0.03, y + H - 0.02, CAR.z0 + 0.6, CAR.z1 - 0.6, 'y', 1);
-      plane(root, y ? 'SERVICE  1  ▼' : 'SERVICE  3  ▲', 1.6, 0.22, (CAR.x0 + CAR.x1) / 2, y + 2.55, CAR.z1 + 0.12, 0, { bg: '#0d0f12', fg: '#ff9a3a' }); }
+      plane(root, y ? 'SERVICE  1  ▼' : 'SERVICE  3  ▲', 1.6, 0.22, (CAR.x0 + CAR.x1) / 2, y + 3.3, CAR.z1 + 0.12, 0, { bg: '#0d0f12', fg: '#ff9a3a' }); }
     // ---- the casino ceiling: soffit with coves, light ribbons swirling between them, the chandelier ----
     { const sh = new THREE.Shape(); sh.moveTo(MAIN.x0, MAIN.z0); sh.lineTo(MAIN.x1, MAIN.z0); sh.lineTo(MAIN.x1, MAIN.z1); sh.lineTo(MAIN.x0, MAIN.z1); sh.lineTo(MAIN.x0, MAIN.z0);
       for (const cv of COVES) { const p = new THREE.Path(); for (let i = 0; i <= 48; i++) { const [x, z] = coveAt(cv, -i * 6.283 / 48); i ? p.lineTo(x, z) : p.moveTo(x, z); } sh.holes.push(p); }
@@ -389,7 +407,9 @@ export default {
   },
   // the helicopter's rotors turn; once nobody is aboard for a few seconds in a live mission it climbs away (and comes back for anyone who spawns in it).
   // The CCTV wall refreshes one camera at a time, only while someone stands in the security office with the power on.
-  tick(dt, { S, head, officers, renderer, scene }) {
+  tick(dt, { S, head, officers, renderer, scene, level }) {
+    if (lifts) for (const L of lifts) { const di = level.doors.findIndex(d => d.lift === L.k), to = S.doorOpen && S.doorOpen[di] ? 1 : 0; if (L.cur === to) continue; L.cur = L.cur < 0 ? to : L.cur + Math.sign(to - L.cur) * Math.min(Math.abs(to - L.cur), dt * 1.1);
+      const e = L.cur * L.cur * (3 - 2 * L.cur); for (const d of L.doors) { d.o.position.z = d.s * 0.8 * e; d.o.scale.z = 1 - (d.inner ? 0.45 : 0.3) * e; /* the panels telescope as they open, so they stay inside the wall */ } }
     if (heli) { const h = heli; h.rotor.rotation.y += dt * 7; h.tail.rotation.z += dt * 30; h.beacon.visible = (performance.now() % 1200) < 150;
       let aboard = head.pos.y > HELI.y + 0.6 && inHeli(head.pos.x, head.pos.z); if (!aboard) for (const o of officers.values()) { const p = o.head.position; if (p.y > HELI.y + 0.4 && inHeli(p.x, p.z)) { aboard = true; break; } }
       if (S.fly) { const o = FLY.at(S.fly.t), u = Math.min(1, S.fly.t / FLY.T); h.idle = 0; h.gone = 0; h.g.visible = true; h.g.position.set(h.home.x + o[0], h.home.y + o[1], h.home.z + o[2]);

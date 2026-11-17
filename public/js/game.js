@@ -973,7 +973,7 @@ function frame(t) {
   breaker.cur += ((S.night ? 1 : 0) - breaker.cur) * Math.min(1, dt * 14); breaker.lever.rotation.x = breaker.cur * 2.2; breaker.led.material.color.setHex(S.night ? 0x401010 : 0x30ff60);
   world.doors.forEach((d, i) => { d.cur += ((S.doorOpen[i] ? 1.65 : 0) - d.cur) * Math.min(1, dt * 7); const D = level.doors[i];
     if (D.win) { d.g.visible = !S.doorOpen[i]; return; }   // a breach window: there, or burst
-    if (D.lift !== undefined) { d.g.visible = true; d.g.rotation.y = d.base; d.g.position.x = D.x0 - (D.x1 - D.x0) * 0.95 * d.cur / 1.65; return; }   // the lift's door slides aside
+    if (D.lift !== undefined) { d.g.visible = !(world.gfx.liftDoors && world.gfx.liftDoors()); d.g.rotation.y = d.base; d.g.position.x = D.x0 - (D.x1 - D.x0) * 0.95 * d.cur / 1.65; return; }   // the lift's door slides aside
     d.g.visible = true; d.g.rotation.y = d.base + d.swing * d.cur; if (d.g2) d.g2.rotation.y = d.base + Math.PI - d.swing * d.cur; if (d.lock) d.lock.visible = !!S.doorLocked[i] && !S.doorOpen[i]; });
   for (const l of tracers) if (l.visible && (l.userData.t -= dt) <= 0) l.visible = false;
   for (const m of puffs) if (m.visible) { m.userData.t -= dt; m.material.opacity = Math.max(0, m.userData.t / 0.3); m.scale.setScalar(1 + (0.3 - m.userData.t) * 4); if (m.userData.t <= 0) m.visible = false; }
@@ -1050,7 +1050,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v52';
+const BUILD = 'v53';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

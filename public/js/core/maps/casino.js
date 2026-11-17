@@ -53,9 +53,9 @@ export const OPENINGS = [
   [0, 68, 8, 69.5, 8, 'door'],                                                                 // vault (from the cage)
   [0, 20, 8, 21.5, 8, 'door'], [0, 36, 8, 37.5, 8, 'door'], [0, 50, 8, 51.5, 8, 'door'],       // STAFF ONLY doors into back of house
   [0, 16, 5, 16, 6.2, 'door'], [0, 26, 6.8, 26, 7.9, 'door'], [0, 60, 5, 60, 6.2, 'door'],      // count room, fire stairs, staff room
-  [0, 40, 3, 40, 8, 'gap'], [0, 43, 3, 43, 8, 'gap'], [0, 40, 3, 43, 3, 'gap'],         // lift landing; the lift's own door is added in extra()
+  [0, 40, 3, 40, 8, 'gap'], [0, 43, 3, 43, 8, 'gap'], [0, 40.5, 3, 42.5, 3, 'gap'],         // lift landing; the lift's own door is added in extra()
   [3, 32, 1.2, 32, 2.3, 'door'],                                                               // fire stairs at the suites
-  [3, 33, 8, 43, 8, 'gap'], [3, 40, 3, 40, 8, 'gap'], [3, 40, 3, 43, 3, 'gap'],   // lift lobby and landing: one wide opening onto the corridor
+  [3, 33, 8, 43, 8, 'gap'], [3, 40, 3, 40, 8, 'gap'], [3, 40.5, 3, 42.5, 3, 'gap'],   // lift lobby and landing: one wide opening onto the corridor
   [3, 20, 8, 21.2, 8, 'door'], [3, 48, 8, 49.2, 8, 'door'],                                    // housekeeping, suite D
   [3, 25, 11, 26.2, 11, 'door'], [3, 33, 11, 35, 11, 'door'], [3, 49, 11, 50.2, 11, 'door'], [3, 40, 16, 40, 17.2, 'door'],   // suites
   ...WINX.map(x => [3, x - 1, 20, x + 1, 20, 'gap']),                                         // breach windows (panes added in extra())
@@ -130,7 +130,7 @@ export const ROPES = [
   { x: 36, z: HELI.z1 + 0.45, top: HELI.y, bot: ROOF, out: [0, 1], step: [36, 10.9, ROOF], top0: [36, 9.1, HELI.y], win: null, heli: true },
   ...WINX.map(x => ({ x, z: ROPE_Z, top: ROOF, bot: F3, out: [0, 1], step: [x, 18.9, F3], top0: [x, 19.2, ROOF], winAt: [x, 20], arm: [WING.z1 - 0.6, ROOF + 1.66] })),   // arm: the davit over the parapet (from z, at height): gripping it clips you in too
 ];
-export const LIFT = { car: CAR, stops: [0, F3], door: [40, 3, 43, 3] };
+export const LIFT = { car: CAR, stops: [0, F3], door: [40.67, 3, 42.33, 3], doorH: 2.52 };   // the doorway fits the lift model's (models/lift)
 
 // ---- shape helpers ----
 export const inFoot = (x, z) => x >= FOOT.x0 && x <= FOOT.x1 && z >= FOOT.z0 && z <= FOOT.z1;
@@ -205,9 +205,11 @@ function extra({ boxes, addDoor }) {
   for (const x of WINX) addDoor({ f: 3, x0: x - 1, z0: WING.z1, x1: x + 1, z1: WING.z1, horiz: true, h: H - 0.25, cx: x, cz: WING.z1, y: F3, exterior: true, win: true,
     box: { kind: 'door', x0: x - 1, x1: x + 1, z0: WING.z1 - 0.03, z1: WING.z1 + 0.03, y0: F3 + 0.02, y1: F3 + H - 0.25 } });
   // the service lift's doors, one at each stop: they slide, and open only where the car is
-  LIFT.stops.forEach((y, k) => addDoor({ f: k ? 3 : 0, x0: CAR.x0, z0: CAR.z1, x1: CAR.x1, z1: CAR.z1, horiz: true, h: DOOR_H, cx: (CAR.x0 + CAR.x1) / 2, cz: CAR.z1, y, lift: k,
-    box: { kind: 'door', x0: CAR.x0, x1: CAR.x1, z0: CAR.z1 - 0.04, z1: CAR.z1 + 0.04, y0: y, y1: y + DOOR_H } }));
-  for (const y of LIFT.stops) boxes.push({ f: y ? 3 : 0, kind: 'lintel', out: '', x0: CAR.x0, x1: CAR.x1, z0: CAR.z1 - 0.1, z1: CAR.z1 + 0.1, y0: y + DOOR_H, y1: y + H });   // the wall over the lift's door
+  const [dx0, , dx1] = LIFT.door, dh = LIFT.doorH;
+  LIFT.stops.forEach((y, k) => addDoor({ f: k ? 3 : 0, x0: dx0, z0: CAR.z1, x1: dx1, z1: CAR.z1, horiz: true, h: dh, cx: (dx0 + dx1) / 2, cz: CAR.z1, y, lift: k,
+    box: { kind: 'door', x0: dx0, x1: dx1, z0: CAR.z1 - 0.04, z1: CAR.z1 + 0.04, y0: y, y1: y + dh } }));
+  for (const y of LIFT.stops) for (const [a, c] of [[CAR.x0 + 0.5, dx0], [dx1, CAR.x1 - 0.5]]) box('liftpost', a, c, y, y + dh, CAR.z1 - 0.1, CAR.z1 + 0.1, { f: y ? 3 : 0 });   // the door frame's posts
+  for (const y of LIFT.stops) boxes.push({ f: y ? 3 : 0, kind: 'lintel', out: '', x0: CAR.x0 + 0.5, x1: CAR.x1 - 0.5, z0: CAR.z1 - 0.1, z1: CAR.z1 + 0.1, y0: y + LIFT.doorH, y1: y + H });   // the wall over the lift's door
   // the stair core's walls between the two halves under each flight (a solid stringer wall, so nobody drops off a flight)
   box('core', SHAFT.mid - 0.08, SHAFT.mid + 0.08, 0, F3 + 1.0, SHAFT.n, SHAFT.s);
   // and where a landing meets the far end of the other flight, a rail so nobody steps onto it from the wrong height
