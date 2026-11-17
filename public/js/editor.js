@@ -1,11 +1,11 @@
 // BREACHLINE level editor: draw a map top-down (mouse or touch), test it solo in the game, publish it to the map library.
 // The map format and its checks live in core/maps/custom.js, shared with the game and the Worker.
 import { buildLevel, findPath, registerMap } from './core/level.js';
-import { clean, check, FINISHES, FURN, FURN_H, PRESETS, STAIR_W, STAIR_L, LIMITS, TREES, SHRUBS, PWALLS, terDims, relax } from './core/maps/custom.js';
+import { clean, check, FINISHES, FURN, FURN_H, PRESETS, LIMITS, TREES, SHRUBS, PWALLS } from './core/maps/custom.js';
+import * as X from './core/maps/edits.js';   // what each tool does to the map: shared with the VR editor
 
 const $ = id => document.getElementById(id), cv = $('cv'), g = cv.getContext('2d');
-const snap = v => Math.round(v * 2) / 2;
-const FURN_SIZE = { table: [1.6, 0.9], counter: [2, 0.6], shelf: [1.6, 0.4], cabinet: [1, 0.5], sofa: [2, 0.9], bed: [1.6, 2.1], crate: [1, 1], console: [1.6, 0.6], seats: [2, 0.6], column: [0.6, 0.6], wall: [2, 0.2], hedge: [2, 0.6] };
+const snap = X.snap;
 const FIN_COL = { wood: '#5c4630', carpet: '#3d3f5c', tile: '#4a5662', marble: '#6c6c74', stone: '#575249', paver: '#514b43', gravel: '#474747', concrete: '#55575a' };
 const TOOLS = [['h', 'Build'], ['select', 'Select / move'], ['room', 'Room'], ['door', 'Door'], ['arch', 'Archway'], ['gap', 'Open gap'], ['glass', 'Window'], ['furn', 'Furniture'], ['stairs', 'Stairs'],
   ['h', 'Mission'], ['spawn', 'Squad spawn'], ['exit', 'Exit zone'], ['s', 'Suspect'], ['c', 'Hostage'], ['b', 'Bomb'], ['hvt', 'HVT'], ['breaker', 'Breaker'], ['h', 'Landscape'], ['sculpt', 'Sculpt ground'], ['tree', 'Trees'], ['shrub', 'Shrubs'], ['pwall', 'Property wall'], ['gate', 'Gate'], ['h', 'Edit'], ['erase', 'Erase'], ['pan', 'Pan']];
@@ -16,8 +16,8 @@ let M = null, pubId = null, F = 0, tool = 'room', furnKind = 'table', sel = null
 const brush = { mode: 'raise', r: 4, k: 4, flat: 0 }, land = { tree: 'mix', shrub: 'mix', pwall: 'privacy', gateW: 1.5 };
 let terImg = null;   // the shaded ground, redrawn only when the ground changes
 const view = { ox: 40, oy: 40, s: 14 };
-const blank = () => ({ v: 1, name: 'My map', creator: localStorage.getItem('bl_name') || 'Anon', size: [60, 50], floors: 1, H: 3.2, time: 600, counts: { s: 6, c: 3, b: 1 }, style: { preset: 'house', night: false }, rooms: [], openings: [], glass: [], furniture: [], stairs: [], spawn: null, exit: null, breaker: null, hvt: null, s: [], c: [], b: [], trees: [], shrubs: [], pwalls: [], gates: [], ter: null });
-function load(m, id = null) { M = Object.assign(blank(), m); for (const k of ['rooms', 'openings', 'glass', 'furniture', 'stairs', 's', 'c', 'b', 'trees', 'shrubs', 'pwalls', 'gates']) M[k] = (M[k] || []).map(a => a.slice()); M.ter = Array.isArray(M.ter) && M.ter.length === terDims(...M.size).reduce((a, b) => a * b) ? M.ter.slice() : null; terImg = null; M.style = Object.assign({ preset: 'house' }, M.style); M.counts = Object.assign({ s: 6, c: 3, b: 1 }, M.counts); pubId = id; F = 0; sel = null; hist = []; fit(); ui(); draw(); }
+const blank = () => X.blank(localStorage.getItem('bl_name') || 'Anon');
+function load(m, id = null) { M = X.normalize(m, localStorage.getItem('bl_name') || 'Anon'); terImg = null; pubId = id; F = 0; sel = null; hist = []; fit(); ui(); draw(); }
 function save() { try { localStorage.setItem('bl_edit', JSON.stringify({ map: M, pubId })); } catch (e) { } }
 function change(fn) { hist.push(JSON.stringify(M)); if (hist.length > 80) hist.shift(); fn(); dirty = true; save(); ui(); draw(); }
 function undo() { if (!hist.length) return; M = JSON.parse(hist.pop()); sel = null; terImg = null; save(); ui(); draw(); }
@@ -28,34 +28,12 @@ function fit() { const r = cv.getBoundingClientRect(); view.s = Math.max(3, Math
 const W2S = (x, z) => [view.ox + x * view.s, view.oy + z * view.s], S2W = (sx, sy) => [(sx - view.ox) / view.s, (sy - view.oy) / view.s];
 
 // ---- geometry helpers ----
-const roomsOn = f => M.rooms.filter(r => r[0] === f);
-const inRoom = (f, x, z) => M.rooms.some(r => r[0] === f && x > r[1] && x < r[3] && z > r[2] && z < r[4]);
-function sides(f) { const out = []; for (const [, x0, z0, x1, z1] of roomsOn(f)) out.push([x0, z0, x1, z0], [x0, z1, x1, z1], [x0, z0, x0, z1], [x1, z0, x1, z1]); return out; }
-function nearestSide(x, z, f, max = 0.8) {
-  let best = null, bd = max;
-  for (const s of sides(f)) { const h = s[1] === s[3], d = h ? (x >= s[0] - 0.2 && x <= s[2] + 0.2 ? Math.abs(z - s[1]) : 1e9) : (z >= s[1] - 0.2 && z <= s[3] + 0.2 ? Math.abs(x - s[0]) : 1e9); if (d < bd) { bd = d; best = { s, h }; } }
-  return best;
-}
-const segDist = (px, pz, x0, z0, x1, z1) => { const dx = x1 - x0, dz = z1 - z0, l = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((px - x0) * dx + (pz - z0) * dz) / l)); return Math.hypot(px - x0 - dx * t, pz - z0 - dz * t); };
-function itemAt(x, z) {
-  const r = 0.6;
-  for (const k of ['s', 'c', 'b']) { const i = M[k].findIndex(p => p[0] === F && Math.hypot(p[1] - x, p[2] - z) < r); if (i >= 0) return { t: k, i }; }
-  if (M.hvt && M.hvt[0] === F && Math.hypot(M.hvt[1] - x, M.hvt[2] - z) < r) return { t: 'hvt' };
-  if (M.breaker && M.breaker[0] === F && Math.hypot(M.breaker[1] - x, M.breaker[2] - z) < r) return { t: 'breaker' };
-  if (F === 0 && M.spawn && Math.hypot(M.spawn[0] - x, M.spawn[1] - z) < 1.2) return { t: 'spawn' };
-  for (const k of ['openings', 'glass']) { const i = M[k].findIndex(o => o[0] === F && segDist(x, z, o[1], o[2], o[3], o[4]) < 0.35); if (i >= 0) return { t: k, i }; }
-  let i = M.furniture.findIndex(q => q[0] === F && x >= q[1] && x <= q[3] && z >= q[2] && z <= q[4]); if (i >= 0) return { t: 'furniture', i };
-  i = M.stairs.findIndex(q => (q[0] === F || q[0] === F - 1) && x >= q[1] && x <= q[3] && z >= q[2] && z <= q[4]); if (i >= 0) return { t: 'stairs', i };
-  i = M.gates.findIndex(q => segDist(x, z, q[0], q[1], q[2], q[3]) < 0.4); if (i >= 0) return { t: 'gates', i };
-  i = M.pwalls.findIndex(q => segDist(x, z, q[0], q[1], q[2], q[3]) < 0.4); if (i >= 0) return { t: 'pwalls', i };
-  i = M.shrubs.findIndex(q => Math.hypot(q[0] - x, q[1] - z) < 0.6); if (i >= 0) return { t: 'shrubs', i };
-  i = M.trees.findIndex(q => Math.hypot(q[0] - x, q[1] - z) < 1.0); if (i >= 0) return { t: 'trees', i };
-  if (F === 0 && M.exit && x >= M.exit[0] && x <= M.exit[2] && z >= M.exit[1] && z <= M.exit[3]) return { t: 'exit' };
-  for (let k = M.rooms.length - 1; k >= 0; k--) { const q = M.rooms[k]; if (q[0] === F && x >= q[1] && x <= q[3] && z >= q[2] && z <= q[4]) return { t: 'rooms', i: k }; }
-  return null;
-}
-function remove(it) { if (!it) return; if (it.i != null) M[it.t].splice(it.i, 1); else M[it.t] = null; }
-function rectOf(it) { if (!it) return null; if (it.t === 'rooms' || it.t === 'furniture' || it.t === 'stairs') { const q = M[it.t][it.i]; return [q[1], q[2], q[3], q[4]]; } if (it.t === 'exit') return M.exit.slice(); return null; }
+const roomsOn = f => X.roomsOn(M, f);
+const inRoom = (f, x, z) => X.inRoom(M, f, x, z);
+const segDist = X.segDist;
+const itemAt = (x, z) => X.itemAt(M, F, x, z);
+const remove = it => X.remove(M, it);
+const rectOf = it => X.rectOf(M, it);
 
 // ---- drawing ----
 function draw() {
@@ -118,10 +96,7 @@ function selPoint(it) { if (it.t === 'trees' || it.t === 'shrubs') return M[it.t
 
 // ---- landscape ----
 let hover = null;
-const TMAXdm = () => Math.round(2 * M.H * 10);
-function ensureTer() { if (!M.ter) { const [nx, nz] = terDims(...M.size); M.ter = new Array(nx * nz).fill(0); } return terDims(...M.size); }
-function groundAt(x, z) { if (!M.ter) return 0; const [nx, nz] = terDims(...M.size), fx = Math.max(0, Math.min(nx - 1.0001, x)), fz = Math.max(0, Math.min(nz - 1.0001, z)), i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, a = j * nx + i, h = M.ter;
-  return ((h[a] * (1 - u) + h[a + 1] * u) * (1 - v) + (h[a + nx] * (1 - u) + h[a + nx + 1] * u) * v) / 10; }
+const groundAt = (x, z) => X.groundAt(M, x, z);
 // the ground shaded by height: green at street level, lighter going up, blue-grey going down, a line every metre and a white one at each storey
 function shadeTer() {
   const [W, D] = M.size, k = 4, w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(D * k)), c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -138,85 +113,22 @@ function shadeTer() {
   cg.putImageData(img, 0, 0); return c;
 }
 // one dab of the brush at (x, z); the ground the brush holds stays put and the slopes around it give way
-function dab(x, z) {
-  const [nx, nz] = ensureTer(), h = M.ter, R = brush.r, lim = TMAXdm(), pin = new Uint8Array(nx * nz);
-  const i0 = Math.max(0, Math.floor(x - R)), i1 = Math.min(nx - 1, Math.ceil(x + R)), j0 = Math.max(0, Math.floor(z - R)), j1 = Math.min(nz - 1, Math.ceil(z + R)), old = h.slice();
-  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-    const d = Math.hypot(i - x, j - z); if (d > R) continue; const wgt = Math.pow(1 - d / R, 1.5) || 0.05, a = j * nx + i;
-    if (brush.mode === 'raise') h[a] += brush.k * wgt;
-    else if (brush.mode === 'lower') h[a] -= brush.k * wgt;
-    else if (brush.mode === 'flatten') h[a] += (brush.flat * 10 - h[a]) * Math.min(1, wgt * 1.4);
-    else { let sum = 0, n = 0; for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= nx || jj >= nz) continue; sum += old[jj * nx + ii]; n++; } h[a] += (sum / n - h[a]) * Math.min(1, wgt * 0.8); }
-    h[a] = Math.max(-lim, Math.min(lim, Math.round(h[a]))); if (d < R * 0.6) pin[a] = 1;
-  }
-  relax(h, nx, nz, undefined, 300, pin); for (let a = 0; a < h.length; a++) h[a] = Math.max(-lim, Math.min(lim, h[a]));
-  terImg = null; dirty = true;
-}
-function resampleTer(oldSize) {
-  if (!M.ter) return; const [ox, oz] = terDims(...oldSize), [nx, nz] = terDims(...M.size), o = M.ter, n = new Array(nx * nz);
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) n[j * nx + i] = o[Math.min(j, oz - 1) * ox + Math.min(i, ox - 1)];
-  M.ter = n; terImg = null;
-}
-const pickKind = (sel, table) => sel === 'mix' ? Object.keys(table)[Math.floor(Math.random() * Object.keys(table).length)] : sel;
-function plant(x, z) {
-  const tr = tool === 'tree', key = tr ? 'trees' : 'shrubs'; if (M[key].length >= LIMITS[key]) { msg('That is the most ' + key + ' a map can have.', 'err'); return false; }
-  if (x < 0 || z < 0 || x > M.size[0] || z > M.size[1]) return false;
-  if (inRoom(0, x, z) || M.rooms.some(r => x > r[1] - 0.3 && x < r[3] + 0.3 && z > r[2] - 0.3 && z < r[4] + 0.3)) return false;   // not inside or against a building
-  M[key].push([Math.round(x * 10) / 10, Math.round(z * 10) / 10, pickKind(tr ? land.tree : land.shrub, tr ? TREES : SHRUBS)]); return true;
-}
-function placeGate(x, z) {
-  let best = null, bd = 0.8; for (const q of M.pwalls) { const d = segDist(x, z, q[0], q[1], q[2], q[3]); if (d < bd) { bd = d; best = q; } }
-  if (!best) return msg('Tap on a property wall or fence.', 'err');
-  const h = best[1] === best[3], a = h ? best[0] : best[1], b = h ? best[2] : best[3], L = Math.min(land.gateW, b - a);
-  if (L < 1) return msg('That wall is too short for a gate.', 'err');
-  const c = Math.max(a + L / 2, Math.min(b - L / 2, snap(h ? x : z))), lo = Math.round((c - L / 2) * 2) / 2, hi = lo + L, ln = h ? best[1] : best[0];
-  change(() => { M.gates = M.gates.filter(o => !(h ? o[1] === o[3] && o[1] === ln && o[0] < hi && o[2] > lo : o[0] === o[2] && o[0] === ln && o[1] < hi && o[3] > lo)); M.gates.push(h ? [lo, ln, hi, ln] : [ln, lo, ln, hi]); });
-}
-function placePwall(x0, z0, x1, z1) {
-  const h = Math.abs(x1 - x0) >= Math.abs(z1 - z0), a = snap(h ? Math.min(x0, x1) : Math.min(z0, z1)), b = snap(h ? Math.max(x0, x1) : Math.max(z0, z1)), ln = snap(h ? z0 : x0);
-  if (b - a < 0.5) return msg('Drag along the line to make the wall longer.', 'err'); if (M.pwalls.length >= LIMITS.pwalls) return msg('That is the most property walls a map can have.', 'err');
-  change(() => M.pwalls.push(h ? [a, ln, b, ln, land.pwall] : [ln, a, ln, b, land.pwall]));
-}
-const pwSeg = (x0, z0, x1, z1) => { const h = Math.abs(x1 - x0) >= Math.abs(z1 - z0); return h ? [snap(x0), snap(z0), snap(x1), snap(z0)] : [snap(x0), snap(z0), snap(x0), snap(z1)]; };
-
-// ---- placing things ----
-function placeOpening(x, z, kind) {
-  const ns = nearestSide(x, z, F); if (!ns) return msg('Tap on a wall of a room on this floor.', 'err');
-  const L = kind === 'door' ? 1 : kind === 'arch' ? 1.5 : 2, { s, h } = ns, a = h ? s[0] : s[1], b = h ? s[2] : s[3];
-  if (b - a < L) return msg('That wall is too short for a ' + kind + '.', 'err');
-  const c = Math.max(a + L / 2, Math.min(b - L / 2, snap(h ? x : z))), lo = Math.round((c - L / 2) * 2) / 2, hi = lo + L, line_ = h ? s[1] : s[0];
-  const ext = h ? !(inRoom(F, c, line_ - 0.25) && inRoom(F, c, line_ + 0.25)) : !(inRoom(F, line_ - 0.25, c) && inRoom(F, line_ + 0.25, c));
-  change(() => { M.openings = M.openings.filter(o => !(o[0] === F && segOverlap(o, h, line_, lo, hi))); M.glass = M.glass.filter(o => !(o[0] === F && segOverlap(o, h, line_, lo, hi))); M.openings.push(h ? [F, lo, line_, hi, line_, kind, ...(ext ? ['ext'] : [])] : [F, line_, lo, line_, hi, kind, ...(ext ? ['ext'] : [])]); });
-}
-const segOverlap = (o, h, line_, lo, hi) => h ? o[2] === o[4] && o[2] === line_ && o[1] < hi && o[3] > lo : o[1] === o[3] && o[1] === line_ && o[2] < hi && o[4] > lo;
-function placeGlass(x0, z0, x1, z1) {
-  const ns = nearestSide(x0, z0, F, 1); if (!ns) return msg('Start the window on a wall.', 'err');
-  const { s, h } = ns, a = h ? s[0] : s[1], b = h ? s[2] : s[3], lo = Math.max(a, snap(Math.min(h ? x0 : z0, h ? x1 : z1))), hi = Math.min(b, snap(Math.max(h ? x0 : z0, h ? x1 : z1))), line_ = h ? s[1] : s[0];
-  if (hi - lo < 0.5) return msg('Drag along the wall to make the window longer.', 'err');
-  change(() => { M.glass = M.glass.filter(o => !(o[0] === F && segOverlap(o, h, line_, lo, hi))); M.glass.push(h ? [F, lo, line_, hi, line_] : [F, line_, lo, line_, hi]); });
-}
-function clampIn(x, z) { return [Math.max(0, Math.min(M.size[0], x)), Math.max(0, Math.min(M.size[1], z))]; }
+function dab(x, z) { X.dab(M, brush, x, z); terImg = null; dirty = true; }
+function resampleTer(oldSize) { X.resampleTer(M, oldSize); terImg = null; }
+function plant(x, z) { const tr = tool === 'tree', r = X.plant(M, tr ? 'trees' : 'shrubs', x, z, tr ? land.tree : land.shrub); if (r !== true && /most/.test(r)) msg(r, 'err'); return r === true; }
+// a placement from the shared rules: show why not, or make the change as one undo step
+const run = (r, after) => { if (!r) return; if (r.err != null) { if (r.err) msg(r.err, 'err'); return; } change(r.apply); if (r.sel) { sel = r.sel; ui(); draw(); } if (after) after(); };
+const placeGate = (x, z) => run(X.gate(M, x, z, land.gateW));
+const placePwall = (x0, z0, x1, z1) => run(X.pwall(M, x0, z0, x1, z1, land.pwall));
+const pwSeg = X.pwSeg;
+const placeGlass = (x0, z0, x1, z1) => run(X.glass(M, F, x0, z0, x1, z1));
 function tap(x, z) {
-  const [sx, sz] = [snap(x), snap(z)];
-  if (tool === 'door' || tool === 'arch' || tool === 'gap') return placeOpening(x, z, tool);
-  if (tool === 'furn') { const [w, d] = FURN_SIZE[furnKind]; const x0 = Math.round((x - w / 2) * 4) / 4, z0 = Math.round((z - d / 2) * 4) / 4; return change(() => M.furniture.push([F, x0, z0, x0 + w, z0 + d, FURN_H[furnKind], furnKind, '+z'])); }
-  if (tool === 'stairs') { if (M.floors < 2) return msg('Stairs need a second floor: set Floors to 2 or 3 in Settings.', 'err'); if (F >= M.floors - 1) return msg('Stairs climb to the floor above: switch to a lower floor.', 'err'); return change(() => M.stairs.push([F, snap(x - STAIR_W / 2), snap(z - STAIR_L / 2), snap(x - STAIR_W / 2) + STAIR_W, snap(z - STAIR_L / 2) + STAIR_L])); }
-  if (tool === 'spawn') { if (F !== 0) return msg('The squad starts on the ground floor.', 'err'); return change(() => { M.spawn = [sx, sz]; if (!M.exit) M.exit = [sx - 3, sz - 1.5, sx + 3, sz + 2.5]; }); }
-  if (tool === 's' || tool === 'c' || tool === 'b') { if (M[tool].length >= LIMITS.spots) return msg('That is the most spots a map can have.', 'err'); return change(() => M[tool].push([F, sx, sz])); }
-  if (tool === 'hvt') return change(() => { M.hvt = [F, sx, sz]; });
-  if (tool === 'breaker') return change(() => { M.breaker = [F, sx, sz]; });
   if (tool === 'tree' || tool === 'shrub') { const t = JSON.stringify(M); if (plant(x, z)) { hist.push(t); dirty = true; save(); ui(); draw(); } else msg('Plants go outside, clear of the buildings.', 'err'); return; }
-  if (tool === 'gate') return placeGate(x, z);
   if (tool === 'pwall') return msg(HINT.pwall, '');
-  if (tool === 'erase') { const it = itemAt(x, z); if (it) change(() => remove(it)); return; }
-  if (tool === 'select') { sel = itemAt(x, z); ui(); draw(); }
+  if (tool === 'select') { sel = itemAt(x, z); ui(); draw(); return; }
+  run(X.point(M, F, tool, x, z, { furnKind, gateW: land.gateW }));
 }
-function finishRect(x0, z0, x1, z1) {
-  const a = Math.min(x0, x1), b = Math.min(z0, z1), c = Math.max(x0, x1), d = Math.max(z0, z1);
-  if (tool === 'room') { if (c - a < 1 || d - b < 1) return msg('Rooms are at least 1 × 1 m.', 'err'); if (M.rooms.length >= LIMITS.rooms) return msg('That is the most rooms a map can have.', 'err'); change(() => M.rooms.push([F, a, b, c, d, ''])); sel = { t: 'rooms', i: M.rooms.length - 1 }; ui(); draw(); }
-  else if (tool === 'exit') { if (F !== 0) return msg('The exit is on the ground floor.', 'err'); change(() => { M.exit = [a, b, c, d]; }); }
-  else if (tool === 'furn') { if (c - a < 0.3 || d - b < 0.3) return tap((x0 + x1) / 2, (z0 + z1) / 2); change(() => M.furniture.push([F, a, b, c, d, FURN_H[furnKind], furnKind, '+z'])); }
-}
+const finishRect = (x0, z0, x1, z1) => run(X.rect(M, F, tool, x0, z0, x1, z1, { furnKind }));
 
 // ---- pointer input: one finger or the mouse uses the tool; two fingers (or the right button, or space) pan and zoom ----
 const ptrs = new Map(); let drag = null, pinch = null, spaceDown = false;
@@ -250,21 +162,10 @@ cv.addEventListener('pointermove', e => {
   if (tool === 'pwall') { drag.seg = pwSeg(drag.x0, drag.z0, x, z); draw(); return; }
   if (tool === 'room' || tool === 'exit' || tool === 'furn') { const q = tool === 'furn' ? v => Math.round(v * 4) / 4 : snap; drag.rect = [q(drag.x0), q(drag.z0), q(x), q(z)]; draw(); return; }
   if (tool === 'glass') { drag.seg = [snap(drag.x0), snap(drag.z0), snap(x), snap(z)]; draw(); return; }
-  if (tool === 'select' && sel && drag.resize) { const q = M[sel.t] && M[sel.t][sel.i], step = sel.t === 'furniture' ? 0.25 : 0.5, rs = v => Math.round(v / step) * step;
-    if (sel.t === 'exit') { M.exit[2] = Math.max(M.exit[0] + 1, rs(x)); M.exit[3] = Math.max(M.exit[1] + 1, rs(z)); } else if (q) { q[3] = Math.max(q[1] + (sel.t === 'rooms' ? 1 : 0.25), rs(x)); q[4] = Math.max(q[2] + (sel.t === 'rooms' ? 1 : 0.25), rs(z)); } draw(); return; }
+  if (tool === 'select' && sel && drag.resize) { X.resizeItem(M, sel, x, z); draw(); return; }
   if (tool === 'select' && sel && drag.move) { M = JSON.parse(drag.orig); moveItem(sel, x - drag.x0, z - drag.z0); draw(); }
 });
-function moveItem(it, dx, dz) {
-  const step = it.t === 'furniture' ? 0.25 : 0.5, q = v => Math.round(v / step) * step, ddx = q(dx), ddz = q(dz);
-  const a = it.i != null ? M[it.t][it.i] : M[it.t]; if (!a) return;
-  if (it.t === 'spawn' || it.t === 'trees' || it.t === 'shrubs') { a[0] += ddx; a[1] += ddz; return; }
-  if (it.t === 'pwalls') { a[0] += ddx; a[2] += ddx; a[1] += ddz; a[3] += ddz; return; }
-  if (it.t === 'gates') { if (a[1] === a[3]) { a[0] += ddx; a[2] += ddx; } else { a[1] += ddz; a[3] += ddz; } return; }
-  if (it.t === 'exit') { a[0] += ddx; a[2] += ddx; a[1] += ddz; a[3] += ddz; return; }
-  if (it.t === 's' || it.t === 'c' || it.t === 'b' || it.t === 'hvt' || it.t === 'breaker') { a[1] += ddx; a[2] += ddz; return; }
-  if (it.t === 'openings' || it.t === 'glass') { const h = a[2] === a[4]; if (h) { a[1] += ddx; a[3] += ddx; } else { a[2] += ddz; a[4] += ddz; } return; }
-  a[1] += ddx; a[3] += ddx; a[2] += ddz; a[4] += ddz;
-}
+const moveItem = (it, dx, dz) => X.moveItem(M, it, dx, dz);
 const endPtr = e => {
   ptrs.delete(e.pointerId); if (pinch) { if (ptrs.size < 2) pinch = null; drag = null; return; }
   if (!drag) return; const d = drag; drag = null; const [sx, sy] = pos(e), [x, z] = S2W(sx, sy);
@@ -343,7 +244,7 @@ function ui() {
   on('pFin', 'onchange', e => change(() => { M.rooms[sel.i][5] = e.target.value; }));
   on('pKind', 'onchange', e => change(() => { const q = M.furniture[sel.i]; q[6] = e.target.value; q[5] = FURN_H[q[6]]; }));
   on('pH', 'onchange', e => change(() => { M.furniture[sel.i][5] = Math.max(0.3, Math.min(3, +e.target.value || 1)); }));
-  on('pRot', 'onclick', () => change(() => { const q = M.furniture[sel.i], cx = (q[1] + q[3]) / 2, cz = (q[2] + q[4]) / 2, w = q[3] - q[1], d = q[4] - q[2]; q[1] = cx - d / 2; q[3] = cx + d / 2; q[2] = cz - w / 2; q[4] = cz + w / 2; q[7] = ({ '+z': '-x', '-x': '-z', '-z': '+x', '+x': '+z' })[q[7]] || '+z'; }));
+  on('pRot', 'onclick', () => change(() => X.rotateFurn(M.furniture[sel.i])));
   on('pOk', 'onchange', e => change(() => { M.openings[sel.i][5] = e.target.value; }));
   on('pExt', 'onchange', e => change(() => { const q = M.openings[sel.i]; q.length = 6; if (e.target.checked) q.push('ext'); }));
   on('pDel', 'onclick', () => { change(() => remove(sel)); sel = null; ui(); draw(); });
@@ -359,7 +260,7 @@ function ui() {
   on('mName', 'onchange', e => change(() => { M.name = e.target.value; })); on('mBy', 'onchange', e => change(() => { M.creator = e.target.value; localStorage.setItem('bl_name', e.target.value); }));
   on('mW', 'onchange', e => change(() => { const o = M.size.slice(); M.size[0] = Math.max(20, Math.min(120, Math.round(+e.target.value / 2) * 2 || 60)); resampleTer(o); })); on('mD', 'onchange', e => change(() => { const o = M.size.slice(); M.size[1] = Math.max(20, Math.min(120, Math.round(+e.target.value / 2) * 2 || 50)); resampleTer(o); }));
   on('mF', 'onchange', e => change(() => { M.floors = +e.target.value; F = Math.min(F, M.floors - 1); }));
-  on('mH', 'onchange', e => change(() => { M.H = Math.max(2.8, Math.min(4.5, +e.target.value || 3.2)); if (M.ter) { const l = TMAXdm(); M.ter = M.ter.map(v => Math.max(-l, Math.min(l, v))); terImg = null; } })); on('mT', 'onchange', e => change(() => { M.time = Math.max(3, Math.min(30, +e.target.value || 10)) * 60; }));
+  on('mH', 'onchange', e => change(() => { M.H = Math.max(2.8, Math.min(4.5, +e.target.value || 3.2)); X.clampTer(M); terImg = null; })); on('mT', 'onchange', e => change(() => { M.time = Math.max(3, Math.min(30, +e.target.value || 10)) * 60; }));
   on('cS', 'onchange', e => change(() => { M.counts.s = Math.max(1, +e.target.value || 1); })); on('cC', 'onchange', e => change(() => { M.counts.c = Math.max(0, +e.target.value || 0); })); on('cB', 'onchange', e => change(() => { M.counts.b = Math.max(0, +e.target.value || 0); }));
   on('sP', 'onchange', e => change(() => { M.style.preset = e.target.value; })); on('sN', 'onchange', e => change(() => { M.style.night = e.target.checked; }));
   for (const b of S.querySelectorAll('[data-up]')) b.onclick = () => upload(b.dataset.up);

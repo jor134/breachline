@@ -12,6 +12,7 @@ import { createVoice } from './voice.js';
 import { createRace } from './race.js';
 import { createTutorial } from './tutorial.js';
 import { createRopes } from './rope.js';
+import { createVREditor } from './vredit.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 
@@ -63,9 +64,9 @@ function trainLine() {
   return { hits: mine[1], shots: mine[2], ns: mine[3], acc: mine[2] ? Math.round(100 * mine[1] / mine[2]) : 0, run: H[0] ? H[1].toFixed(1) + 's' : H[3] ? 'last ' + H[3] + 's' : '-', best: H[2] ? H[2] + 's' : '-', on: !!H[0] };
 }
 let race = null;
-function loadMap(id, tod) {
+function loadMap(id, tod, force) {
   const T = MAPS[id] && MAPS[id].tods ? (MAPS[id].tods.includes(tod) ? tod : (world && world.level.id === id ? world.tod : MAPS[id].tods[0])) : 'dusk';
-  if (world && world.level.id === id && world.tod === T) return;
+  if (!force && world && world.level.id === id && world.tod === T) return;
   if (world) world.dispose(); if (race) { race.dispose(); race = null; } for (const o of extras) { scene.remove(o); o.geometry && o.geometry.dispose(); } extras = []; const gen = ++mapGen;
   world = buildWorld(scene, id, T); level = world.level; M = level.map; if (M.race) race = createRace(scene);
   buildTargets();
@@ -137,6 +138,27 @@ const bodyPt = (off, out) => out.set(off[0], 0, off[2] + (S.mode === 'vr' ? (myB
 const myBody = new Body(true); myBody.g.visible = false; scene.add(myBody.g);
 const ropes = createRopes({ THREE, S, rig, head, get hands() { return hands; }, sfx, buzz: (...a) => buzz(...a), hint: (...a) => hint(...a), M: () => M, level: () => level, gunIn: h => gunIn(h), headWorld: () => headWorld(),
   climb: () => (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - S.tmove.y });
+// the VR map editor (vredit.js): MAP EDITOR on the training board. It builds the draft map around you and hands it back for TEST PLAY.
+const ED = createVREditor({ THREE, scene, rig, head, hands, S, sfx, buzz, headWorld, map: () => M, level: () => level, worldRoot: () => world.root,
+  rebuild: doc => { registerMap(compileCustom(doc, 'draft')); loadMap('draft', 'day', true); }, refreshList: () => loadCustomList(), test: map => testDraft(map), exit: () => leaveEditor() });
+function openEditor() {
+  if (S.mode !== 'vr' || ED.on) return; sfx.click(); if (!S.edTest) ED.prev = { id: M.id, tod: world.tod };
+  panel.mesh.visible = false; S.panel = null; S.menu = false; coach.mesh.visible = false; for (const h of hands) { h.hold = null; }
+  ED.enter();
+}
+function leaveEditor() {   // back to the training facility (or wherever the room is now)
+  const P = ED.pendingInit; ED.pendingInit = null;
+  if (S.edTest) { S.edTest = false; net.send({ t: 'restart', wx: S.wxPick, map: 'training' }); }
+  else if (P) { applyInit(P); placeAtSpawn(); showLobbyPanel(); }
+  else { const pv = ED.prev || { id: 'training', tod: 'day' }; loadMap(pv.id, pv.tod, true); placeAtSpawn(); showLobbyPanel(); }
+}
+// TEST PLAY: the draft as a solo mission. From an online room this drops you to solo play (the server cannot load a draft).
+function testDraft(map) {
+  S.edTest = true; try { localStorage.setItem('bl_draft', JSON.stringify(map)); } catch (e) { } registerMap(compileCustom(map, 'draft'));
+  const go = () => net.send({ t: 'start', wx: 'clear', map: 'draft', tod: map.style && map.style.night ? 'night' : 'day' });
+  if (net.ws) { const w = net.ws; net.ws = null; w.onclose = w.onerror = w.onmessage = null; try { w.close(); } catch { } S.net = 'solo'; net.local((nameIn.value.trim() || 'Officer').slice(0, 14)); setTimeout(go, 400); }
+  else go();
+}
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 const torch = new THREE.SpotLight(0xfff2dd, 16, 30, 0.44, 0.8, 1.6); torch.visible = false; scene.add(torch, torch.target);
 const xrc = [0, 1].map(i => { const ray = renderer.xr.getController(i), grip = renderer.xr.getControllerGrip(i); rig.add(ray, grip); const o = { ray, grip, src: null }; ray.addEventListener('connected', e => { o.src = e.data; }); ray.addEventListener('disconnected', () => { o.src = null; }); return o; });
@@ -175,6 +197,7 @@ function ledgeGrab(h) {
 }
 function ledgePull() { for (const h of hands) if (h.ledge && h.active) { if (!(h.in.grip > 0.5)) h.ledge = null; else if (h.pos.y < h.ledge.y - 0.2) climbTo(h.ledge.L); } }
 function placeAtSpawn() {
+  if (ED.on) return;   // building in the map editor: the editor keeps you where you are
   const sp = S.spawnAt, [x, z] = sp ? [sp[0], sp[2]] : M.spawn[S.me.slot % 4], fy = sp ? sp[1] : M.spawnY ?? (M.yAt ? M.yAt(0, x, z) : 0); S.feetY = fy; ropes.reset(); S.perch = null; rig.rotation.y = 0; S.yaw = 0; S.pitch = 0;   // terrorist players start inside
   if (S.mode === 'vr') { rig.position.y = fy; headWorld(); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; headWorld(); } else rig.position.set(x, fy, z);
 }
@@ -361,9 +384,9 @@ function showBoard() {   // the mission board in the training lobby: pick where 
   S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); const T = trainLine(), cu = S.customList.find(c => c.id === S.nextMap), nx = MAPS[S.nextMap] || (cu ? { name: cu.name + ' (LOADING)', op: cu.name + '  (by ' + cu.creator + ')' } : MAPS[MISSION_IDS[0]]);
   panel.draw('MISSION BOARD', 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo (not connected)' : 'connecting'),
     [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
-      'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', 'Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
-      'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'],
-    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+      'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', ...(S.mode === 'vr' ? [] : ['Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
+      'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'])],
+    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 // BODY FIT (training board, VR): slide your own body forward/back and up/down under the headset; kept on this device
 const FIT0 = { d: SELF_BACK.d, up: 0, gear: 0, gup: 0 };
@@ -382,20 +405,21 @@ function showFit(place = true) {
 function showEndPanel() {
   const R = S.report; if (!R || S.menu) return; S.panel = 'end'; panel.mesh.visible = true; frontOfHead(1.9);
   const tm = Math.floor(R.time / 60) + ':' + String(R.time % 60).padStart(2, '0');
-  panel.draw(R.result, R.pvp ? (R.winner === S.me.team ? 'YOUR SIDE WON' : 'YOUR SIDE LOST') + '   Time ' + tm : 'Grade ' + R.grade + '   Score ' + R.total + '/100   Time ' + tm, R.lines, [['RESTART', 'start'], ['TRAINING', 'train']]);
+  panel.draw(R.result, R.pvp ? (R.winner === S.me.team ? 'YOUR SIDE WON' : 'YOUR SIDE LOST') + '   Time ' + tm : 'Grade ' + R.grade + '   Score ' + R.total + '/100   Time ' + tm, R.lines, [...(S.edTest ? [['BACK TO THE EDITOR', 'edit']] : []), ['RESTART', 'start'], ['TRAINING', 'train']]);
 }
 function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z); }
 // back to the start screen (or, testing a draft, to the editor): leave VR first, then reload the page fresh
 function goHome() { const to = DRAFT ? 'editor.html' : './'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ['RESTART MISSION', 'start'], [DRAFT ? 'BACK TO EDITOR' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
   const ca = coach.probe(o, d, false); if (ca) return tut.act(ca); if (ca === '') return true;
   const act = panel.probe(o, d, false); if (!act) return act === '';
-  if (act === 'tut') { sfx.click(); tut.showMenu(); return true; }   // a pull on the panel background is swallowed, not fired
+  if (act === 'tut') { sfx.click(); tut.showMenu(); return true; }
+  if (act === 'edit') { if (S.menu) toggleMenu(false); openEditor(); return true; }   // a pull on the panel background is swallowed, not fired
   if (act === 'mic') { toggleMic(); toggleMenu(true); return true; }
   if (act === 'home') { goHome(); return true; }
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
@@ -446,6 +470,7 @@ function drawHud() {
 
 // ---------- server messages ----------
 function applyInit(init) {
+  if (ED.on) { ED.pendingInit = init; return; }   // the room moved on while you build: catch up when you leave the editor
   S.pvp = !!init.pvp; S.spawnAt = init.ph === 'active' && init.sp && init.sp[S.me.id] || null;
   if (init.rt != null) S.raceT = init.rt;
   if (init.map && (init.map !== M.id || (init.tod && init.tod !== world.tod))) { loadMap(init.map, init.tod); localStorage.setItem('bl_map', init.map); if (S.mode && S.phase !== 'active') placeAtSpawn(); }
@@ -937,6 +962,10 @@ const arr7 = (p, q) => [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +q.x.
 const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 'mag' ? 3 : 0;
 function frame(t) {
   const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t; S.now += dt;
+  if (ED.on) {   // building in the map editor: only the hands, the editor and the map
+    readVR(); headWorld(); for (const h of hands) if (h.active) { (h.xr.src && h.xr.src.gripSpace ? h.xr.grip : h.xr.ray).getWorldPosition(h.pos); h.xr.ray.getWorldQuaternion(h.quat).multiply(tiltQ); }
+    ED.tick(dt); setListener(head.pos, head.fwd, false); renderer.render(scene, camera); return;
+  }
   if (S.spawnIn && --S.spawnIn === 0) { headWorld(); placeAtSpawn(); showLobbyPanel(); }
   carry(dt);
   if (TUT && S.mode && !S.spawnIn && S.me.id) { TUT = false; tut.start('core'); }   // the tutorial starts once you stand in the facility
@@ -1051,9 +1080,9 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v56';
+const BUILD = 'v57';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { ropes, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

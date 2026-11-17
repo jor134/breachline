@@ -55,6 +55,8 @@ LANDSCAPE tools: a sculpt brush (raise, lower, smooth, flatten to a height or a 
 
 Delete a published map from OPEN → Published → Delete (needs the creator code; drafts saved on the device are kept). The editor's Home button and the game's HOME SCREEN (VR/desktop menu) or HOME (phone, under MENU) go back and forth; while testing a draft it reads BACK TO EDITOR.
 
+VR editor: MAP EDITOR on the training board (VR only) opens `js/vredit.js` in the game: build life-size with a tool tablet on the left hand and a laser on the right; the draft map is rebuilt around you after each change (`loadMap('draft', 'day', true)`). It shares the 2D editor's draft (`bl_edit`, `bl_drafts` in localStorage) and its rules: what each tool does lives in `js/core/maps/edits.js`, used by both editors. While editing, the game's frame is handed to the editor and everything but the map, the hands and the editor's marks is hidden; room messages that would change the map wait until you leave (`ED.pendingInit`). TEST PLAY starts the draft as a solo mission (switching an online room to a local one). Test: `test/vr-editor.js`.
+
 The format and its checks are in `js/core/maps/custom.js` (shared by the editor, the game and the Worker). Published maps and textures live in the `Library` Durable Object (SQLite) behind `/api/maps` and `/api/tex`. Publishing and uploads need the creator code: set the `CREATOR_CODE` secret on the Worker (Cloudflare dashboard > Workers > breachline > Settings > Variables and Secrets). Without it, publishing is off.
 
 ## Voice chat
