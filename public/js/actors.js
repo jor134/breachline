@@ -328,7 +328,7 @@ export class Body {
   setTeam(team) {
     team = team === 'tango' ? 'tango' : 'swat'; if (team === this.team) return; this.team = team; const gen = ++this.skinGen;
     if (!CHARS_ON) return;
-    loadChar(team === 'tango' ? 'phoenix' : 'swat').then(t => { if (gen !== this.skinGen) return; if (this.skin) { try { this.skin.dispose(); } catch (e) { } this.skin = null; } if (this.holder) { this.g.remove(this.holder); this.holder = null; } this.attachSkin(t); }).catch(e => console.warn('team model not loaded', e));
+    loadChar(team === 'tango' ? 'gunman' : 'swat').then(t => { if (gen !== this.skinGen) return; if (this.skin) { try { this.skin.dispose(); } catch (e) { } this.skin = null; } if (this.holder) { this.g.remove(this.holder); this.holder = null; } this.attachSkin(t); }).catch(e => console.warn('team model not loaded', e));
   }
   // The squad model: placed under the headset, arms solved to the controllers, legs bent when you crouch. Only the vest gear stays from the built-in body.
   attachSkin(tpl) {

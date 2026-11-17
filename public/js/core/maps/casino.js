@@ -10,6 +10,7 @@
 // (floor 2), 61.2 the suites (floor FS = 17), 72 the tower roof (floor RF = 20), 76.5 the hovering helicopter's cabin. Floors 3 to 16
 // and 18, 19 are solid (not playable). The fire stairs are a scissor stair, two flights from the casino's back of house to the roof
 // access. Nav layers: 0 ground, 1 the stair's middle landing, 2 the casino roof level, 3 suites, 4 roof, 5 helicopter.
+import { park, carBox } from './cars.js';
 export const H = 3.6, DOOR_H = 2.2;
 export const FOOT = { x0: 0, z0: 0, x1: 72, z1: 56 };              // the casino podium
 export const WING = { x0: 16, z0: 0, x1: 56, z1: 20 };             // the sky-suite wing above it
@@ -194,9 +195,7 @@ function floorAt(x, z, y) {
   const f = y > F3 - 1 ? FS : 0; for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return r[6] === 'wood' ? 'wood' : /carpet|cnavy|cgold/.test(r[6]) ? 'carpet' : 'concrete';
   return 'concrete';
 }
-const CAR_COL = [0x14161a, 0x1d1f24, 0x0e1a2e, 0x2a2c30, 0xe8e8e6, 0x1a2436];
-export const PARKED = [[22, 62.5, Math.PI / 2], [28.5, 62.5, Math.PI / 2], [43.5, 66.5, -Math.PI / 2], [50, 62.5, -Math.PI / 2], [10, 82, Math.PI / 2], [62, 82, -Math.PI / 2], [-6, 70, 0], [80, 70, 0]]
-  .map(([x, z, turn], i) => ({ x, z, turn, color: CAR_COL[i % CAR_COL.length] }));
+export const PARKED = park([[22, 62.5, Math.PI / 2], [28.5, 62.5, Math.PI / 2], [43.5, 66.5, -Math.PI / 2], [50, 62.5, -Math.PI / 2], [10, 82, Math.PI / 2], [62, 82, -Math.PI / 2], [-6, 70, 0], [80, 70, 0]], 0);
 // Solids that are not room walls: the wing's opaque floors behind the glass, the roof parapet, the helicopter's cabin, the cage bars,
 // the breach-window panes and the lift's door (both as doors), the canopy's columns, parked cars.
 function extra({ boxes, addDoor }) {
@@ -236,7 +235,7 @@ function extra({ boxes, addDoor }) {
   box('core', SHAFT.x0, SHAFT.mid, POD - 0.6, POD + 1.1, SHAFT.s - 0.08, SHAFT.s);      // roof-access landing: the west flight's foot is 7.2 down
   // canopy columns and cars at the kerb
   for (const x of [CANOPY.x0 + 1, CANOPY.x1 - 1]) for (const z of [64, 72]) box('trunk', x - 0.35, x + 0.35, 0, CANOPY.y, z - 0.35, z + 0.35);
-  for (const c of PARKED) box('pcar', c.x - 2.3, c.x + 2.3, 0, 1.4, c.z - 1.0, c.z + 1.0);
+  for (const c of PARKED) { const b = carBox(c); box('pcar', b.x0, b.x1, 0, b.h, b.z0, b.z1); }
 }
 const yAt = (f, x, z) => f > RF ? HELI.y : f * H;
 export default {

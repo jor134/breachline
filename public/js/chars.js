@@ -17,10 +17,6 @@ export const CHARS = {
   gunman: { file: 'gunman.glb', h: 1.78, hips: 'root_hips_03', spine: ['spine_lower_010', 'spine_upper_011', 'spine_upper_1_012'], neck: 'head_neck_lower_013', head: 'head_neck_upper_014',
     thigh: side('leg_left_thigh_02', 'leg_right_thigh_01'), shin: side('leg_left_knee_04', 'leg_right_knee_07'), foot: side('leg_left_ankle_05', 'leg_right_ankle_08'),
     up: side('arm_left_shoulder_2_017', 'arm_right_shoulder_2_015'), fore: side('arm_left_elbow_018', 'arm_right_elbow_032'), hand: side('arm_left_wrist_019', 'arm_right_wrist_033') },
-  // "Tm Phoenix V2" by ErhanMatur
-  phoenix: { file: 'phoenix.glb', h: 1.8, hips: 'pelvis_01', spine: ['spine_0_016', 'spine_1_017', 'spine_2_018', 'spine_3_020'], neck: 'neck_0_082', head: 'head_0_083',
-    thigh: side('leg_upper_L_09', 'leg_upper_R_02'), shin: side('leg_lower_L_012', 'leg_lower_R_05'), foot: side('ankle_L_013', 'ankle_R_06'),
-    up: side('arm_upper_L_052', 'arm_upper_R_022'), fore: side('arm_lower_L_055', 'arm_lower_R_025'), hand: side('hand_L_058', 'hand_R_028') },
   // "S.W.A.T. Operator" by Mateusz Wolinski (CC BY 4.0, Mixamo rig): the squad
   swat: { file: 'swat.glb', h: 1.84, hips: 'mixamorigHips_64', spine: ['mixamorigSpine_53', 'mixamorigSpine1_52', 'mixamorigSpine2_51'], neck: 'mixamorigNeck_2', head: 'mixamorigHead_1',
     thigh: side('mixamorigLeftUpLeg_58', 'mixamorigRightUpLeg_63'), shin: side('mixamorigLeftLeg_57', 'mixamorigRightLeg_62'), foot: side('mixamorigLeftFoot_56', 'mixamorigRightFoot_61'),
@@ -35,7 +31,7 @@ export const CHARS = {
   psx: { hips: 'hips', spine: ['spine', 'chest'], neck: 'neck', head: 'head', thigh: side('thighL', 'thighR'), shin: side('shinL', 'shinR'), foot: side('footL', 'footR'),
     up: side('upL', 'upR'), fore: side('foreL', 'foreR'), hand: side('handL', 'handR') },
 };
-export const SUSPECT_MODELS = ['thug', 'gunman', 'phoenix'];
+export const SUSPECT_MODELS = ['thug', 'gunman'];
 const Q = typeof location === 'undefined' ? new URLSearchParams() : new URLSearchParams(location.search);
 export const CHARS_ON = !Q.get('lite') || !!Q.get('chars');   // ?lite=1 (tests) keeps the built-in figures unless &chars=1
 

@@ -2,6 +2,7 @@
 // Ground floor: six team garages open onto the pit lane, a back corridor, team rooms. Upper floor: the VIP hospitality
 // club with glass over the pit lane, suites and the race office. In front: pit lane, pit wall, then the live track.
 // Behind: the paddock with team motorhomes, where the squad arrives. Generic engine: ../level.js; the race: ./circuit.js.
+import { park, carBox } from './cars.js';
 import { TRACK } from './circuit.js';
 export const H = 3.6, DOOR_H = 2.1;
 export const FOOT = { x0: 0, z0: -4, x1: 54, z1: 16 };
@@ -112,18 +113,16 @@ function floorAt(x, z, y) {
 // cars parked inside and outside it. Trucks: [x0, z0, length, along ('x' | 'z'), team, cab end (+1 / -1)]. Cars: [x, z, turn, colour].
 export const TRUCKS = [[10, 21.5, 16.5, 'z', 0, -1], [40.5, 21.5, 16.5, 'z', 1, -1], [-7, 38.6, 16.5, 'x', 2, 1], [43, 38.6, 16.5, 'x', 3, -1], [-9, 18.6, 16.5, 'x', 4, 1], [58, 18.6, 16.5, 'x', 5, -1]]
   .map(([x0, z0, len, along, team, cab]) => ({ x0, z0, x1: along === 'x' ? x0 + len : x0 + 2.5, z1: along === 'z' ? z0 + len : z0 + 2.5, along, team, cab }));
-const CAR_COL = [0xb8bcc2, 0x1d1f24, 0xe8e8e6, 0x2c4f8a, 0x8a1f1f, 0x4a4d52, 0x3f5e3a, 0xc9b98f];
-export const PARKED = [[14.8, 24.7, Math.PI], [17.6, 24.7, Math.PI], [20.4, 24.7, Math.PI], [31.6, 24.7, Math.PI], [34.4, 24.7, Math.PI], [37.2, 24.7, Math.PI],
+export const PARKED = park([[14.8, 24.7, Math.PI], [17.6, 24.7, Math.PI], [20.4, 24.7, Math.PI], [31.6, 24.7, Math.PI], [34.4, 24.7, Math.PI], [37.2, 24.7, Math.PI],
   [14.8, 31.2, 0], [17.6, 31.2, 0], [34.4, 31.2, 0], [37.2, 31.2, 0],
-  [-0.4, 27.5, Math.PI], [2.4, 27.5, Math.PI], [5.2, 27.5, Math.PI], [46, 27.5, Math.PI], [48.8, 27.5, Math.PI], [51.6, 27.5, Math.PI]]
-  .map(([x, z, turn], i) => ({ x, z, turn, color: CAR_COL[(i * 5) % CAR_COL.length] }));
+  [-0.4, 27.5, Math.PI], [2.4, 27.5, Math.PI], [5.2, 27.5, Math.PI], [46, 27.5, Math.PI], [48.8, 27.5, Math.PI], [51.6, 27.5, Math.PI]], 2, ['sedan', 'suv', 'hatch', 'wagon', 'compact', 'minivan', 'coupe', 'offroad']);
 // Solids that are not room walls: the pit wall, the barrier on the far side of the track, trucks, parked cars, the fence.
 function extra({ boxes }) {
   const box = (kind, x0, x1, y0, y1, z0, z1, o = {}) => boxes.push(Object.assign({ f: 0, kind, x0, x1, y0, y1, z0, z1 }, o));
   box('pitwall', PITWALL.x0, PITWALL.gate[0], 0, PITWALL.h, PITWALL.z0, PITWALL.z1); box('pitwall', PITWALL.gate[1], PITWALL.x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1);
   box('barrier', YARD.x0, YARD.x1, 0, 1.2, TRACK.z0 - 1.2, TRACK.z0 - 0.4);
   for (const t of TRUCKS) box('truck', t.x0, t.x1, 0, 4.1, t.z0, t.z1, { team: t.team });
-  for (const c of PARKED) box('pcar', c.x - 0.95, c.x + 0.95, 0, 1.3, c.z - 2.2, c.z + 2.2);
+  for (const c of PARKED) { const b = carBox(c); box('pcar', b.x0, b.x1, 0, b.h, b.z0, b.z1); }
   box('fence', YARD.x0, EXIT.x0, 0, 2.4, 40, 40.08); box('fence', EXIT.x1, YARD.x1, 0, 2.4, 40, 40.08);
   box('fence', YARD.x0, YARD.x0 + 0.08, 0, 2.4, TRACK.z0, 40); box('fence', YARD.x1 - 0.08, YARD.x1, 0, 2.4, TRACK.z0, 40);
 }

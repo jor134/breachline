@@ -4,6 +4,7 @@
 // apron -> across the apron into a glass-banded hangar where the jet stands on its airstairs. Bomb always in the jet's
 // cargo hold. The high-value target waits in the VIP lounge upstairs and runs for the jet when he hears the squad.
 // Generic engine: ../level.js.
+import { park, carBox } from './cars.js';
 export const H = 4.6, DOOR_H = 2.1;
 export const FOOT = { x0: 0, z0: 0, x1: 64, z1: 56 };
 export const UP_Z = 22;                         // the upper floor covers the building from here to the front
@@ -144,9 +145,7 @@ function floorAt(x, z, y) {
   if (inAir(x, z)) return 'metal';
   return 'concrete';
 }
-const CAR_COL = [0xb8bcc2, 0x1d1f24, 0xe8e8e6, 0x2c4f8a, 0x8a1f1f, 0x4a4d52, 0xd8c24a, 0xc9b98f];
-export const PARKED = [[4, 70.5, Math.PI / 2], [10, 70.5, Math.PI / 2], [46, 70.5, -Math.PI / 2], [56, 70.5, Math.PI / 2], [62, 77.5, -Math.PI / 2], [16, 77.5, Math.PI / 2], [-4, 77.5, -Math.PI / 2], [40, 77.5, Math.PI / 2]]
-  .map(([x, z, turn], i) => ({ x, z, turn, color: CAR_COL[(i * 3) % CAR_COL.length] }));
+export const PARKED = park([[4, 70.5, Math.PI / 2], [10, 70.5, Math.PI / 2], [46, 70.5, -Math.PI / 2], [56, 70.5, Math.PI / 2], [62, 77.5, -Math.PI / 2], [16, 77.5, Math.PI / 2], [-4, 77.5, -Math.PI / 2], [40, 77.5, Math.PI / 2]], 4);
 // Solids that are not room walls: the hangar shell, the jet (fuselage, floor, wings), the light aircraft, the canopy columns and the parked cars.
 function extra({ boxes }) {
   const box = (kind, x0, x1, y0, y1, z0, z1, o = {}) => boxes.push(Object.assign({ f: 0, kind, x0, x1, y0, y1, z0, z1 }, o));
@@ -172,7 +171,7 @@ function extra({ boxes }) {
   box('jetseat', J.left[0], J.left[1], CAB, CAB + 1.12, J.seats[0], J.seats[1]); box('jetseat', J.right[0], J.right[1], CAB, CAB + 1.12, J.seats[0], J.seats[1]);
   for (const [x, z, yaw] of GAPLANES) box('gaplane', x - 0.6, x + 0.6, 0.4, 1.9, z - 3.6, z + 3.6, { yaw });
   for (const [x, z] of TREES) box('trunk', x - 0.3, x + 0.3, 0, CANOPY.y, z - 0.3, z + 0.3);
-  for (const c of PARKED) box('pcar', c.x - 2.2, c.x + 2.2, 0, 1.3, c.z - 0.95, c.z + 0.95);
+  for (const c of PARKED) { const b = carBox(c); box('pcar', b.x0, b.x1, 0, b.h, b.z0, b.z1); }
 }
 export default {
   id: 'airport', name: 'AIRPORT', op: 'Operation TAILWIND', H, DOOR_H, YARD, layers: 2, layerFloor: [0, 1], tods: ['day', 'night'],
