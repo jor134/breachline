@@ -98,7 +98,7 @@ export const CarGeo = (() => {
   return { body: mergeGeos([tub, helmet, ...body]), bodyOpen: mergeGeos([tubOpen, ...body]), dark: mergeGeos(dark), post: mergeGeos(post) };
 })();
 
-// The downloaded car ("Ferrari F1 2019" by valvetin, CC BY 4.0), stripped to solid colours and simplified by
+// The downloaded car ("F1 2022 Generic Free" by Posti Cloudmuziq Mästaré F1 Team, CC BY 4.0), stripped to solid colours and simplified by
 // tools/hq_car.py: one mesh per colour group, smooth-shaded with hard edges kept. Until it has loaded, cars use the built-in shape above.
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { toCreasedNormals } from '../vendor/BufferGeometryUtils.js';

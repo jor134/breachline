@@ -1,9 +1,6 @@
-# The race car models, from the detailed, textured Sketchfab car (based on tools/solid_car.py).
-# Same colour sorting as there, but each colour group is simplified with quadric edge collapses (tools/qem.c)
-# instead of vertex clustering, so the shape keeps its smooth curves at a far lower triangle count.
-# - every triangle is sorted by the colour its texture shows: team paint, carbon, metal (body), tyre, rim (wheels)
-# - decals and the tiny cockpit parts are dropped
-# - each colour group is simplified by vertex clustering (vertices in the same small cube merge), keeping colour edges
+# The race car models, from "F1 2022 Generic Free" (Sketchfab, CC BY 4.0): every triangle is sorted into a solid colour group
+# (team paint, carbon, metal, tyre, rim) by its material, all textures and logos dropped, and each group simplified with quadric
+# edge collapses (tools/qem.c), which keeps the curves smooth at a far lower triangle count.
 # - the result faces +z, sits on y = 0, is CAR_LEN long, and is written as one mesh per colour group (positions + indices;
 #   the game shades it flat, so no normals or texture coordinates are stored)
 # usage: gcc -O2 -o /tmp/qem tools/qem.c -lm && python3 tools/hq_car.py in.glb out.glb target_triangles
@@ -13,7 +10,6 @@ from PIL import Image
 src, dst = sys.argv[1], sys.argv[2]; TARGET = int(sys.argv[3]); QEM = '/tmp/qem'
 import subprocess, tempfile, os
 CAR_LEN = 5.6
-SKIP = ('Buttons', 'Grip Button', 'Ferrari Button', 'Gears', 'Its for something', 'Steering Wheel', 'Antennas')
 d = open(src, 'rb').read(); L = struct.unpack('<I', d[12:16])[0]; j = json.loads(d[20:20 + L]); B = d[20 + L + 8:]
 NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4}; CT = {5126: np.float32, 5125: np.uint32, 5123: np.uint16, 5121: np.uint8}
 def acc(i):
@@ -25,7 +21,11 @@ def acc(i):
 def texture(mi):
     t = j['materials'][mi]['pbrMetallicRoughness']['baseColorTexture']['index']; im = j['images'][j['textures'][t]['source']]; bv = j['bufferViews'][im['bufferView']]
     o = bv.get('byteOffset', 0); return np.asarray(Image.open(io.BytesIO(B[o:o + bv['byteLength']])).convert('RGB'), dtype=np.float32) / 255
-TEX = {0: texture(0), 1: texture(1)}
+# material -> colour group: the livery is the team paint (its logos go with the texture), Pirelli-printed tyres become plain tyre,
+# the steering wheel and the glass are dropped; "generic" (suspension, engine bay, cockpit bits) is sorted by how dark its texture is
+BY_MAT = {'Livery': 'paint', 'carbon': 'carbon', 'chrome': 'metal', 'exhaust': 'metal', 'brake': 'metal', 'mirror': 'metal', 'tyres': 'tyre', 'rims': 'rim'}
+SORT = ('generic',)
+TEX = {mi: texture(mi) for mi, m in enumerate(j['materials']) if m.get('name') in SORT}
 def node_mats():
     out = {}
     def mat(nd):
@@ -39,16 +39,10 @@ def node_mats():
     for r in j['scenes'][j.get('scene', 0)]['nodes']: walk(r, np.eye(4))
     return out
 W = node_mats()
-groups = {k: ([], []) for k in ('paint', 'carbon', 'metal', 'tyre', 'rim')}; nose = []
-def classify(mi, rgb):
-    h, s, v = np.vectorize(colorsys.rgb_to_hsv)(rgb[:, 0], rgb[:, 1], rgb[:, 2])
-    if mi == 1: return np.where(v < 0.3, 'tyre', 'rim')
-    red = (s > 0.45) & (v > 0.3) & ((h < 0.06) | (h > 0.94))
-    return np.where(red, 'paint', np.where(v < 0.3, 'carbon', 'metal'))
+groups = {k: ([], []) for k in ('paint', 'carbon', 'metal', 'tyre', 'rim')}
 def smooth_labels(P, I, cls, rounds=4):
-    """The carbon-fibre weave in the texture reads as a speckle of carbon and metal triangles. Each round, a
-    triangle takes the colour most of its edge neighbours have (its own counts one and a half), which
-    clears the speckle but keeps real panel edges, where whole rows of triangles agree."""
+    """A texture's fine detail reads as a speckle of two colours. Each round, a triangle takes the colour most of its edge
+    neighbours have (its own counts one and a half), which clears the speckle but keeps real panel edges."""
     names = np.array(sorted(set(cls.tolist()))); lab = np.searchsorted(names, cls)
     key = np.round(P / 0.0002).astype(np.int64); _, w = np.unique(key, axis=0, return_inverse=True); W = w.reshape(-1)[I]
     e = np.sort(np.stack([W[:, [0, 1]], W[:, [1, 2]], W[:, [2, 0]]], 1).reshape(-1, 2), 1); tri = np.repeat(np.arange(len(I)), 3)
@@ -60,15 +54,16 @@ def smooth_labels(P, I, cls, rounds=4):
     return names[lab]
 for ni, nd in enumerate(j['nodes']):
     if 'mesh' not in nd: continue
-    m = j['meshes'][nd['mesh']]; name = m.get('name', '')
-    for p in m['primitives']:
-        mi = p.get('material', 0); P = acc(p['attributes']['POSITION']).astype(np.float64); P = (np.c_[P, np.ones(len(P))] @ W[ni].T)[:, :3]
-        if 'Decal Wing Front' in name: nose.append(P.mean(0))
-        if mi == 2 or any(name.startswith(k) for k in SKIP): continue
-        I = acc(p['indices']).reshape(-1, 3).astype(np.int64); UV = acc(p['attributes']['TEXCOORD_0'])
-        tex = TEX[mi]; h, w = tex.shape[:2]; uv = UV[I].mean(1); u = (uv[:, 0] % 1) * (w - 1); vv = (uv[:, 1] % 1) * (h - 1)
-        cls = classify(mi, tex[vv.astype(int), u.astype(int)])
-        if mi == 0: cls = smooth_labels(P, I, cls)
+    for p in j['meshes'][nd['mesh']]['primitives']:
+        mi = p.get('material', 0); mname = j['materials'][mi].get('name')
+        if mname not in BY_MAT and mname not in SORT: continue
+        P = acc(p['attributes']['POSITION']).astype(np.float64); P = (np.c_[P, np.ones(len(P))] @ W[ni].T)[:, :3]
+        I = acc(p['indices']).reshape(-1, 3).astype(np.int64)
+        if mname in SORT:
+            UV = acc(p['attributes']['TEXCOORD_0']); tex = TEX[mi]; h, w = tex.shape[:2]; uv = UV[I].mean(1)
+            rgb = tex[((uv[:, 1] % 1) * (h - 1)).astype(int), ((uv[:, 0] % 1) * (w - 1)).astype(int)]
+            cls = smooth_labels(P, I, np.where(rgb.max(1) < 0.3, 'carbon', 'metal'))
+        else: cls = np.full(len(I), BY_MAT[mname])
         for k in groups:
             sel = I[cls == k]
             if len(sel): groups[k][0].append(P); groups[k][1].append(sel)
@@ -76,7 +71,7 @@ for ni, nd in enumerate(j['nodes']):
 allP = np.vstack([np.vstack(g[0]) for g in groups.values() if g[0]]); lo, hi = allP.min(0), allP.max(0); ext = hi - lo
 up = int(np.argmin(ext)); long = int(np.argmax(ext)); side = 3 - up - long
 k = CAR_LEN / ext[long]; c = (lo + hi) / 2
-nz = np.mean(nose, 0)[long] - c[long] if nose else 1; flip = -1 if nz < 0 else 1
+t = (allP[:, long] - lo[long]) / ext[long]; flip = 1 if allP[t < 0.12, up].max() > allP[t > 0.88, up].max() else -1   # the rear wing stands taller than the nose: nose to +z
 def frame(P): q = (P - c) * k; return np.c_[q[:, side] * flip, q[:, up] - (lo[up] - c[up]) * k, q[:, long] * flip]
 out = bytearray(); views = []; accs = []; meshes = []; nodes = []
 def put(arr, target):
