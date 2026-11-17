@@ -70,5 +70,6 @@ for name, parts in T.items():
     files.append(out); total += os.path.getsize(os.path.join(dst, out))
   man[name] = files if len(files) > 1 else files[0]
 os.remove(tmp)
+if os.path.exists(os.path.join(dst, 'engine_f1.mp3')): man['engine_f1'] = 'engine_f1.mp3'   # the race cars' engine loop, built by tools/engine_loop.py
 json.dump(man, open(os.path.join(dst, 'manifest.json'), 'w'), indent=1)
 print(len(man), 'sounds,', sum(len(v) if isinstance(v, list) else 1 for v in man.values()), 'files,', round(total / 1024), 'KB')

@@ -133,20 +133,28 @@ export const sfx = {
   say(text, pitch = 1) { speak(text, pitch); },
 };
 
-// A race-car engine: two detuned saws through a low-pass, panned in 3D. The caller moves it, sets its pitch (doppler
-// included) and loudness every frame. Returns null until the audio is running.
+// A race-car engine, panned in 3D: the recorded F1 loop (sfx/engine_f1.mp3, built by tools/engine_loop.py) once it has loaded,
+// two detuned saws through a low-pass before that. The caller moves it, sets its pitch (doppler included; 520 Hz = the recording's
+// own pitch) and loudness every frame. Each voice starts at its own point in the loop so cars side by side don't sound as one.
+// Returns null until the audio is running.
+const ENGINE = { pad: 0.25, len: 16.0, hz: 520 };   // the loop's lead-in and length in the file (tools/engine_loop.py), its reference pitch
+export const engineLoaded = () => !!samples.engine_f1;
 export function engineVoice() {
   if (!ctx) return null;
-  const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), p = ctx.createPanner();
-  o1.type = 'sawtooth'; o2.type = 'square'; f.type = 'lowpass'; f.Q.value = 2; g.gain.value = 0;
+  const f = ctx.createBiquadFilter(), g = ctx.createGain(), p = ctx.createPanner(), buf = samples.engine_f1 && samples.engine_f1[0];
+  f.type = 'lowpass'; f.Q.value = buf ? 0.7 : 2; g.gain.value = 0;
   p.panningModel = 'equalpower'; p.distanceModel = 'linear'; p.refDistance = 1; p.maxDistance = 1e4; p.rolloffFactor = 0;   // loudness is set by hand
-  o1.connect(f); o2.connect(f); f.connect(g); g.connect(p); p.connect(dry); o1.start(); o2.start();
-  return {
+  f.connect(g); g.connect(p); p.connect(dry);
+  let src = null, o1 = null, o2 = null;
+  if (buf) { src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.loopStart = ENGINE.pad; src.loopEnd = ENGINE.pad + ENGINE.len; src.connect(f); src.start(0, ENGINE.pad + Math.random() * ENGINE.len); }
+  else { o1 = ctx.createOscillator(); o2 = ctx.createOscillator(); o1.type = 'sawtooth'; o2.type = 'square'; o1.connect(f); o2.connect(f); o1.start(); o2.start(); }
+  return { real: !!buf,
     set(x, y, z, hz, gain, muffle) {
       const t = ctx.currentTime; if (p.positionX) { p.positionX.setTargetAtTime(x, t, 0.02); p.positionY.value = y; p.positionZ.setTargetAtTime(z, t, 0.02); } else p.setPosition(x, y, z);
-      o1.frequency.setTargetAtTime(hz, t, 0.03); o2.frequency.setTargetAtTime(hz * 0.502, t, 0.03); f.frequency.setTargetAtTime(muffle ? 700 : 2600, t, 0.1); g.gain.setTargetAtTime(gain, t, 0.04);
+      if (src) { src.playbackRate.setTargetAtTime(Math.min(2.5, Math.max(0.3, hz / ENGINE.hz)), t, 0.03); f.frequency.setTargetAtTime(muffle ? 900 : 12000, t, 0.1); g.gain.setTargetAtTime(gain * 1.6, t, 0.04); }
+      else { o1.frequency.setTargetAtTime(hz, t, 0.03); o2.frequency.setTargetAtTime(hz * 0.502, t, 0.03); f.frequency.setTargetAtTime(muffle ? 700 : 2600, t, 0.1); g.gain.setTargetAtTime(gain, t, 0.04); }
     },
-    stop() { try { o1.stop(); o2.stop(); g.disconnect(); p.disconnect(); } catch (e) { } },
+    stop() { try { (src || o1).stop(); if (o2) o2.stop(); g.disconnect(); p.disconnect(); } catch (e) { } },
   };
 }
 
