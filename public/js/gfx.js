@@ -1,7 +1,7 @@
 // World rendering shared by every map: merged static geometry (one draw call per material), rooms, walls, glass, furniture, stairs, doors, lights.
 // Each map adds its own scenery and sky from js/maps/<id>-gfx.js.
 import * as THREE from '../vendor/three.module.min.js';
-import { sheen, tex, grid, rnd, setGlossLevel } from './mats.js';
+import { sheen, tex, grid, rnd, setGlossLevel, setEnvSky } from './mats.js';
 import { buildLevel } from './core/level.js';
 import mansionGfx from './maps/mansion-gfx.js';
 import terminalGfx from './maps/terminal-gfx.js';
@@ -234,6 +234,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     stars.visible = moon.visible = !cast; stars.material.opacity = night ? 1 : 0.45; stars.material.color.set(nvg ? 0x8cff9c : 0xffffff); moon.material.color.set(nvg ? 0xa8ffb4 : 0xe9edff); moon.material.opacity = night || nvg ? 1 : 0.7;
     hillM.color.set(nvg ? 0x05160a : night ? 0x040608 : env.hillColor || 0x1b1d22);
     scene.fog.color.set(nvg ? (night ? 0x082409 : 0x1c5a26) : night ? (wx === 'fog' ? 0x0d1016 : 0x05070b) : wx === 'fog' ? 0x767c85 : cast ? 0x3d434d : env.fog[0]); scene.fog.density = FOGD[wx][night ? 1 : 0]; scene.background.copy(scene.fog.color);
+    setEnvSky(env.sunFrom, tod, cast, night);
     if (G.look) G.look(night, nvg, wx);
   };
   const dispose = () => { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skyT.dispose(); };

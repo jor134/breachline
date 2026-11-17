@@ -5,16 +5,53 @@ export const GLOSS = { // shininess, highlight brightness, reflection strength
   paint: [110, 0.75, 0.3], glass: [170, 1.0, 1.0], water: [160, 1.0, 0.38], metal: [70, 0.7, 0.26], polished: [48, 0.45, 0.16], plastic: [40, 0.35, 0.1],
   satin: [22, 0.18, 0.05], stone: [16, 0.14, 0.03], cloth: [8, 0.07, 0], matte: [4, 0.03, 0],
 };
-export const envMap = (() => {
-  const face = k => { // 0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z : a dusk sky with warm interior light strips
-    const cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d');
-    if (k === 2) { c.fillStyle = '#3d4a60'; c.fillRect(0, 0, 64, 64); c.fillStyle = '#ffe9c8'; c.fillRect(8, 14, 48, 7); c.fillRect(8, 42, 48, 7); }
-    else if (k === 3) { c.fillStyle = '#15171a'; c.fillRect(0, 0, 64, 64); }
-    else { const g = c.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, '#3d4a60'); g.addColorStop(0.44, '#a8978c'); g.addColorStop(0.52, '#3a3f45'); g.addColorStop(1, '#15171a'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); if (k === 0 || k === 5) { c.fillStyle = '#fff2dc'; c.fillRect(20, 8, 24, 10); } }
-    return cv;
-  };
-  const t = new THREE.CubeTexture([0, 1, 2, 3, 4, 5].map(face)); t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; return t;
-})();
+// The reflection picture follows where you are: indoors a ceiling of pot lights over dim walls; outdoors the sky with one light
+// in it, the sun by day and at dusk, the moon at night (none under cloud). gfx.js sets the sky (setEnvSky), the game says
+// whether you are inside (setEnvInside); the six 64 px faces are only redrawn when one of those changes.
+const ENV = { inside: false, sun: [0.5, 0.45, 0.3], tod: 'dusk', cast: false, dark: false }, faces = [0, 1, 2, 3, 4, 5].map(() => { const c = document.createElement('canvas'); c.width = c.height = 64; return c; });
+const SKY = { day: ['#6f9fd8', '#c9dcef', '#8a8f94', '#2a2c2f'], dusk: ['#3d4a60', '#a8978c', '#3a3f45', '#15171a'], night: ['#0b1020', '#1d2433', '#14171c', '#07080a'] };
+// the direction a face pixel looks along (faces in GL order +x -x +y -y +z -z; three.js mirrors x when it samples a cube texture)
+function pixelDir(f, u, v) {
+  const sc = u / 32 - 1, tc = v / 32 - 1, g = [[1, -tc, -sc], [-1, -tc, sc], [sc, 1, tc], [sc, -1, -tc], [sc, -tc, 1], [-sc, -tc, -1]][f], l = Math.hypot(...g);
+  return [-g[0] / l, g[1] / l, g[2] / l];
+}
+// the sun or moon, worked out per pixel from the angle to it, so it stays round across the cube's seams
+function skyLight(dir, size, rgb) {
+  for (let f = 0; f < 6; f++) {
+    const c = faces[f].getContext('2d'), im = c.getImageData(0, 0, 64, 64), d = im.data;
+    for (let v = 0; v < 64; v++) for (let u = 0; u < 64; u++) {
+      const q = pixelDir(f, u + 0.5, v + 0.5), cos = q[0] * dir[0] + q[1] * dir[1] + q[2] * dir[2]; if (cos < 0.8) continue;
+      const a = Math.acos(Math.min(1, cos)), k = Math.exp(-((a / size) ** 2)) + 0.35 * Math.exp(-((a / (size * 3)) ** 2)), i = (v * 64 + u) * 4;
+      for (let ch = 0; ch < 3; ch++) d[i + ch] = Math.min(255, d[i + ch] + rgb[ch] * k);
+    }
+    c.putImageData(im, 0, 0);
+  }
+}
+function glow(c, x, y, r, col, core = '#ffffff') { const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, core); g.addColorStop(0.25, col); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, 6.3); c.fill(); }
+function drawEnv() {
+  const { inside, tod, cast, dark } = ENV;
+  faces.forEach((cv, k) => {
+    const c = cv.getContext('2d'); c.globalCompositeOperation = 'source-over';
+    if (inside) {   // a room: dim walls, a dark floor, a ceiling with a grid of pot lights (off in a power cut)
+      if (k === 2) { c.fillStyle = '#2b2824'; c.fillRect(0, 0, 64, 64); if (!dark) for (const u of [10, 32, 54]) for (const v of [10, 32, 54]) glow(c, u, v, 6, 'rgba(255,236,205,0.9)'); }
+      else if (k === 3) { c.fillStyle = '#121110'; c.fillRect(0, 0, 64, 64); }
+      else { const g = c.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, '#35312c'); g.addColorStop(0.48, '#4b4640'); g.addColorStop(0.52, '#262320'); g.addColorStop(1, '#121110'); c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+        if (!dark) for (const [u, v, r] of [[16, 3, 3.5], [48, 3, 3.5], [32, 9, 2.6], [8, 13, 1.8], [56, 13, 1.8]]) glow(c, u, v, r, 'rgba(255,236,205,0.85)'); }   // further pot lights, low in the view the further they are
+    } else {   // outdoors: the sky, the horizon, the ground; one light in the sky
+      const [top, hor, low, gnd] = SKY[tod] || SKY.dusk, sky = cast ? ['#5c616b', '#7f848c', '#3a3d42', '#17181b'] : [top, hor, low, gnd];
+      if (k === 2) { c.fillStyle = sky[0]; c.fillRect(0, 0, 64, 64); } else if (k === 3) { c.fillStyle = sky[3]; c.fillRect(0, 0, 64, 64); }
+      else { const g = c.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, sky[0]); g.addColorStop(0.46, sky[1]); g.addColorStop(0.52, sky[2]); g.addColorStop(1, sky[3]); c.fillStyle = g; c.fillRect(0, 0, 64, 64); }
+    }
+  });
+  if (!inside && !cast) {   // the sun or the moon, where the scene's own light comes from
+    if (tod === 'night') skyLight(ENV.sun, 0.05, [215, 225, 250]); else skyLight(ENV.sun, tod === 'day' ? 0.1 : 0.085, tod === 'day' ? [255, 248, 230] : [255, 205, 150]);
+  }
+  envMap.needsUpdate = true;
+}
+export const envMap = (() => { const t = new THREE.CubeTexture(faces); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+drawEnv();
+export function setEnvSky(sunDir, tod, cast, dark) { const l = Math.hypot(...sunDir) || 1; ENV.sun = sunDir.map(v => v / l); ENV.tod = tod; ENV.cast = !!cast; ENV.dark = !!dark; drawEnv(); }
+export function setEnvInside(inside) { if (!!inside === ENV.inside) return; ENV.inside = !!inside; drawEnv(); }
 export function sheen(params, gloss = 'satin') {
   const m = new THREE.MeshPhongMaterial(Object.assign({ combine: THREE.AddOperation }, params)), [shin, spec, refl] = GLOSS[gloss] || GLOSS.satin;
   m.shininess = shin; m.specular.setScalar(spec); if (refl > 0) { m.envMap = envMap; m.reflectivity = refl; } m.userData.spec = spec; m.userData.refl = refl; all.push(m); return m;
