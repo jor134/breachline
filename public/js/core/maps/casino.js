@@ -139,6 +139,12 @@ export const inMain = (x, z) => x > MAIN.x0 && x < MAIN.x1 && z > MAIN.z0 && z <
 export const inShaft = (x, z) => x > SHAFT.x0 && x < SHAFT.x1 && z > SHAFT.z0 && z < SHAFT.z1;
 export const inCar = (x, z) => x > CAR.x0 && x < CAR.x1 && z > CAR.z0 && z < CAR.z1;
 export const inHeli = (x, z) => x > HELI.x0 && x < HELI.x1 && z > HELI.z0 && z < HELI.z1;
+// The fly-in: the helicopter (with everyone aboard) comes in over the boulevard from the east, nose first, slowing to the hover in T
+// seconds, then lowers the fast rope over `drop` seconds. at(t) is its offset from the hover point; zero from T on.
+const FLY0 = [320, 50, 40], FLY1 = [120, 14, 8];
+export const FLY = { T: 16, drop: 1.6,
+  at(t) { const u = Math.min(1, Math.max(0, t / FLY.T)), e = 1 - (1 - u) ** 3, a = (1 - e) * (1 - e), b = 2 * (1 - e) * e; return [a * FLY0[0] + b * FLY1[0], a * FLY0[1] + b * FLY1[1], a * FLY0[2] + b * FLY1[2]]; },
+  aboard: (x, z, y) => inHeli(x, z) && y > HELI.y - 1 };
 const RUN = SHAFT.s - SHAFT.n, flightY = (k, z) => k * H + H * (k % 2 ? (z - SHAFT.n) / RUN : (SHAFT.s - z) / RUN);   // flight k climbs from floor k to k + 1
 // Every walkable surface over (x, z) as [height, nav layer].
 function surfaces(x, z) {
@@ -214,7 +220,7 @@ function extra({ boxes, addDoor }) {
 const yAt = (f, x, z) => f >= 7 ? HELI.y : f * H;
 export default {
   id: 'casino', name: 'CASINO TOWER', op: 'Operation HIGH ROLLER', H, DOOR_H, YARD, layers: 6, layerFloor: [0, 1, 2, 3, 6, 7], tods: ['dusk', 'night'],
-  spawn: SPAWN, spawnY: HELI.y, exit: EXIT, breaker: BREAKER, cars: [], parked: PARKED, rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
+  spawn: SPAWN, spawnY: HELI.y, fly: FLY, exit: EXIT, breaker: BREAKER, cars: [], parked: PARKED, rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
   spots: { s: SUSPECT_SPOTS, c: CIV_SPOTS, b: BOMB_SPOTS }, hvts: HVTS, veg: null, counts: { s: 22, c: 10, b: 2 }, time: 1320, patrolMax: 18,
   stairs: [], holes: [[1, [SHAFT.x0, SHAFT.z0, SHAFT.x1, SHAFT.z1]], [2, [SHAFT.x0, SHAFT.z0, SHAFT.x1, SHAFT.z1]], [3, [SHAFT.x0, SHAFT.z0, SHAFT.x1, SHAFT.z1]]],
   foot: FOOT, bombMust: BOMB_MUST, civMust: CIV_MUST, ropes: ROPES, lift: LIFT, yAt,

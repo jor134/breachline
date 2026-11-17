@@ -60,7 +60,8 @@ export const BotMixin = {
     bots.forEach((p, k) => { if (!p.down) this.tickBot(p, dt, auto, humans, bots, k); this.botPose(p); });
   },
   tickBot(p, dt, auto, humans, bots, k) {
-    const b = p.bot; if (b.rope) { b.st = 2; this.botRope(p, dt); return; }   // on a rope: nothing else until off it b.st = b.task ? { move: 2, door: 3, defuse: 4, detain: 5, revive: 6 }[b.task.k] : b.base === 'hold' ? 1 : 0;
+    const b = p.bot; if (this.M.fly && this.t < this.M.fly.T + this.M.fly.drop) { b.st = 0; b.path = null; return; }   // still flying in: wait for the rope
+    if (b.rope) { b.st = 2; this.botRope(p, dt); return; }   // on a rope: nothing else until off it b.st = b.task ? { move: 2, door: 3, defuse: 4, detain: 5, revive: 6 }[b.task.k] : b.base === 'hold' ? 1 : 0;
     // 1. threats come first: shoot a suspect who is shooting or about to execute; challenge an armed one who is not
     const foe = this.botFoe(p);
     if (foe) { b.st = 7; this.botFight(p, foe, dt); return; }

@@ -45,6 +45,22 @@ function tone(pos, f0, f1, dur, gain, type = 'sine') {
   if (!ctx) return; const t = ctx.currentTime, o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
   const g = ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g); g.connect(out(pos, 0)); o.start(t); o.stop(t + dur + 0.02);
 }
+// the helicopter: low rotor thump (noise through a low-pass, beaten at the blade rate) and a turbine whine, placed at pos. Call it every
+// frame while it should be heard; it fades out by itself a moment after the calls stop.
+let rotor = null;
+export function setRotor(pos, k = 1) {
+  if (!ctx || !pos) return; const t = ctx.currentTime;
+  if (!rotor) {
+    const p = ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 7; p.rolloffFactor = 0.9; p.maxDistance = 600; p.connect(dry);
+    const g = ctx.createGain(); g.gain.value = 0; g.connect(p);
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true; const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 260; f.Q.value = 1.2;
+    const beat = ctx.createGain(); beat.gain.value = 0.5; const lfo = ctx.createOscillator(); lfo.type = 'triangle'; lfo.frequency.value = 4.3; const depth = ctx.createGain(); depth.gain.value = 0.5; lfo.connect(depth); depth.connect(beat.gain);
+    s.connect(f); f.connect(beat); beat.connect(g); const w = ctx.createOscillator(); w.type = 'sawtooth'; w.frequency.value = 410; const wf = ctx.createBiquadFilter(); wf.type = 'bandpass'; wf.frequency.value = 820; wf.Q.value = 6; const wg = ctx.createGain(); wg.gain.value = 0.05;
+    w.connect(wf); wf.connect(wg); wg.connect(g); s.start(); lfo.start(); w.start(); rotor = { p, g };
+  }
+  const P = rotor.p; if (P.positionX) { P.positionX.value = pos.x; P.positionY.value = pos.y; P.positionZ.value = pos.z; } else P.setPosition(pos.x, pos.y, pos.z);
+  const G = rotor.g.gain; G.cancelScheduledValues(t); G.setTargetAtTime(1.4 * k, t, 0.15); G.setTargetAtTime(0, t + 0.4, 0.3);
+}
 // ---- recorded sounds: sfx/manifest.json maps a name to one file or a list of variants ----
 const samples = {};
 async function loadSamples() {

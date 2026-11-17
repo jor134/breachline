@@ -6,7 +6,8 @@
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { GLTFLoader } from '../../vendor/GLTFLoader.js';
-import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli } from '../core/maps/casino.js';
+import { setRotor } from '../audio.js';
+import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli, FLY } from '../core/maps/casino.js';
 
 let tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null;
 const LAMPS = [[37, 5.6, 27, 16, 22], [22, 5.4, 32, 10, 16], [52, 5.4, 32, 10, 16], [37, 5.4, 43, 10, 15], [37, 5.4, 13, 9, 14], [7, 3.0, 20, 7, 13], [34, F3 + 3.0, 15, 6, 12], [36, 8.0, 66, 12, 22]];
@@ -165,14 +166,14 @@ function buildHeli(MATS) {
   const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2020 })); beacon.position.set(L / 2 + 8.2, 3.1, 0); g.add(beacon);
   for (const z of [-1.25, 1.25]) { const sk = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 5.6, 8), metal); sk.rotation.z = Math.PI / 2; sk.position.set(-0.4, -1.1, z); box.add(sk); for (const x of [-1.6, 1.4]) bx(0.08, 0.85, 0.08, x, -0.68, z * 0.9, metal); }
   bx(0.08, 0.08, 1.05, 0, 2.06, D / 2 + 0.5, metal, g);                                                               // the fast-rope arm over the door
-  const rope = ROPES.find(r => r.heli), drop = rope.top + 2.06 - rope.bot - 0.05, rp = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, drop, 6), sheen({ color: 0x8c7a56 }, 'cloth'));
-  rp.position.set(rope.x - 36, 2.06 - drop / 2, rope.z - (HELI.z0 + HELI.z1) / 2); g.add(rp);
+  const rope = ROPES.find(r => r.heli), drop = rope.top + 2.06 - rope.bot - 0.05, rg = new THREE.CylinderGeometry(0.028, 0.028, drop, 6); rg.translate(0, -drop / 2, 0);
+  const rp = new THREE.Mesh(rg, sheen({ color: 0x8c7a56 }, 'cloth')); rp.position.set(rope.x - (HELI.x0 + HELI.x1) / 2, 2.06, rope.z - (HELI.z0 + HELI.z1) / 2); g.add(rp);   // hangs from the arm; scaled to lower it
   const rotor = new THREE.Group(); rotor.position.set(0.3, 3.2, 0); box.add(rotor); bx(0.18, 0.4, 0.18, 0.3, 3.0, 0, metal);
   for (let k = 0; k < 4; k++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.05, 0.36), dark); bl.geometry.translate(3.1, 0, 0); bl.rotation.y = k * Math.PI / 2; rotor.add(bl); }
   const disc = new THREE.Mesh(new THREE.CircleGeometry(6.3, 40), new THREE.MeshBasicMaterial({ color: 0x101216, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide })); disc.rotation.x = -Math.PI / 2; rotor.add(disc);
   const tail = new THREE.Group(); tail.position.set(L / 2 + 8.1, 2.4, 0.16); box.add(tail); for (let k = 0; k < 2; k++) { const bl = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.7, 0.03), dark); bl.rotation.z = k * Math.PI / 2; tail.add(bl); }
   g.position.set((HELI.x0 + HELI.x1) / 2, HELI.y, (HELI.z0 + HELI.z1) / 2);
-  return { g, box, rotor, tail, beacon, idle: 0, gone: 0, home: g.position.clone() };
+  return { g, box, rotor, tail, beacon, rope: rp, idle: 0, gone: 0, home: g.position.clone() };
 }
 
 // ---------- CCTV: six cameras round the building, shown on the security office's wall ----------
@@ -391,11 +392,15 @@ export default {
   tick(dt, { S, head, officers, renderer, scene }) {
     if (heli) { const h = heli; h.rotor.rotation.y += dt * 7; h.tail.rotation.z += dt * 30; h.beacon.visible = (performance.now() % 1200) < 150;
       let aboard = head.pos.y > HELI.y + 0.6 && inHeli(head.pos.x, head.pos.z); if (!aboard) for (const o of officers.values()) { const p = o.g.position; if (p.y > HELI.y - 0.6 && inHeli(p.x, p.z)) { aboard = true; break; } }
-      if (aboard || S.phase !== 'active') { h.idle = 0; h.gone = 0; h.g.visible = true; h.g.position.copy(h.home); h.g.rotation.set(0, 0, 0); }
-      else if ((h.idle += dt) > 6) { h.gone += dt; const t = h.gone; h.g.position.set(h.home.x - t * t * 0.9, h.home.y + t * 2.2 + t * t * 0.25, h.home.z - t * t * 0.4); h.g.rotation.set(0, Math.min(0.5, t * 0.08), Math.min(0.18, t * 0.05)); h.g.visible = t < 16; } }
+      if (S.fly) { const o = FLY.at(S.fly.t), u = Math.min(1, S.fly.t / FLY.T); h.idle = 0; h.gone = 0; h.g.visible = true; h.g.position.set(h.home.x + o[0], h.home.y + o[1], h.home.z + o[2]);
+        h.g.rotation.set(Math.sin(S.now * 0.9) * 0.012 * (1 - u), 0, 0.07 * Math.sin(Math.PI * Math.min(1, u * 1.15)));   // nose down coming in, flaring level at the hover
+        h.rope.scale.y = Math.max(0.001, Math.min(1, (S.fly.t - FLY.T) / FLY.drop)); }
+      else if (aboard || S.phase !== 'active') { h.idle = 0; h.gone = 0; h.g.visible = true; h.g.position.copy(h.home); h.g.rotation.set(0, 0, 0); h.rope.scale.y = 1; }
+      else if ((h.idle += dt) > 6) { h.gone += dt; const t = h.gone; h.g.position.set(h.home.x - t * t * 0.9, h.home.y + t * 2.2 + t * t * 0.25, h.home.z - t * t * 0.4); h.g.rotation.set(0, Math.min(0.5, t * 0.08), Math.min(0.18, t * 0.05)); h.g.visible = t < 16; }
+      if (h.g.visible) setRotor(h.g.localToWorld(v0.set(0.97 + HELI.door[0] + 0.6 - (HELI.x0 + HELI.x1) / 2, 3.8, 0)), 1); }
     if (cctv && cctv.on && S.mode) { const p = head.pos; if (p.x > 60 && p.x < 72 && p.z > 20 && p.z < 32 && p.y < H) {
       if (cctv.n++ % 3 === 0) { const i = cctv.k++ % cctv.cams.length, xe = renderer.xr.enabled, rt = renderer.getRenderTarget(); renderer.xr.enabled = false;
         renderer.setRenderTarget(cctv.rts[i]); renderer.render(scene, cctv.cams[i]); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; } } }
   },
 };
-const ALLF = 'xXyYzZ';
+const ALLF = 'xXyYzZ', v0 = new THREE.Vector3();

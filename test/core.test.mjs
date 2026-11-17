@@ -604,6 +604,7 @@ await t('casino: bots fast-rope out of the helicopter, rappel down the glass, br
   const s = new Sim('casino'); s.addPlayer(1, 'A'); s.start(5, false, 'clear', 'casino'); for (const n of s.npcs) if (n.kind === 's') { n.st = 'u'; n.armed = false; }
   const bots = s.bots(); assert.equal(bots.length, 3); assert.ok(bots.every(b => b.bot.y > C.ROOF + 2), 'bots start aboard');
   s.phase = 'active'; s.pose(1, { h: [33, C.F3 + 1.65, 16, 0, 0, 0, 1] }); s.players.get(1).y = C.F3;
+  run(s, C.FLY.T); assert.ok(s.bots().every(p => p.bot.y > C.ROOF + 2), 'still aboard while the helicopter flies in');
   const ev = run(s, 150, () => s.bots().every(p => Math.abs(p.bot.y - C.F3) < 0.3 && p.bot.z < 20 && p.bot.z > 8));
   for (const p of s.bots()) assert.ok(Math.abs(p.bot.y - C.F3) < 0.3 && p.bot.z < 20, p.name + ' in the suites: ' + [p.bot.x, p.bot.y, p.bot.z].map(v => v.toFixed(1)));
   assert.ok(ev.some(e => e.e === 'clip') && ev.some(e => e.e === 'shatter'), 'clipped in and broke a window');

@@ -7,7 +7,10 @@
   B.net.send({ t: 'map', m: 'casino' }); out.mapSwitched = await until(() => B.M.id === 'casino' && sim().mapId === 'casino');
   B.net.send({ t: 'restart', wx: 'clear', map: 'casino' }); out.started = await until(() => B.S.phase === 'active'); for (const n of sim().npcs) if (n.kind === 's') { n.st = 'u'; n.armed = false; }
   const M = B.M, heliRope = M.ropes.findIndex(r => r.heli); await wait(600);
-  out.spawnAboard = B.S.feetY > M.spawnY - 0.1 && B.head.pos.y > M.spawnY + 1;
+  out.flying = !!B.S.fly && B.head.pos.x > 80; out.flyStart = [B.head.pos.x, B.head.pos.y, B.head.pos.z].map(v => +v.toFixed(1));
+  out.ropeBlockedInFlight = B.ropes.near(new THREE.Vector3(36 + B.S.fly.off.x, M.spawnY + 1 + B.S.fly.off.y, 10.05 + B.S.fly.off.z), 2) !== heliRope;
+  await until(() => !B.S.fly, 600); await wait(400);
+  out.spawnAboard = !B.S.fly && B.S.feetY > M.spawnY - 0.1 && B.head.pos.y > M.spawnY + 1 && Math.abs(B.head.pos.x - 36) < 3;
   // grip the fast rope with the left hand, then pull it up hand over hand
   const r0 = M.ropes[heliRope], grab = async (x, z) => { X.btn('left', 1, 0); await wait(120); X.left.p = toLocal(new THREE.Vector3(x, B.head.pos.y - 0.25, z)); await wait(150); X.btn('left', 1, 1); await wait(200); };
   B.rig.position.x += r0.x - B.head.pos.x; B.rig.position.z += (r0.z - 0.65) - B.head.pos.z; await wait(200);

@@ -89,7 +89,7 @@ $('tutbtn').onclick = armTutorial; $('tutgo').onclick = armTutorial; $('tutno').
 if (!tutSeen && !Q.get('draft')) $('tutoffer').style.display = 'block'; if (Q.get('tut')) setTimeout(armTutorial, 0);
 if (DRAFT) { $('solo').checked = true; setTimeout(() => { status('Testing your draft "' + DRAFT.name + '": pick VR, phone or desktop. It plays solo.'); const a = $('editlink'); a.textContent = 'BACK TO THE EDITOR'; }, 0); }   // everyone arrives at the training facility; the mission board sends the squad out
 
-const S = { hvtIds: [], rope: null, ropeHint: '', mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
+const S = { hvtIds: [], rope: null, fly: null, fadeT: 0, ropeHint: '', mode: null, me: { id: 0, slot: 0, hp: 100, down: false, w: 0, med: false, fl: 2, sm: 1 }, doorTrap: level.doors.map(() => 0), deskCam: null, touch: false, tmove: { x: 0, y: 0 }, tmenu: false, figT: 0, lastPart: '', phase: 'lobby', timer: 600, doorOpen: level.doors.map(() => false), actors: new Map(), officers: new Map(), bombs: [], feetY: 0,
   net: 'offline', room: '', report: null, doorLocked: level.doors.map(() => false), bodyYaw: 0, panel: 'lobby', menu: false, deskPick: null, night: false, nvg: false, tool: 'hands', hintT: 0, wx: 'clear', wxPick: 'random', squad: [], secured: 0, civs: 5, defused: 0, light: true, now: 0, eye: 1.66, crouch: false, yaw: 0, pitch: 0, ads: false, reloading: false, tilt: +(localStorage.getItem('bl_tilt') || 0) };
 S.nextMap = MISSION_IDS[0]; S.todPick = 'random'; S.raceT = 0;
 const head = { pos: V(), quat: new THREE.Quaternion(), fwd: V(), yaw: 0 };
@@ -149,6 +149,16 @@ function resetLoadout() {
   if (S.mode === 'desktop' && !gunIn(hands[1])) { guns.rifle.where = 1; hands[1].item = 'rifle'; }
   S.reloading = false;
 }
+// The casino's fly-in: everyone starts aboard the helicopter far out over the boulevard and it carries them to the hover over the roof.
+// The rig rides along (moved by the helicopter's offset each frame); you can look around but not walk; the server keeps you at the hover
+// point all along (poses go out with the offset taken off), and other officers aboard are drawn riding with it.
+function flyIn() { S.fly = null; if (!M.fly || S.mode == null || !M.fly.aboard(head.pos.x, head.pos.z, S.feetY)) return; S.fly = { t: 0, off: new THREE.Vector3() }; S.fadeT = 1.2; carry(0); }
+function carry(dt) {
+  if (!S.fly) return; const F = M.fly; if (!F || S.phase !== 'active') { rig.position.sub(S.fly.off); S.feetY -= S.fly.off.y; S.fly = null; return; }
+  S.fly.t += dt; const o = F.at(S.fly.t); v1.set(o[0], o[1], o[2]).sub(S.fly.off); rig.position.add(v1); S.feetY += v1.y; S.fly.off.add(v1);
+  if (S.fly.t > F.T + F.drop) S.fly = null;
+}
+const flyV = new THREE.Vector3(), fo = p => S.fly ? flyV.copy(p).sub(S.fly.off) : p;   // a position as the server should see it
 function placeAtSpawn() {
   const sp = S.spawnAt, [x, z] = sp ? [sp[0], sp[2]] : M.spawn[S.me.slot % 4], fy = sp ? sp[1] : M.spawnY ?? (M.yAt ? M.yAt(0, x, z) : 0); S.feetY = fy; ropes.reset(); rig.rotation.y = 0; S.yaw = 0; S.pitch = 0;   // terrorist players start inside
   if (S.mode === 'vr') { rig.position.y = fy; headWorld(); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; headWorld(); } else rig.position.set(x, fy, z);
@@ -484,7 +494,7 @@ function onEvent(e) {
   tut.event(e, S.me.id);
   const a = e.n != null ? S.actors.get(e.n) : null;
   switch (e.e) {
-    case 'start': resetLoadout(); placeAtSpawn(); S.report = null; S.menu = false; S.panel = null; panel.mesh.visible = false; if (M.training) showLobbyPanel(); sfx.ok(); break;
+    case 'start': resetLoadout(); placeAtSpawn(); flyIn(); S.report = null; S.menu = false; S.panel = null; panel.mesh.visible = false; if (M.training) showLobbyPanel(); sfx.ok(); break;
     case 'th': { const t = targets[e.t]; if (t) { const p = t.g.position; if (e.ns) sayAt(p.x, p.y + t.d.h + 0.4, p.z, 'NO-SHOOT!', '#6fa8ff'); if (e.p === S.me.id) sfx.beep(p, e.ns ? 300 : 1400); } break; }
     case 'house': sfx.ok(); sayAt(head.pos.x, head.pos.y + 0.5, head.pos.z - 1.5, 'HOUSE CLEAR ' + e.time + 's' + (e.ns ? '  (' + e.ns + ' no-shoot)' : '') + (e.time <= e.best ? '  BEST' : ''), '#80ff9a'); break;
     case 'bombreset': { const o = S.bombs[e.b]; if (o) { const b = new Bomb(o.g.position.x, o.g.position.y, o.g.position.z, e.wires, e.order, o.g.rotation.y); b.order = e.order; b.n = 0; scene.remove(o.g); scene.add(b.g); S.bombs[e.b] = b; sayAt(b.g.position.x, b.g.position.y + 0.5, b.g.position.z, 'BOMB RESET', '#ffb060'); } break; }
@@ -608,7 +618,7 @@ function readVR() {
 let snapLatch = false;
 function moveVR(dt) {
   const L = hands[0].in, R = hands[1].in;
-  if (!S.me.down) {
+  if (!S.me.down && !S.fly) {
     if (Math.abs(R.sx) > 0.6 && !snapLatch) { snapLatch = true; headWorld(); const bx = head.pos.x, bz = head.pos.z; rig.rotation.y -= Math.sign(R.sx) * Math.PI / 6; headWorld(); rig.position.x += bx - head.pos.x; rig.position.z += bz - head.pos.z; }
     else if (Math.abs(R.sx) < 0.3) snapLatch = false;
     const dz = Math.abs(L.sy) > 0.15 ? L.sy : 0, dx = Math.abs(L.sx) > 0.15 ? L.sx : 0;
@@ -617,7 +627,7 @@ function moveVR(dt) {
 }
 function moveDesktop(dt) {
   rig.rotation.y = S.yaw; camera.rotation.set(S.pitch, 0, 0); S.eye += ((S.crouch ? 1.0 : 1.66) - S.eye) * Math.min(1, dt * 10); camera.position.set(0, S.eye, 0);
-  if (S.me.down || S.rope) { if (S.rope) { const h = hands[1]; Object.assign(h.prev, h.in); h.active = true; h.in.trig = mouseL ? 1 : 0; } return; }   // on a rope: W / S climb and descend (rope.js)
+  if (S.me.down || S.rope || S.fly) { if (S.rope || S.fly) { const h = hands[1]; Object.assign(h.prev, h.in); h.active = true; h.in.trig = mouseL ? 1 : 0; } return; }   // on a rope: W / S climb and descend (rope.js)
   const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - S.tmove.y, r = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + S.tmove.x, len = Math.hypot(f, r);
   if (len > 0.08) { const sp = (keys.ShiftLeft || (S.touch && len > 0.92) ? 3.5 : 2.3) * legMul() * Math.min(1, len) * dt / len, s = Math.sin(S.yaw), c = Math.cos(S.yaw); rig.position.x += (-s * f + c * r) * sp; rig.position.z += (-c * f - s * r) * sp; }
   const h = hands[1]; Object.assign(h.prev, h.in); h.active = true; h.in.trig = mouseL ? 1 : 0;
@@ -644,7 +654,7 @@ function headWorld() {
 }
 function collide() {
   if (S.spec) return;   // spectating: the camera floats behind a teammate
-  if (S.rope) { headWorld(); return; }   // hanging on a rope: rope.js holds the height, nothing to stand on
+  if (S.rope || S.fly) { headWorld(); return; }   // hanging on a rope, or riding in the helicopter: rope.js holds the height, nothing to stand on
   headWorld(); const [x, z] = resolveCircle(level, S.doorOpen, head.pos.x, head.pos.z, 0.25, S.feetY);
   rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; S.feetY = level.groundY(x, z, S.feetY); rig.position.y += (S.feetY - rig.position.y) * 0.35; headWorld();
 }
@@ -863,8 +873,8 @@ function stepSound(key, x, y, z, moved, gainK, self) {
 }
 function footsteps() {
   for (const [id, a] of S.actors) { const st = a.st; if (!a.g.visible || !(st === 'g' || st === 'a' || st === 'c' || st === 'h') || a.moved < 0.003) continue; stepSound('n' + id, a.g.position.x, a.g.position.y, a.g.position.z, a.moved, Math.min(1.4, 0.5 + a.speed * 0.35)); }
-  for (const [id, o] of S.officers) { const p = o.head.position, prev = o.lastStep || (o.lastStep = p.clone()), moved = Math.hypot(p.x - prev.x, p.z - prev.z); prev.copy(p); if (moved > 0.003 && moved < 1 && !o.down) stepSound('o' + id, p.x, p.y - 1.65, p.z, moved, 0.9); }
-  if (!S.mode || S.me.down) return; const moved = myStep.init ? Math.hypot(head.pos.x - myStep.x, head.pos.z - myStep.z) : 0; myStep.x = head.pos.x; myStep.z = head.pos.z; myStep.init = true;
+  for (const [id, o] of S.officers) { const p = o.head.position, prev = o.lastStep || (o.lastStep = p.clone()), moved = Math.hypot(p.x - prev.x, p.z - prev.z); prev.copy(p); if (moved > 0.003 && moved < 1 && !o.down && !S.fly) stepSound('o' + id, p.x, p.y - 1.65, p.z, moved, 0.9); }
+  if (!S.mode || S.me.down || S.fly) { myStep.init = false; return; } const moved = myStep.init ? Math.hypot(head.pos.x - myStep.x, head.pos.z - myStep.z) : 0; myStep.x = head.pos.x; myStep.z = head.pos.z; myStep.init = true;
   if (moved > 0.002 && moved < 1) stepSound('me', head.pos.x, S.feetY, head.pos.z, moved, S.crouch ? 0.12 : 0.28, true);
 }
 // sounds behind a wall, floor or closed door come through muffled
@@ -901,6 +911,7 @@ const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 
 function frame(t) {
   const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t; S.now += dt;
   if (S.spawnIn && --S.spawnIn === 0) { headWorld(); placeAtSpawn(); showLobbyPanel(); }
+  carry(dt);
   if (TUT && S.mode && !S.spawnIn && S.me.id) { TUT = false; tut.start('core'); }   // the tutorial starts once you stand in the facility
   if (S.mode === 'vr') { readVR(); headWorld(); moveVR(dt); collide(); for (const h of hands) if (h.active) { (h.xr.src && h.xr.src.gripSpace ? h.xr.grip : h.xr.ray).getWorldPosition(h.pos); h.xr.ray.getWorldQuaternion(h.quat).multiply(tiltQ); } ropes.tick(dt, hands[0].in); }
   else if (S.mode === 'desktop') {
@@ -926,6 +937,7 @@ function frame(t) {
   if (panel.mesh.visible && S.mode) for (const h of hands) { if (!h.active) continue; const G = gunIn(h); if (G) { G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set(0, 0, -1).applyQuaternion(G.mesh.quaternion); } else { v1.copy(h.pos); v2.set(0, 0, -1).applyQuaternion(h.quat); } if (panel.probe(v1, v2, true) !== null) break; }
   if ((S.phase === 'lobby' || M.training && S.phase === 'active') && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
   updateTargets(dt); tut.tick(dt); for (const o of S.officers.values()) o.tick(dt); tickShards(dt);
+  if (S.fly) for (const o of S.officers.values()) { const p = o.g.position; if (M.fly.aboard(p.x, p.z, p.y)) p.add(S.fly.off); }   // others aboard ride along
   if (world && world.gfx.tick) world.gfx.tick(dt, { S, head, officers: S.officers, level, M, renderer, scene });
   { const rt = S.mode && S.phase !== 'ended' ? (S.ropeHint || ropes.prompt()) : ''; if (rt && S.now - (S.ropeHintT || 0) > 2.6) { S.ropeHintT = S.now; sayAt(head.pos.x + head.fwd.x * 1.1, head.pos.y - 0.25, head.pos.z + head.fwd.z * 1.1, rt, '#9fffb0'); } }
   spectate(dt);
@@ -942,7 +954,7 @@ function frame(t) {
   for (let i = says.length - 1; i >= 0; i--) { const s = says[i]; s.t -= dt; s.s.position.y += dt * 0.1; if (s.t <= 0) { scene.remove(s.s); s.s.material.map.dispose(); s.s.material.dispose(); says.splice(i, 1); } }
   const blink = S.phase === 'active' && Math.floor(S.now * (S.timer < 60 ? 6 : 2)) % 2 === 0; for (const b of S.bombs) if (!b.defused) b.led.visible = blink; else b.led.visible = true;
   hurtT = Math.max(0, hurtT - dt * 1.5); flashWhite = Math.max(0, flashWhite - dt * 0.4);
-  const vm = veil.material; if (flashWhite > 0) { vm.color.set(0xffffff); vm.opacity = flashWhite; } else if (S.me.down) { vm.color.set(0x200000); vm.opacity = 0.72; } else { vm.color.set(0xaa0000); vm.opacity = hurtT * 0.45 + (S.me.hp < 40 && S.mode ? 0.12 : 0); }
+  S.fadeT = Math.max(0, S.fadeT - dt); const vm = veil.material; if (flashWhite > 0) { vm.color.set(0xffffff); vm.opacity = flashWhite; } else if (S.fadeT > 0) { vm.color.set(0x000000); vm.opacity = Math.min(1, S.fadeT / 0.8); } else if (S.me.down) { vm.color.set(0x200000); vm.opacity = 0.72; } else { vm.color.set(0xaa0000); vm.opacity = hurtT * 0.45 + (S.me.hp < 40 && S.mode ? 0.12 : 0); }
   veil.visible = vm.opacity > 0.01; downTag.visible = S.me.down && S.phase === 'active';
   // wrist display on the left forearm, floating 7 cm above it so the sleeve doesn't cut into it
   wrist.visible = S.mode === 'vr' && hands[0].active;
@@ -953,7 +965,7 @@ function frame(t) {
   setAmbience(S.wx === 'storm' ? 1 : S.wx === 'rain' ? 0.7 : 0, weather.state.inside);
   setListener(head.pos, head.fwd, level.inside(head.pos.x, head.pos.z, head.pos.y));
   footsteps(dt); exitPrompt(dt);
-  if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(head.pos, head.quat), l: hands[0].active ? arr7(hands[0].pos, hands[0].quat) : null, r: hands[1].active ? arr7(hands[1].pos, hands[1].quat) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.visible ? 1 : 0 }); }
+  if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(fo(head.pos), head.quat), l: hands[0].active ? arr7(fo(hands[0].pos), hands[0].quat) : null, r: hands[1].active ? arr7(fo(hands[1].pos), hands[1].quat) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.visible ? 1 : 0 }); }
   renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(frame);
@@ -1012,9 +1024,9 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v50';
+const BUILD = 'v51';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { ropes, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

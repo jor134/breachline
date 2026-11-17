@@ -13,7 +13,7 @@ export function createRopes(ctx) {
   // move the rig so the head (VR) / body (desktop) sits over (x, z), feet at y
   function placeAt(x, z, y) { ctx.headWorld(); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; rig.position.y = y; S.feetY = y; ctx.headWorld(); }
   function near(p, maxD) {   // the rope whose line passes closest to point p, within maxD
-    let best = -1, bd = maxD; R().forEach((r, i) => { if (p.y < r.bot - 0.3 || p.y > r.top + 2.4) return; const d = Math.hypot(p.x - r.x, p.z - r.z); if (d < bd) { bd = d; best = i; } }); return best;
+    let best = -1, bd = maxD; R().forEach((r, i) => { if (r.heli && S.fly) return; if (p.y < r.bot - 0.3 || p.y > r.top + 2.4) return; const d = Math.hypot(p.x - r.x, p.z - r.z); if (d < bd) { bd = d; best = i; } }); return best;
   }
   function clip(i, y) {
     const r = R()[i], [hx, hz] = hangAt(r); S.rope = { i, y: Math.max(r.bot, Math.min(r.top, y)) }; S.crouch = false;
