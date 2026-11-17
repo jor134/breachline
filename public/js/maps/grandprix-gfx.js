@@ -6,6 +6,7 @@ import { sheen, tex, grid } from '../mats.js';
 import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H } from '../core/maps/grandprix.js';
 import { TRACK, VIS } from '../core/maps/circuit.js';
 import { raceCar } from '../racecar.js';
+import { TRUCK, makeTruck, truckAt } from '../truck.js';
 
 const NAMES = ['VORTEX', 'HALCYON', 'KESTREL', 'ORBITA', 'NOVARA', 'SOLSTICE'];   // invented teams
 let tod = 'day', floodMat = null, beams = [];
@@ -27,7 +28,10 @@ function sign(text, col) {
   g.fillStyle = '#f2f2ee'; g.font = 'bold 62px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 52);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return new THREE.MeshLambertMaterial({ map: t });
 }
+const tspot = t => ({ x0: t.x0, z0: t.z0, along: t.along, cabEnd: t.cab });
 export default {
+  // the transporters' tractors and chassis (js/truck.js) in team colours, once the model has loaded
+  load() { return Promise.all(TRUCKS.map(t => makeTruck(tspot(t), TEAMS[t.team]))).then(ts => { const g = new THREE.Group(); for (const t of ts) g.add(t); return g; }); },
   get env() { return tod === 'night' ? NIGHT : DAY; },
   envs: { day: DAY, night: NIGHT },
   setTod(t) { tod = t === 'night' ? 'night' : 'day'; },
@@ -105,18 +109,13 @@ export default {
     // car park: bay lines, lamp posts, and the team transporters (cab + trailer in team colours, the team's name on both sides)
     for (const [z0, z1] of [[22.3, 27.1], [28.8, 33.6], [25.1, 29.9]]) for (let x = -7.4; x < 60; x += 2.8) { if (z0 === 25.1 ? (x > 9 && x < 44) || x < -2 || x > 53 : x < 13 || x > 39) continue; flat('gpline', x - 0.05, x + 0.05, z0, z1, 0.006); }
     for (const [x, z] of [[2, 34], [26, 22], [50, 34], [26, 38]]) { b('mast').box(x - 0.1, x + 0.1, 0, 7, z - 0.1, z + 0.1, 'xXzZ', 1); b('gantry').box(x - 0.5, x + 0.5, 7, 7.2, z - 0.25, z + 0.25, 'xXyYzZ', 1); b('flood').box(x - 0.45, x + 0.45, 6.98, 7, z - 0.2, z + 0.2, 'y', 1); }
-    for (const t of TRUCKS) {
-      const alongX = t.along === 'x', L = alongX ? t.x1 - t.x0 : t.z1 - t.z0, cabAtEnd = t.cab > 0, cab = 2.6;
-      const seg = (u0, u1) => alongX ? [t.x0 + u0, t.x0 + u1, t.z0, t.z1] : [t.x0, t.x1, t.z0 + u0, t.z0 + u1];
-      const [cx0, cx1, cz0, cz1] = seg(cabAtEnd ? L - cab : 0, cabAtEnd ? L : cab), [tx0, tx1, tz0, tz1] = seg(cabAtEnd ? 0 : cab + 0.3, cabAtEnd ? L - cab - 0.3 : L);
-      b('team' + t.team).box(cx0 + 0.05, cx1 - 0.05, 0.7, 3.2, cz0 + 0.05, cz1 - 0.05, 'xXYzZ', 0.5);
-      b('gantry').box(tx0, tx1, 0.5, 1.1, tz0 + 0.3, tz1 - 0.3, 'xXzZ', 0.5);
-      b('mh' + t.team).box(tx0, tx1, 1.1, 4.1, tz0, tz1, 'xXYzZ', 0.12);
-      const wheels = alongX ? [cx0 + 0.6, cx1 - 1.4, tx0 + 0.7, tx0 + 2, tx1 - 2.2] : [cz0 + 0.6, cz1 - 1.4, tz0 + 0.7, tz0 + 2, tz1 - 2.2];
-      for (const w of wheels) for (const side of [0, 1]) { if (alongX) b('tyreM').box(w, w + 0.9, 0, 0.9, side ? t.z1 - 0.45 : t.z0, side ? t.z1 : t.z0 + 0.45, 'xXYzZ', 1); else b('tyreM').box(side ? t.x1 - 0.45 : t.x0, side ? t.x1 : t.x0 + 0.45, 0, 0.9, w, w + 0.9, 'xXYzZ', 1); }
+    for (const t of TRUCKS) {   // the tractor and the trailer's chassis are the downloaded model (load()); the box on the deck is the team's
+      const sp = tspot(t), [ax, az] = truckAt(sp, TRUCK.trailer[0], 0), [bx, bz] = truckAt(sp, TRUCK.trailer[1], TRUCK.W);
+      const tx0 = Math.min(ax, bx), tx1 = Math.max(ax, bx), tz0 = Math.min(az, bz), tz1 = Math.max(az, bz), alongX = t.along === 'x', len = TRUCK.trailer[1] - TRUCK.trailer[0];
+      b('mh' + t.team).box(tx0, tx1, TRUCK.deck, 4.1, tz0, tz1, 'xXYzZ', 0.12);
       for (const side of [0, 1]) {   // team name on the trailer sides
-        const sg = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(8, L - cab - 2), 1.1), sign(NAMES[t.team], TEAMS[t.team])), mid = alongX ? (tx0 + tx1) / 2 : (tz0 + tz1) / 2;
-        if (alongX) { sg.position.set(mid, 2.9, side ? t.z1 + 0.02 : t.z0 - 0.02); sg.rotation.y = side ? 0 : Math.PI; } else { sg.position.set(side ? t.x1 + 0.02 : t.x0 - 0.02, 2.9, mid); sg.rotation.y = side ? Math.PI / 2 : -Math.PI / 2; }
+        const sg = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(8, len - 2), 1.1), sign(NAMES[t.team], TEAMS[t.team])), mid = alongX ? (tx0 + tx1) / 2 : (tz0 + tz1) / 2;
+        if (alongX) { sg.position.set(mid, 2.9, side ? tz1 + 0.02 : tz0 - 0.02); sg.rotation.y = side ? 0 : Math.PI; } else { sg.position.set(side ? tx1 + 0.02 : tx0 - 0.02, 2.9, mid); sg.rotation.y = side ? Math.PI / 2 : -Math.PI / 2; }
         root.add(sg);
       }
     }

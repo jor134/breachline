@@ -41,7 +41,7 @@ for (const p of PADS) { const [x0, z0, x1, z1, y] = p.s; p.door = p.dir < 0 ? x0
 // ---- cranes, trucks, floodlights ----
 export const STS = [20, 56, 90];            // ship-to-shore cranes along the quay (x of the centre); legs at x +-8, z 3..4.2 and 26.8..28
 export const RTG = [[14, 31.8, 49.8], [62, 31.8, 49.8]];   // rubber-tyred gantries straddling a yard block: x centre, leg rows in z
-export const TRUCKS = [[14, 8, 1], [50, 7.5, -1], [84, 8, 1], [34, 18, 1], [70, 17, -1], [50, 64, 1], [75, 69, -1], [96, 70, 1]].map(([x, z, d], i) => ({ x, z, d, load: i % 3 !== 2, c: i }));   // tractor + trailer, 16.5 x 2.5, along x; d = which way the cab faces
+export const TRUCKS = [[14, 8, 1], [50, 7.5, -1], [84, 8, 1], [34, 18, 1], [70, 17, -1], [50, 64, 1], [75, 69, -1], [96, 70, 1]].map(([x, z, d], i) => ({ x, z, d, load: true, c: i }));   // tractor + trailer, 16.5 x 2.5, along x; d = which way the cab faces
 export const FLOODS = [[2, 31], [100, 31], [43, 51], [2, 66], [70, 74.6], [110, 62], [30, 31]];
 export const OPS = { x0: 4, x1: 22, z0: 62, z1: 72 };
 export const BREAKER = { x: 14.5, y: 1.4, z: 67.13 };

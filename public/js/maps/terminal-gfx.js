@@ -2,6 +2,7 @@
 // Everything is merged into one mesh per material by the shared Builder, so a yard of a few hundred containers is still a handful of draw calls.
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid } from '../mats.js';
+import { TRUCK, makeTruck, truckAt } from '../truck.js';
 import { STACKS, PADS, CL, CH, CW, HULL, TOWER, GANGWAYS, STS, RTG, TRUCKS, FLOODS, OPS, EXIT } from '../core/maps/terminal.js';
 
 const CONT = ['#9c2b23', '#1f4e8c', '#2f6b3a', '#c27a1c', '#6b6f73', '#d8d4c8', '#7a3b2a', '#14385c', '#b8a23a', '#5b2a4e'];
@@ -11,7 +12,11 @@ const corrugate = (n, dark = 0.2) => (g, s) => { for (let i = 0; i < n; i++) { g
 const S4 = 1 / 4.8;   // corrugation pitch: 16 ribs per 4.8 m tile = 0.3 m
 let skyline = null;
 
+const tspot = t => ({ x0: t.x, z0: t.z, along: 'x', cabEnd: t.d });
+const CABS = [0x2a4f8a, 0xb8bcc2, 0x8a1f1f, 0xe8e8e6, 0x1d1f24, 0x3f5e3a];
 export default {
+  // the trucks' tractors and chassis (js/truck.js), once the model has loaded
+  load() { return Promise.all(TRUCKS.map(t => makeTruck(tspot(t), CABS[t.c % CABS.length]))).then(ts => { const g = new THREE.Group(); for (const t of ts) g.add(t); return g; }); },
   env: {
     sky: [[0, '#151d33'], [0.25, '#2c3656'], [0.42, '#6f5a6e'], [0.48, '#d98a52'], [0.505, '#f2b26a'], [0.53, '#3d3533'], [1, '#1d1b1a']], skyR: 440, moon: [120, 110, 150],
     fog: [0x4a4250], fogD: [0.0042, 0.009], sunAt: [55, 25], sunFrom: [-55, 26, -95], shadow: 78, sunCol: 0xffb27a, sunK: 1.15, hillColor: 0x221d26,
@@ -126,15 +131,9 @@ export default {
       for (const z of [za, zb]) box('rtgY', cx - 5, cx + 5, 16, 17.8, z, z + 1, ALL, 0.5);
       box('cab', cx - 2, cx + 2, 17.8, 19.6, (za + zb) / 2 - 1.5, (za + zb) / 2 + 1.5, ALL, 0.5); box('dark', cx - 1, cx + 1, 15, 16, za + 2, za + 3.4, ALL);
     }
-    // ---- trucks: tractor, chassis, trailer, often a box on it ----
-    for (const t of TRUCKS) {
-      const cabX0 = t.d > 0 ? t.x + 12.9 : t.x, cabX1 = cabX0 + 3.6, tx0 = t.d > 0 ? t.x : t.x + 3.6, tx1 = tx0 + 12.9, z0 = t.z, z1 = t.z + 2.5, cm = t.c % 2 ? 'cab' : 'cabB';
-      box(cm, cabX0, cabX1, 0.6, 3.1, z0 + 0.05, z1 - 0.05, ALL, 0.5); const fx = t.d > 0 ? cabX1 : cabX0; box('dark', fx - 0.02, fx + 0.02, 1.9, 2.8, z0 + 0.25, z1 - 0.25, 'xX'); box('dark', cabX0 + 0.5, cabX1 - 0.5, 1.9, 2.7, z0 + 0.03, z1 - 0.03, 'zZ');
-      box('glow', fx - 0.03, fx + 0.03, 0.9, 1.1, z0 + 0.2, z0 + 0.5, 'xX'); box('glow', fx - 0.03, fx + 0.03, 0.9, 1.1, z1 - 0.5, z1 - 0.2, 'xX');
-      box('fascia', tx0, tx1, 1.0, 1.45, z0 + 0.1, z1 - 0.1, ALL); box('fascia', tx0 + 1, tx1 - 1, 0.55, 1.0, z0 + 0.8, z1 - 0.8, ALL);
-      for (const wx of t.d > 0 ? [cabX0 + 0.6, cabX1 - 0.8, tx0 + 0.6, tx0 + 2] : [cabX1 - 0.6 - 0.9, cabX0 + 0.5, tx1 - 1.5, tx1 - 2.9]) for (const [za, zb] of [[z0, z0 + 0.5], [z1 - 0.5, z1]]) box('tyre', wx, wx + 0.95, 0, 0.95, za, zb, ALL);
-      if (t.load) box('c' + (t.c * 3 % CONT.length), tx0 + 0.35, tx0 + 0.35 + CL, 1.45, 1.45 + CH - 0.05, z0 + (2.5 - CW) / 2, z1 - (2.5 - CW) / 2, 'xXzZY', S4);
-    }
+    // ---- trucks: the tractor and chassis are the downloaded model (load()); each carries a 40 ft container on its deck ----
+    for (const t of TRUCKS) { const [ax] = truckAt(tspot(t), 0.05, 0), [bx] = truckAt(tspot(t), 0.05 + CL, 0), x0 = Math.min(ax, bx);
+      box('c' + (t.c * 3 % CONT.length), x0, x0 + CL, TRUCK.deck, TRUCK.deck + CH - 0.05, t.z + (2.5 - CW) / 2, t.z + 2.5 - (2.5 - CW) / 2, 'xXzZY', S4); }
     // ---- floodlight masts: head of lamps, and a pool of light on the ground under each ----
     const UVQ = [[0, 0], [1, 0], [1, 1], [0, 1]];
     for (const [fx, fz] of FLOODS) {
