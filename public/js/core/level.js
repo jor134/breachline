@@ -126,6 +126,20 @@ function eachNear(level, x0, z0, x1, z1, fn) {
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) for (const bi of G.cells[j * G.nx + i]) { if (G.mark[bi] === stamp) continue; G.mark[bi] = stamp; if (fn(level.boxes[bi]) === true) return true; }
   return false;
 }
+// A ledge to climb onto near (x, z): the top of a solid thing between knee and shoulder height above feetY, within reach r, with room
+// to stand on it. Returns { b, x, z, y } (where you would stand) or null. Doors, glass, railings and screens are not climbable.
+const NOCLIMB = { door: 1, glass: 1, fence: 1, screen: 1, heli: 1, lintel: 1 };
+export function ledgeNear(level, doorOpen, x, z, feetY, r, lo = 0.45, hi = 1.6) {
+  let best = null, bd = Infinity;
+  eachNear(level, x - r, z - r, x + r, z + r, b => {
+    if (NOCLIMB[b.kind] || b.y1 < feetY + lo || b.y1 > feetY + hi || b.y0 > feetY + 0.6) return;
+    const dx = x - Math.max(b.x0, Math.min(x, b.x1)), dz = z - Math.max(b.z0, Math.min(z, b.z1)), d = Math.hypot(dx, dz); if (d > r || d >= bd) return;
+    const mx = Math.min(0.2, (b.x1 - b.x0) / 2), mz = Math.min(0.2, (b.z1 - b.z0) / 2), sx = Math.max(b.x0 + mx, Math.min(x, b.x1 - mx)), sz = Math.max(b.z0 + mz, Math.min(z, b.z1 - mz));
+    if (circleHits(level, doorOpen, sx, sz, 0.15, b.y1) || rayStatic(level, doorOpen, sx, b.y1 + 0.1, sz, 0, 1, 0, 1.3) < 1.3) return;   // something on top of it, or no headroom
+    best = { b, x: sx, z: sz, y: b.y1 }; bd = d;
+  });
+  return best;
+}
 // doorOpen: array of booleans (closed doors block) or null to ignore doors
 export function circleHits(level, doorOpen, x, z, r, feetY) {
   const hit = b => { if (!blocksAt(b, feetY) || x <= b.x0 - r || x >= b.x1 + r || z <= b.z0 - r || z >= b.z1 + r) return false; const dx = x - Math.max(b.x0, Math.min(x, b.x1)), dz = z - Math.max(b.z0, Math.min(z, b.z1)); return dx * dx + dz * dz < r * r; };

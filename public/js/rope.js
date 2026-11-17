@@ -13,7 +13,9 @@ export function createRopes(ctx) {
   // move the rig so the head (VR) / body (desktop) sits over (x, z), feet at y
   function placeAt(x, z, y) { ctx.headWorld(); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; rig.position.y = y; S.feetY = y; ctx.headWorld(); }
   function near(p, maxD) {   // the rope whose line passes closest to point p, within maxD
-    let best = -1, bd = maxD; R().forEach((r, i) => { if (r.heli && S.fly) return; if (p.y < r.bot - 0.3 || p.y > r.top + 2.4) return; const d = Math.hypot(p.x - r.x, p.z - r.z); if (d < bd) { bd = d; best = i; } }); return best;
+    let best = -1, bd = maxD; R().forEach((r, i) => { if (r.heli && S.fly) return; if (p.y < r.bot - 0.3 || p.y > r.top + 2.4) return; let d = Math.hypot(p.x - r.x, p.z - r.z);
+      if (r.arm) { const za = Math.min(r.arm[0], r.z), zb = Math.max(r.arm[0], r.z); d = Math.min(d, Math.hypot(p.x - r.x, p.y - r.arm[1], p.z - Math.max(za, Math.min(zb, p.z)))); }   // the davit arm the rope hangs from
+      if (d < bd) { bd = d; best = i; } }); return best;
   }
   function clip(i, y) {
     const r = R()[i], [hx, hz] = hangAt(r); S.rope = { i, y: Math.max(r.bot, Math.min(r.top, y)) }; S.crouch = false;
@@ -23,7 +25,7 @@ export function createRopes(ctx) {
   // VR: an empty hand gripping near a rope takes hold of it (clipping in if you are not on it yet). True if it did.
   function grabVR(h) {
     if (h.item || ctx.gunIn(h) || S.me.down) return false;
-    const i = near(h.pos, 0.32); if (i < 0) return false;
+    const i = near(h.pos, 0.4); if (i < 0) return false;
     if (S.rope && S.rope.i !== i) return false;
     if (!S.rope) clip(i, S.feetY);
     h.rope = { y: h.pos.y, t: performance.now() }; buzz(h, 0.5, 40); return true;
@@ -65,7 +67,7 @@ export function createRopes(ctx) {
   // what to say when you are near a rope and not on it
   function prompt() {
     if (S.rope || S.me.down) return ''; const p = v.copy(head.pos); p.y = S.feetY + 1; const i = near(p, 1.6); if (i < 0) return '';
-    return S.mode === 'vr' ? 'GRIP THE ROPE WITH AN EMPTY HAND' : 'USE: CLIP IN TO THE ROPE';
+    return S.mode === 'vr' ? (R()[i].arm ? 'GRIP THE ROPE OR ITS ARM WITH AN EMPTY HAND' : 'GRIP THE ROPE WITH AN EMPTY HAND') : 'USE: CLIP IN TO THE ROPE';
   }
   function reset() { S.rope = null; for (const h of hands) h.rope = null; S.ropeHint = ''; }
   return { grabVR, releaseVR, tick, use, prompt, reset, near };

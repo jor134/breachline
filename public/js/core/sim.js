@@ -78,7 +78,7 @@ export class Sim {
     this.doorTrap = this.level.doors.map(() => 0); pick(this.level.doors.filter((d, i) => !d.exterior && !this.doorOpen[i] && d.lift === undefined).map(d => d.id), 3).forEach(i => { this.doorTrap[i] = rnd() < 0.5 ? 1 : 2; });
     // breach windows start whole and unlocked; the service lift waits at the top with its doors open there
     this.level.doors.forEach((d, i) => { if (d.win) { this.doorOpen[i] = false; this.doorLocked[i] = false; } if (d.lift !== undefined) { this.doorLocked[i] = false; this.doorTrap[i] = 0; } });
-    this.lift = M.lift ? { at: M.lift.stops.length - 1, ride: 0, to: 0 } : null; this.liftDoors();
+    this.lift = M.lift ? { at: M.lift.stops.length - 1, ride: 0, to: 0, armed: true } : null; this.liftDoors();
     const bombAt = M.pads ? pads.slice(0, C.b).map(i => [M.pads[i].f, ...M.pads[i].bomb, 0.85]) : M.bombMust ? [M.bombMust, ...pick(M.spots.b, C.b - 1)] : pick(M.spots.b, C.b);
     this.bombs = bombAt.map(([f, x, z, h]) => {
       const wires = pick([0, 1, 2, 3], 4), order = pick([0, 1, 2, 3], 2);
@@ -205,8 +205,19 @@ export class Sim {
     if (inside && k === L.at) { L.to = (L.at + 1) % stops.length; L.ride = 6; } else if (!inside && k !== L.at) { L.to = k; L.ride = 6; } else return;
     this.ev({ e: 'lift', from: L.at, to: L.to }); this.liftDoors();
   }
+  // The lift also runs by itself: it leaves 3 s after someone steps in (and will not leave again until it has stood empty), and it comes
+  // when someone waits a second at its door on the other floor.
+  liftAuto(dt) {
+    const L = this.lift, stops = this.M.lift.stops, c = this.M.lift.car, y0 = stops[L.at], hs = [...this.players.values()].filter(p => !p.bot && !p.down && p.has);
+    const go = to => { L.to = to; L.ride = 4; L.dwell = 0; L.call = 0; this.ev({ e: 'lift', from: L.at, to }); this.liftDoors(); };
+    if (hs.some(p => this.inCar(p.hx, p.hz) && Math.abs(p.y - y0) < 1.5)) { L.call = 0; if (L.armed && (L.dwell = (L.dwell || 0) + dt) > 3) go((L.at + 1) % stops.length); return; }
+    L.armed = true; L.dwell = 0;
+    const k = stops.findIndex((y, i) => i !== L.at && hs.some(p => Math.abs(p.y - y) < 1.5 && Math.hypot(p.hx - (c.x0 + c.x1) / 2, p.hz - (c.z1 + 1.1)) < 1.3));
+    if (k < 0) L.call = 0; else if ((L.call = (L.call || 0) + dt) > 1) go(k);
+  }
   tickLift(dt) {
-    const L = this.lift; if (!L || L.ride <= 0 || (L.ride -= dt) > 0) return;
+    const L = this.lift; if (!L) return; if (L.ride <= 0) { if (this.phase === 'active') this.liftAuto(dt); return; }
+    if ((L.ride -= dt) > 0) return; L.armed = false;
     const stops = this.M.lift.stops, y0 = stops[L.at], dy = stops[L.to] - y0, ids = [];
     for (const p of this.players.values()) if (this.inCar(p.hx, p.hz) && Math.abs(p.y - y0) < 1.5) { ids.push(p.id); p.y += dy; p.hy += dy; if (p.bot) { p.bot.y += dy; p.bot.path = null; } }
     for (const n of this.npcs) if (this.inCar(n.x, n.z) && Math.abs(n.y - y0) < 1.5) { n.y += dy; n.path = null; if (n.post) n.post = [n.x, n.z, n.y]; }

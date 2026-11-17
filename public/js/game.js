@@ -6,7 +6,7 @@ import { loadCar, loadParkedCars } from './car.js';
 import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
-import { resolveCircle, rayStatic, MAP_IDS, MAPS, MISSION_IDS, registerMap } from './core/level.js';
+import { resolveCircle, rayStatic, ledgeNear, MAP_IDS, MAPS, MISSION_IDS, registerMap } from './core/level.js';
 import { compile as compileCustom } from './core/maps/custom.js';
 import { createVoice } from './voice.js';
 import { createRace } from './race.js';
@@ -159,8 +159,23 @@ function carry(dt) {
   if (S.fly.t > F.T + F.drop) S.fly = null;
 }
 const flyV = new THREE.Vector3(), fo = p => S.fly ? flyV.copy(p).sub(S.fly.off) : p;   // a position as the server should see it
+// Climbing: onto anything solid between knee and shoulder height with room on top (a counter, a crate, a parapet).
+// VR: grip its top edge with an empty hand and pull down. Desktop: SPACE (or USE with nothing else in reach). Phone: USE.
+function climbTo(L) { S.perch = L.b; S.crouch = false; headWorld(); rig.position.x += L.x - head.pos.x; rig.position.z += L.z - head.pos.z; S.feetY = L.y; headWorld(); sfx.step && sfx.step(v1.set(L.x, L.y, L.z), 'concrete'); for (const h of hands) { h.ledge = null; if (S.mode === 'vr') buzz(h, 0.6, 60); } }
+function liftHint() {   // in the lift, or waiting at its door on the other floor
+  const Lf = M.lift; if (!Lf || S.phase !== 'active') return ''; const c = Lf.car, x = head.pos.x, z = head.pos.z, k = Lf.stops.findIndex(y => Math.abs(S.feetY - y) < 1.5); if (k < 0) return '';
+  const di = level.doors.findIndex(d => d.lift === k), open = !!S.doorOpen[di];
+  if (x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1) return open ? 'STAY IN THE LIFT TO RIDE' : '';
+  return !open && Math.hypot(x - (c.x0 + c.x1) / 2, z - (c.z1 + 1.1)) < 1.3 ? 'WAIT HERE: THE LIFT IS COMING' : '';
+}
+function tryClimb() { if (S.me.down || S.rope || S.fly || S.spec) return false; const L = ledgeNear(level, S.doorOpen, head.pos.x + head.fwd.x * 0.45, head.pos.z + head.fwd.z * 0.45, S.feetY, 0.6); if (!L) return false; climbTo(L); return true; }
+function ledgeGrab(h) {
+  if (S.rope || S.fly || S.spec) return; const L = ledgeNear(level, S.doorOpen, h.pos.x, h.pos.z, S.feetY, 0.3); if (!L || Math.abs(h.pos.y - L.y) > 0.35) return;
+  h.ledge = { L, y: h.pos.y }; buzz(h, 0.4, 30); hint(h.pos.x, L.y + 0.35, h.pos.z, 'PULL DOWN TO CLIMB UP');
+}
+function ledgePull() { for (const h of hands) if (h.ledge && h.active) { if (!(h.in.grip > 0.5)) h.ledge = null; else if (h.pos.y < h.ledge.y - 0.2) climbTo(h.ledge.L); } }
 function placeAtSpawn() {
-  const sp = S.spawnAt, [x, z] = sp ? [sp[0], sp[2]] : M.spawn[S.me.slot % 4], fy = sp ? sp[1] : M.spawnY ?? (M.yAt ? M.yAt(0, x, z) : 0); S.feetY = fy; ropes.reset(); rig.rotation.y = 0; S.yaw = 0; S.pitch = 0;   // terrorist players start inside
+  const sp = S.spawnAt, [x, z] = sp ? [sp[0], sp[2]] : M.spawn[S.me.slot % 4], fy = sp ? sp[1] : M.spawnY ?? (M.yAt ? M.yAt(0, x, z) : 0); S.feetY = fy; ropes.reset(); S.perch = null; rig.rotation.y = 0; S.yaw = 0; S.pitch = 0;   // terrorist players start inside
   if (S.mode === 'vr') { rig.position.y = fy; headWorld(); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; headWorld(); } else rig.position.set(x, fy, z);
 }
 
@@ -544,6 +559,7 @@ addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('mousemove', e => { if (OW.open && !S.touch) { owMove(e.movementX, e.movementY); return; } if (S.mode === 'desktop' && document.pointerLockElement === renderer.domElement) { S.yaw -= e.movementX * 0.0022; S.pitch = Math.max(-1.5, Math.min(1.5, S.pitch - e.movementY * 0.0022)); } });
 function deskKey(code) {
   const G = gunIn(hands[1]);
+  if (code === 'Space') tryClimb();
   if (code === 'Enter' && (S.phase !== 'active' || M.training)) net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() });
   if (code === 'KeyO') cycleWx();
   if (code === 'KeyP' && (S.phase !== 'active' || M.training)) cycleMap();
@@ -582,6 +598,7 @@ function deskInteract() {
   const n = tangoTools() ? null : nearestCuffable(v1.copy(head.pos).setY(head.pos.y - 0.7), 1.6); if (n != null) return net.send({ t: 'cuff', n });
   const p = nearestDowned(head.pos, 2); if (p != null) return net.send({ t: 'revive', p });
   const bi = nearestDoor(head.pos, 2.2);
+  if (bi < 0 && tryClimb()) return;
   if (shieldOn() && bi < 0) { hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.3, head.pos.z + head.fwd.z * 1.2, 'NO HOSTAGE OR DOOR IN REACH'); return; }
   if (bi < 0) return;
   if (tangoTools() && !S.doorOpen[bi] && (S.tool === 'pick' || S.tool === 'cutters')) { const D = level.doors[bi], lock = S.tool === 'pick';
@@ -654,7 +671,15 @@ function headWorld() {
 }
 function collide() {
   if (S.spec) return;   // spectating: the camera floats behind a teammate
-  if (S.rope || S.fly) { headWorld(); return; }   // hanging on a rope, or riding in the helicopter: rope.js holds the height, nothing to stand on
+  if (S.rope || S.fly) { S.perch = null; headWorld(); return; }   // hanging on a rope, or riding in the helicopter
+  if (S.perch) {   // standing on something you climbed: stay at its height while over it; step off where the drop is survivable
+    const b = S.perch, m = 0.1; headWorld(); let x = head.pos.x, z = head.pos.z;
+    if (!(x > b.x0 - m && x < b.x1 + m && z > b.z0 - m && z < b.z1 + m)) {
+      const nb = ledgeNear(level, S.doorOpen, x, z, b.y1 - 1, 0.05, 0.7, 1.3);   // straight onto the next thing at about this height
+      if (nb) S.perch = nb.b; else if (b.y1 - level.groundY(x, z, b.y1) > 2.5 || S.me.down) { x = Math.max(b.x0 - m, Math.min(x, b.x1 + m)); z = Math.max(b.z0 - m, Math.min(z, b.z1 + m)); } else S.perch = null;
+    }
+    if (S.perch) { const y = S.perch.y1; [x, z] = resolveCircle(level, S.doorOpen, x, z, 0.25, y); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; S.feetY = y; rig.position.y += (y - rig.position.y) * 0.3; headWorld(); return; }
+  }
   headWorld(); const [x, z] = resolveCircle(level, S.doorOpen, head.pos.x, head.pos.z, 0.25, S.feetY);
   rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; S.feetY = level.groundY(x, z, S.feetY); rig.position.y += (S.feetY - rig.position.y) * 0.35; headWorld();
 }
@@ -718,7 +743,8 @@ function grab(h, o) {   // grip pressed on hand h; o is the other hand
     return;
   }
   if (S.me.down) return;
-  useWorld(h);
+  if (useWorld(h)) return;
+  ledgeGrab(h);
 }
 // empty hand, grip or trigger: cuff, revive, or work a door
 function useWorld(h) {
@@ -741,7 +767,7 @@ function useWorld(h) {
 function handVR(h, o, dt) {
   if (!h.active) return;
   if (press(h, 'grip')) grab(h, o);
-  if (released(h, 'grip')) { ropes.releaseVR(h); if (h.shield) { h.shield = false; net.send({ t: 'release' }); } h.support = false; h.rackG = null; if (h.item === 'mag') { guns[h.magKind].mags++; h.item = null; }
+  if (released(h, 'grip')) { ropes.releaseVR(h); h.ledge = null; if (h.shield) { h.shield = false; net.send({ t: 'release' }); } h.support = false; h.rackG = null; if (h.item === 'mag') { guns[h.magKind].mags++; h.item = null; }
     else if (h.item === 'flash' || h.item === 'smoke') { net.send({ t: 'throw', k: h.item, o: [h.pos.x, h.pos.y, h.pos.z], v: [h.vel.x * 1.3, h.vel.y * 1.3 + 0.6, h.vel.z * 1.3] }); h.item = null; buzz(h, 0.7, 40); } }   // let go to throw: it leaves with your hand's speed
   if (h.hold && !(h.in.grip > 0.5) && !(h.in.trig > 0.5)) h.hold = null;
   const G = gunIn(h), OG = gunIn(o);
@@ -913,7 +939,7 @@ function frame(t) {
   if (S.spawnIn && --S.spawnIn === 0) { headWorld(); placeAtSpawn(); showLobbyPanel(); }
   carry(dt);
   if (TUT && S.mode && !S.spawnIn && S.me.id) { TUT = false; tut.start('core'); }   // the tutorial starts once you stand in the facility
-  if (S.mode === 'vr') { readVR(); headWorld(); moveVR(dt); collide(); for (const h of hands) if (h.active) { (h.xr.src && h.xr.src.gripSpace ? h.xr.grip : h.xr.ray).getWorldPosition(h.pos); h.xr.ray.getWorldQuaternion(h.quat).multiply(tiltQ); } ropes.tick(dt, hands[0].in); }
+  if (S.mode === 'vr') { readVR(); headWorld(); moveVR(dt); collide(); for (const h of hands) if (h.active) { (h.xr.src && h.xr.src.gripSpace ? h.xr.grip : h.xr.ray).getWorldPosition(h.pos); h.xr.ray.getWorldQuaternion(h.quat).multiply(tiltQ); } ropes.tick(dt, hands[0].in); ledgePull(); }
   else if (S.mode === 'desktop') {
     moveDesktop(dt); ropes.tick(dt); collide(); camera.updateMatrixWorld(true);
     const h = hands[1]; h.pos.copy(S.ads ? v1.set(0, -guns[h.item || 'rifle'].ud.sightY, -0.3) : v1.set(0.16, -0.17, -0.34)).applyMatrix4(camera.matrixWorld); h.quat.copy(head.quat);
@@ -937,9 +963,9 @@ function frame(t) {
   if (panel.mesh.visible && S.mode) for (const h of hands) { if (!h.active) continue; const G = gunIn(h); if (G) { G.mesh.localToWorld(v1.copy(G.ud.muzzle)); v2.set(0, 0, -1).applyQuaternion(G.mesh.quaternion); } else { v1.copy(h.pos); v2.set(0, 0, -1).applyQuaternion(h.quat); } if (panel.probe(v1, v2, true) !== null) break; }
   if ((S.phase === 'lobby' || M.training && S.phase === 'active') && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
   updateTargets(dt); tut.tick(dt); for (const o of S.officers.values()) o.tick(dt); tickShards(dt);
-  if (S.fly) for (const o of S.officers.values()) { const p = o.g.position; if (M.fly.aboard(p.x, p.z, p.y)) p.add(S.fly.off); }   // others aboard ride along
+  for (const o of S.officers.values()) { const p = o.head.position; if (S.fly && M.fly.aboard(p.x, p.z, p.y)) o.g.position.copy(S.fly.off); else o.g.position.set(0, 0, 0); }   // others aboard the helicopter ride in with it
   if (world && world.gfx.tick) world.gfx.tick(dt, { S, head, officers: S.officers, level, M, renderer, scene });
-  { const rt = S.mode && S.phase !== 'ended' ? (S.ropeHint || ropes.prompt()) : ''; if (rt && S.now - (S.ropeHintT || 0) > 2.6) { S.ropeHintT = S.now; sayAt(head.pos.x + head.fwd.x * 1.1, head.pos.y - 0.25, head.pos.z + head.fwd.z * 1.1, rt, '#9fffb0'); } }
+  { const rt = S.mode && S.phase !== 'ended' ? (S.ropeHint || ropes.prompt() || liftHint()) : ''; if (rt && S.now - (S.ropeHintT || 0) > 2.6) { S.ropeHintT = S.now; sayAt(head.pos.x + head.fwd.x * 1.1, head.pos.y - 0.25, head.pos.z + head.fwd.z * 1.1, rt, '#9fffb0'); } }
   spectate(dt);
   if (race) { S.raceT += dt; race.update(S.raceT, head.pos, level.inside(head.pos.x, head.pos.z, head.pos.y)); }
   // world animation
@@ -1024,7 +1050,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v51';
+const BUILD = 'v52';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

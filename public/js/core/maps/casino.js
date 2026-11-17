@@ -16,7 +16,7 @@ export const MAIN = { x0: 14, z0: 8, x1: 60, z1: 48 };             // the double
 export const F3 = 3 * H, ROOF = 6 * H, POD = 2 * H;               // suites floor, wing roof, podium roof
 export const HELI = { x0: 33.8, x1: 38.2, z0: 7.0, z1: 9.6, y: ROOF + 4.5, door: [34.6, 37.4] };   // cabin floor; the door is the south side (fits the Black Hawk's cabin)
 export const SHAFT = { x0: 26, x1: 32, z0: 0, z1: 8, n: 2.4, s: 6.6, mid: 29 };                    // scissor stair: north and south landing strips
-export const CAR = { x0: 40, x1: 43, z0: 0, z1: 3.2 };            // service lift car (at the casino and at the suites)
+export const CAR = { x0: 40, x1: 43, z0: 0, z1: 3 };            // service lift car (at the casino and at the suites)
 export const YARD = { x0: -30, z0: -50, x1: 102, z1: 100 };
 export const CANOPY = { x0: 18, x1: 54, z0: 56, z1: 74, y: 8.5 };  // the white ribbed porte-cochere
 export const SPAWN = [[34.7, 8.3], [35.6, 8.3], [36.5, 8.3], [37.4, 8.3]];
@@ -33,12 +33,12 @@ export const ROOMS = [
   [0, 'Cashier cage', 60, 8, 72, 20, 'marble'], [0, 'Security office', 60, 20, 72, 32, 'carpetS'], [0, 'Steakhouse', 60, 32, 72, 48, 'wood'],
   [0, 'Gift shop', 0, 48, 14, 56, 'marble'], [0, 'Entrance lobby', 14, 48, 60, 56, 'marble'], [0, 'Valet office', 60, 48, 72, 56, 'marble'],
   [0, 'Count room', 0, 0, 16, 8, 'concrete'], [0, 'Service hall', 16, 0, 26, 8, 'concrete'], [0, 'Fire stairs', 26, 0, 32, 8, 'concrete'],
-  [0, 'Service hall', 32, 0, 40, 8, 'concrete'], [0, 'Service lift', 40, 0, 43, 3.2, 'steelfloor'], [0, 'Lift landing', 40, 3.2, 43, 8, 'concrete'], [0, 'Service hall', 43, 0, 60, 8, 'concrete'],
+  [0, 'Service hall', 32, 0, 40, 8, 'concrete'], [0, 'Service lift', 40, 0, 43, 3, 'steelfloor'], [0, 'Lift landing', 40, 3, 43, 8, 'concrete'], [0, 'Service hall', 43, 0, 60, 8, 'concrete'],
   [0, 'Staff room', 60, 0, 66, 8, 'concrete'], [0, 'Vault', 66, 0, 72, 8, 'steelfloor'],
   [1, 'stair void', 26, 0, 32, 8, 'void'], [2, 'stair void', 26, 0, 32, 8, 'void'],
   // the suites
   [3, 'Housekeeping', 16, 0, 26, 8, 'carpetS'], [3, 'Fire stairs', 26, 0, 32, 8, 'void'], [3, 'Lift lobby', 32, 0, 40, 8, 'marble'],
-  [3, 'Service lift', 40, 0, 43, 3.2, 'steelfloor'], [3, 'Lift landing', 40, 3.2, 43, 8, 'marble'], [3, 'Suite D', 43, 0, 56, 8, 'carpetS'],
+  [3, 'Service lift', 40, 0, 43, 3, 'steelfloor'], [3, 'Lift landing', 40, 3, 43, 8, 'marble'], [3, 'Suite D', 43, 0, 56, 8, 'carpetS'],
   [3, 'Corridor', 16, 8, 56, 11, 'carpetS'],
   [3, 'Suite A', 16, 11, 28, 20, 'carpetS'], [3, 'Presidential suite', 28, 11, 40, 20, 'carpetS'], [3, 'Presidential bedroom', 40, 11, 46, 20, 'carpetS'], [3, 'Suite C', 46, 11, 56, 20, 'carpetS'],
 ];
@@ -53,9 +53,9 @@ export const OPENINGS = [
   [0, 68, 8, 69.5, 8, 'door'],                                                                 // vault (from the cage)
   [0, 20, 8, 21.5, 8, 'door'], [0, 36, 8, 37.5, 8, 'door'], [0, 50, 8, 51.5, 8, 'door'],       // STAFF ONLY doors into back of house
   [0, 16, 5, 16, 6.2, 'door'], [0, 26, 6.8, 26, 7.9, 'door'], [0, 60, 5, 60, 6.2, 'door'],      // count room, fire stairs, staff room
-  [0, 40, 3.2, 40, 8, 'gap'], [0, 43, 3.2, 43, 8, 'gap'], [0, 40, 3.2, 43, 3.2, 'gap'],         // lift landing; the lift's own door is added in extra()
+  [0, 40, 3, 40, 8, 'gap'], [0, 43, 3, 43, 8, 'gap'], [0, 40, 3, 43, 3, 'gap'],         // lift landing; the lift's own door is added in extra()
   [3, 32, 1.2, 32, 2.3, 'door'],                                                               // fire stairs at the suites
-  [3, 33, 8, 39, 8, 'gap'], [3, 40, 8, 43, 8, 'gap'], [3, 40, 3.2, 40, 8, 'gap'], [3, 40, 3.2, 43, 3.2, 'gap'],
+  [3, 33, 8, 43, 8, 'gap'], [3, 40, 3, 40, 8, 'gap'], [3, 40, 3, 43, 3, 'gap'],   // lift lobby and landing: one wide opening onto the corridor
   [3, 20, 8, 21.2, 8, 'door'], [3, 48, 8, 49.2, 8, 'door'],                                    // housekeeping, suite D
   [3, 25, 11, 26.2, 11, 'door'], [3, 33, 11, 35, 11, 'door'], [3, 49, 11, 50.2, 11, 'door'], [3, 40, 16, 40, 17.2, 'door'],   // suites
   ...WINX.map(x => [3, x - 1, 20, x + 1, 20, 'gap']),                                         // breach windows (panes added in extra())
@@ -128,9 +128,9 @@ export const HVTS = [
 // step = where you step off at the bottom (onto the roof, or into the suite once its window is broken); top0 = where you stand to clip in
 export const ROPES = [
   { x: 36, z: HELI.z1 + 0.45, top: HELI.y, bot: ROOF, out: [0, 1], step: [36, 10.9, ROOF], top0: [36, 9.1, HELI.y], win: null, heli: true },
-  ...WINX.map(x => ({ x, z: ROPE_Z, top: ROOF, bot: F3, out: [0, 1], step: [x, 18.9, F3], top0: [x, 19.2, ROOF], winAt: [x, 20] })),
+  ...WINX.map(x => ({ x, z: ROPE_Z, top: ROOF, bot: F3, out: [0, 1], step: [x, 18.9, F3], top0: [x, 19.2, ROOF], winAt: [x, 20], arm: [WING.z1 - 0.6, ROOF + 1.66] })),   // arm: the davit over the parapet (from z, at height): gripping it clips you in too
 ];
-export const LIFT = { car: CAR, stops: [0, F3], door: [40, 3.2, 43, 3.2] };
+export const LIFT = { car: CAR, stops: [0, F3], door: [40, 3, 43, 3] };
 
 // ---- shape helpers ----
 export const inFoot = (x, z) => x >= FOOT.x0 && x <= FOOT.x1 && z >= FOOT.z0 && z <= FOOT.z1;
@@ -207,6 +207,7 @@ function extra({ boxes, addDoor }) {
   // the service lift's doors, one at each stop: they slide, and open only where the car is
   LIFT.stops.forEach((y, k) => addDoor({ f: k ? 3 : 0, x0: CAR.x0, z0: CAR.z1, x1: CAR.x1, z1: CAR.z1, horiz: true, h: DOOR_H, cx: (CAR.x0 + CAR.x1) / 2, cz: CAR.z1, y, lift: k,
     box: { kind: 'door', x0: CAR.x0, x1: CAR.x1, z0: CAR.z1 - 0.04, z1: CAR.z1 + 0.04, y0: y, y1: y + DOOR_H } }));
+  for (const y of LIFT.stops) boxes.push({ f: y ? 3 : 0, kind: 'lintel', out: '', x0: CAR.x0, x1: CAR.x1, z0: CAR.z1 - 0.1, z1: CAR.z1 + 0.1, y0: y + DOOR_H, y1: y + H });   // the wall over the lift's door
   // the stair core's walls between the two halves under each flight (a solid stringer wall, so nobody drops off a flight)
   box('core', SHAFT.mid - 0.08, SHAFT.mid + 0.08, 0, F3 + 1.0, SHAFT.n, SHAFT.s);
   // and where a landing meets the far end of the other flight, a rail so nobody steps onto it from the wrong height

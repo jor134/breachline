@@ -297,7 +297,7 @@ export default {
       plane(root, 'SUITES 3', 1.2, 0.3, SHAFT.x1 - 0.06, F3 + 2.2, 1.8, -Math.PI / 2, { bg: '#c22a24' }); plane(root, 'CASINO 1', 1.2, 0.3, SHAFT.x0 + 0.06, 2.2, 7.3, Math.PI / 2, { bg: '#c22a24' }); }
     // ---- the service lift: call panels and a hatch light in each car ----
     for (const y of [0, F3]) { B('steelwall', CAR.x1 - 0.06, CAR.x1 - 0.04, y + 1.0, y + 1.5, CAR.z1 - 0.7, CAR.z1 - 0.4, 'x', 1); b('cglow').box(CAR.x1 - 0.07, CAR.x1 - 0.06, y + 1.2, y + 1.3, CAR.z1 - 0.6, CAR.z1 - 0.5, 'x', 1); b('cglow').box(CAR.x0 + 0.5, CAR.x1 - 0.5, y + H - 0.03, y + H - 0.02, CAR.z0 + 0.6, CAR.z1 - 0.6, 'y', 1);
-      plane(root, y ? 'SERVICE  1  ▼' : 'SERVICE  3  ▲', 1.6, 0.22, (CAR.x0 + CAR.x1) / 2, y + 2.45, CAR.z1 + 0.06, 0, { bg: '#0d0f12', fg: '#ff9a3a' }); }
+      plane(root, y ? 'SERVICE  1  ▼' : 'SERVICE  3  ▲', 1.6, 0.22, (CAR.x0 + CAR.x1) / 2, y + 2.55, CAR.z1 + 0.12, 0, { bg: '#0d0f12', fg: '#ff9a3a' }); }
     // ---- the casino ceiling: soffit with coves, light ribbons swirling between them, the chandelier ----
     { const sh = new THREE.Shape(); sh.moveTo(MAIN.x0, MAIN.z0); sh.lineTo(MAIN.x1, MAIN.z0); sh.lineTo(MAIN.x1, MAIN.z1); sh.lineTo(MAIN.x0, MAIN.z1); sh.lineTo(MAIN.x0, MAIN.z0);
       for (const cv of COVES) { const p = new THREE.Path(); for (let i = 0; i <= 48; i++) { const [x, z] = coveAt(cv, -i * 6.283 / 48); i ? p.lineTo(x, z) : p.moveTo(x, z); } sh.holes.push(p); }
@@ -391,7 +391,7 @@ export default {
   // The CCTV wall refreshes one camera at a time, only while someone stands in the security office with the power on.
   tick(dt, { S, head, officers, renderer, scene }) {
     if (heli) { const h = heli; h.rotor.rotation.y += dt * 7; h.tail.rotation.z += dt * 30; h.beacon.visible = (performance.now() % 1200) < 150;
-      let aboard = head.pos.y > HELI.y + 0.6 && inHeli(head.pos.x, head.pos.z); if (!aboard) for (const o of officers.values()) { const p = o.g.position; if (p.y > HELI.y - 0.6 && inHeli(p.x, p.z)) { aboard = true; break; } }
+      let aboard = head.pos.y > HELI.y + 0.6 && inHeli(head.pos.x, head.pos.z); if (!aboard) for (const o of officers.values()) { const p = o.head.position; if (p.y > HELI.y + 0.4 && inHeli(p.x, p.z)) { aboard = true; break; } }
       if (S.fly) { const o = FLY.at(S.fly.t), u = Math.min(1, S.fly.t / FLY.T); h.idle = 0; h.gone = 0; h.g.visible = true; h.g.position.set(h.home.x + o[0], h.home.y + o[1], h.home.z + o[2]);
         h.g.rotation.set(Math.sin(S.now * 0.9) * 0.012 * (1 - u), 0, 0.07 * Math.sin(Math.PI * Math.min(1, u * 1.15)));   // nose down coming in, flaring level at the hover
         h.rope.scale.y = Math.max(0.001, Math.min(1, (S.fly.t - FLY.T) / FLY.drop)); }

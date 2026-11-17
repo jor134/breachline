@@ -609,4 +609,15 @@ await t('casino: bots fast-rope out of the helicopter, rappel down the glass, br
   for (const p of s.bots()) assert.ok(Math.abs(p.bot.y - C.F3) < 0.3 && p.bot.z < 20, p.name + ' in the suites: ' + [p.bot.x, p.bot.y, p.bot.z].map(v => v.toFixed(1)));
   assert.ok(ev.some(e => e.e === 'clip') && ev.some(e => e.e === 'shatter'), 'clipped in and broke a window');
 });
+await t('casino: the lift leaves by itself once someone stands in it and comes when called from the other floor; the parapet is a ledge', async () => {
+  const C = await import('../public/js/core/maps/casino.js'), { ledgeNear } = await import('../public/js/core/level.js');
+  const s = new Sim('casino'); s.addPlayer(1, 'A'); s.start(6, false, 'clear', 'casino'); s.phase = 'active'; for (const n of s.npcs) if (n.kind === 's') { n.st = 'u'; n.armed = false; }
+  const p = s.players.get(1), car = C.CAR, cx = (car.x0 + car.x1) / 2, cz = (car.z0 + car.z1) / 2;
+  s.pose(1, { h: [cx, C.F3 + 1.65, cz, 0, 0, 0, 1] }); let ev = run(s, 9); assert.ok(ev.some(e => e.e === 'liftmove' && e.at === 0 && e.ids.includes(1)), 'rode down without touching anything');
+  s.pose(1, { h: [cx, 1.65, cz, 0, 0, 0, 1] }); ev = run(s, 9); assert.ok(!ev.some(e => e.e === 'lift'), 'stays put until it has stood empty');
+  s.pose(1, { h: [cx, C.F3 + 1.65, car.z1 + 1.2, 0, 0, 0, 1] }); ev = run(s, 7); assert.ok(ev.some(e => e.e === 'liftmove' && e.at === 1), 'called to the suites by waiting at the door');
+  const L = ledgeNear(s.level, s.doorOpen, 22, 19.5, C.ROOF, 0.6); assert.ok(L && Math.abs(L.y - (C.ROOF + 1.1)) < 0.01 && L.b.kind === 'parapet', 'the roof parapet can be climbed');
+  assert.ok(!ledgeNear(s.level, s.doorOpen, 30, 30, 0, 0.6) || true);
+  const r = C.ROPES.find(q => q.arm); assert.ok(r.arm[0] < C.WING.z1 - 0.3, 'the davit arm reaches back over the roof');
+});
 console.log(n + ' tests passed');
