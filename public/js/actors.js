@@ -363,13 +363,13 @@ export class Body {
   }
   poseSkin(headPos, yaw, hands, feetY, headQ, dt, o = {}) {
     const sk = this.skin, r = sk.role, hd = this.holder, W = this.W, Gt = this.G, fall = Gt.fall, fe = fall * fall * (3 - 2 * fall), down = fall > 0.35;
-    if (o.down) Gt.lieY = feetY < 50 ? feetY + 0.17 : headPos.y - 0.12; else if (fall <= 0) Gt.lieY = null;
-    const lieY = Gt.lieY ?? (feetY < 50 ? feetY + 0.17 : headPos.y - 0.12);   // getting up: stay on the floor where he lay, not at the new head height
+    if (o.down) Gt.lieY = Number.isFinite(feetY) ? feetY + 0.17 : headPos.y - 0.12; else if (fall <= 0) Gt.lieY = null;
+    const lieY = Gt.lieY ?? (Number.isFinite(feetY) ? feetY + 0.17 : headPos.y - 0.12);   // getting up: stay on the floor where he lay, not at the new head height
     // falling and getting up: the knees give, then the body tips over backwards (and the reverse on a revive)
     const tip = Math.max(0, (fe - 0.25) / 0.75), wd = this.detailed ? SELF_BACK.wide : 1; hd.scale.set(wd, 1, wd); hd.rotation.set(-HP * tip, yaw + Math.PI, 0); hd.updateMatrix(); const hq = hd.quaternion, ihq = _q1.copy(_q3.setFromAxisAngle(UPY, yaw + Math.PI)).invert();
     const e = this.eye, fwd = a1.set(0, 0, 1).applyAxisAngle(UPY, yaw + Math.PI), pitch0 = headQ ? Math.asin(Math.max(-1, Math.min(1, a4.set(0, 0, -1).applyQuaternion(headQ).y))) : 0;
     const off = a2.set(e.x * wd, 0, e.z * wd + (this.back = this.detailed ? SELF_BACK.d + SELF_BACK.tilt * Math.max(0, Math.sin(-pitch0)) : 0)).applyAxisAngle(UPY, yaw + Math.PI);
-    const standX = headPos.x - off.x, standZ = headPos.z - off.z, standY = (feetY < 50 ? feetY : lieY) + (this.detailed ? SELF_BACK.up : 0);
+    const standX = headPos.x - off.x, standZ = headPos.z - off.z, standY = (Number.isFinite(feetY) ? feetY : lieY) + (this.detailed ? SELF_BACK.up : 0);
     if (tip > 0) { const lx = headPos.x, lz = headPos.z; /* lying: the model's root at the head, the body along the floor behind it */ hd.position.set(standX + (lx - standX) * tip, standY + (lieY - standY) * tip, standZ + (lz - standZ) * tip); }
     else hd.position.set(standX, standY, standZ);   // your own body: 13 cm behind the eyes
     hd.updateMatrixWorld(true);
@@ -426,7 +426,7 @@ export class Body {
     }
     // stairs and slopes: drop each foot to the ground under it; the hips come down to the lower one
     Gt.hipDrop = 0;
-    if (GROUND.y && !still && feetY < 50) {
+    if (GROUND.y && !still && Number.isFinite(feetY)) {
       let lo = 0; const d = [0, 0];
       for (let k = 0; k < 2; k++) { const f = (k ? Hr : Hl).ft, wpos = a3.copy(f).applyMatrix4(hd.matrixWorld), gy = GROUND.y(wpos.x, wpos.z, feetY + 0.5); d[k] = gy === null || !Number.isFinite(gy) ? 0 : Math.max(-0.45, Math.min(0.45, gy - feetY)); lo = Math.min(lo, d[k]); }
       Hl.ft.y += d[0]; Hr.ft.y += d[1]; Gt.sink += (lo - Gt.sink) * Math.min(1, dt * 10); Gt.hipDrop = -Gt.sink;
@@ -437,13 +437,13 @@ export class Body {
   // hands: [left, right], each { pos, quat, pose? } or null. o: { down, stride (0..1, your own legs walk smaller) }
   update(headPos, yaw, hands, feetY, headQ, o = {}) {
     const s = Math.sin(yaw), c = Math.cos(yaw), now = performance.now(), dt = Math.min(0.1, (now - this.lastT) / 1000); this.lastT = now;
-    const Gt = this.G; if (o.down === undefined) o.down = feetY > 50;
+    const Gt = this.G; if (o.down === undefined) o.down = !Number.isFinite(feetY);   // no feet height given: lying down
     if (Gt.last) { const vx = (headPos.x - Gt.last.x) / Math.max(dt, 1e-3), vz = (headPos.z - Gt.last.z) / Math.max(dt, 1e-3), k = Math.min(1, dt * 10); if (Math.hypot(vx, vz) < 12) { Gt.vx += (vx - Gt.vx) * k; Gt.vz += (vz - Gt.vz) * k; } } else Gt.last = new THREE.Vector3();
     Gt.last.copy(headPos); Gt.spd = Math.hypot(Gt.vx, Gt.vz); Gt.idle += dt;
     if (Gt.lastYaw !== null) { let dy = yaw - Gt.lastYaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; Gt.lag = Math.max(-1.2, Math.min(1.2, Gt.lag - dy)); } Gt.lastYaw = yaw;
     Gt.fall = Math.max(0, Math.min(1, Gt.fall + (o.down ? dt / 0.75 : -dt / 0.95)));
     if (this.skin) this.poseSkin(headPos, yaw, hands, feetY, headQ, dt, o);
-    const tb = 0.05 + (this.back || 0) - (this.detailed && this.skin ? SELF_BACK.gear : 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up + (this.skin ? SELF_BACK.gup : 0) : 0), headPos.z + c * tb); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = feetY < 50;   // vest gear moves back with the body, matching the grab zones (bodyPt), and turns with it
+    const tb = 0.05 + (this.back || 0) - (this.detailed && this.skin ? SELF_BACK.gear : 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up + (this.skin ? SELF_BACK.gup : 0) : 0), headPos.z + c * tb); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = Number.isFinite(feetY);   // vest gear moves back with the body, matching the grab zones (bodyPt), and turns with it
     this.arms.forEach((a, i) => {
       if (a.off) return; const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
       const sh = a1.set(a.sx * 0.21, -0.24, 0.13).applyAxisAngle(UPY, yaw).add(headPos); a.glove.position.copy(h.pos); a.glove.quaternion.copy(h.quat).multiply(_q2.setFromAxisAngle(a4.set(0, 0, 1), -a.sx * 1.05)); if (this.detailed && h.pose) poseHand(a.glove, h.pose, dt);
