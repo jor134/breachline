@@ -3,6 +3,7 @@
 import { RoomHost, TICK } from '../public/js/core/host.js';
 import { buildLevel, findPath, registerMap, MAPS } from '../public/js/core/level.js';
 import { compile, check } from '../public/js/core/maps/custom.js';
+import { cleanCallsign } from '../public/js/store/callsigns.js';
 
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 const library = env => env.LIBRARY.get(env.LIBRARY.idFromName('library'));
@@ -103,7 +104,7 @@ export class Room {
     if (this.socks.delete(target)) { this.host.leave(target); this.announceOwner(); }
   }
   async fetch(req) {
-    const name = new URL(req.url).searchParams.get('name') || 'Officer';
+    const name = cleanCallsign(new URL(req.url).searchParams.get('name'));   // quest-store: preset callsigns only, no free text
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
     const id = this.next++; this.socks.set(id, server);

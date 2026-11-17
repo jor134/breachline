@@ -6,6 +6,7 @@
 <title>You Can't Hide</title>
 <meta name="theme-color" content="#0a1020">
 <link rel="manifest" href="manifest.webmanifest">
+<script src="js/store/boot.js"></script><!-- quest-store: asks for VR at once and shows a loading card until the game is ready -->
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
@@ -13,6 +14,9 @@
 <style>
 html,body{margin:0;height:100%;background:#0a1020;color:#e8eef5;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
 canvas{display:block;position:fixed;inset:0}
+/* quest-store: VR only. The 2D page is just a fallback ENTER VR button; ?classic=1 shows the full development screen */
+html.store .card>:not(h1):not(#vr):not(#vrnote):not(#status):not(.storeonly){display:none!important}
+.storeonly{display:none}html.store .storeonly{display:block;color:#b9c6d4;font-size:15px;margin:8px 0 4px}
 #ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(rgba(6,10,18,.55),rgba(6,10,18,.85));z-index:5;overflow:auto}
 .card{width:min(92vw,440px);padding:22px;background:rgba(12,17,24,.92);border:1px solid #2c4a6b;border-radius:10px}
 h1{margin:0;font-size:34px;letter-spacing:.12em}
@@ -59,7 +63,7 @@ body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:c
 </head>
 <body><pre id="errs" style="display:none;position:fixed;left:6px;bottom:6px;z-index:50;max-width:70vw;white-space:pre-wrap;font:11px monospace;color:#ff9a80;background:rgba(0,0,0,.6);padding:4px 6px;margin:0;pointer-events:none"></pre>
 <div id="ui"><div class="card">
-  <h1>YOU CAN'T HIDE</h1><div class="sub">Co-op tactical entry &middot; Quest, phone, tablet or desktop &middot; up to 4 officers</div>
+  <h1>YOU CAN'T HIDE</h1><div class="storeonly">Co-op SWAT for Meta Quest. Put on your headset: the game opens in VR.</div><div class="sub">Co-op tactical entry &middot; Quest, phone, tablet or desktop &middot; up to 4 officers</div>
   <div id="tutoffer" style="display:none"><b>New to You Can't Hide?</b> A hands-on tutorial teaches the controls in about ten minutes, then takes you on your first mission.<div class="row" style="justify-content:center;gap:14px;margin-top:8px"><button id="tutgo" style="width:auto;padding:10px 18px;margin:0">TAKE THE TUTORIAL</button><a id="tutno" href="#" style="color:#9fb0c3">No thanks</a></div></div>
   <label for="name">Callsign</label><input id="name" type="text" maxlength="14" placeholder="Officer" autocomplete="off">
   <label for="room">Room code (share with your squad)</label><input id="room" type="text" maxlength="8" autocomplete="off">

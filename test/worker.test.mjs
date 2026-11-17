@@ -11,10 +11,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 assert.equal((await worker.fetch(req('/nope'), env)).status, 404);
 assert.equal((await worker.fetch(req('/ws/ABCD', false), env)).status, 426);
-const a = await join('/ws/abcd?name=Jordan'), b = await join('/ws/ABCD?name=Sam'), c = await join('/ws/ZZZ9?name=Other');
+const a = await join('/ws/abcd?name=VIPER-27'), b = await join('/ws/ABCD?name=bad%20words'), c = await join('/ws/ZZZ9?name=Other');
 await sleep(200);
 assert.equal(a.msgs[0].t, 'welcome'); assert.equal(b.msgs[0].slot, 1); assert.equal(rooms.size, 2, 'room codes are case-insensitive and isolated');
-const snapA = a.msgs.filter(m => m.t === 's').at(-1); assert.deepEqual(snapA.P.map(p => p[1]), ['Jordan', 'Sam']);
+const snapA = a.msgs.filter(m => m.t === 's').at(-1); assert.equal(snapA.P[0][1], 'VIPER-27'); assert.match(snapA.P[1][1], /^OFFICER-\d\d$/, 'quest-store: free-text names are replaced');
 assert.equal(c.msgs.filter(m => m.t === 's').at(-1).P.length, 1);
 b.ws.send(JSON.stringify({ t: 'pose', h: [1, 1.6, 2, 0, 0, 0, 1], l: [1, 1, 2, 0, 0, 0, 1], r: null, g: [2, 0] })); a.ws.send(JSON.stringify({ t: 'start' })); a.ws.send('not json');
 await sleep(250);

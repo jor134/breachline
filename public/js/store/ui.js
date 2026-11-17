@@ -2,11 +2,16 @@
 // CREDITS (the attributions the licences ask for). Kept out of game.js so merges from main stay small: game.js only
 // adds the two menu buttons, passes unknown panel actions to act(), and forwards the 'owner' / 'booted' room messages.
 import { CREDITS } from './credits.js';
+import { WORDS, isCallsign, randomCallsign } from './callsigns.js';
 
 const PER_PAGE = 4, clip = (s, n = 60) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 
-export function makeStoreUI({ panel, S, voice, net, sfx, back, status }) {
-  const U = { owner: 0, page: 0 };
+export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoard, play }) {
+  const U = { owner: 0, page: 0, code: '', prev: null };
+  const store = !!(window.__boot && window.__boot.store);
+  let call = (() => { try { const c = localStorage.getItem('bl_name'); return isCallsign(c) ? c : randomCallsign(); } catch (e) { return randomCallsign(); } })();
+  const saveCall = () => { try { localStorage.setItem('bl_name', call); } catch (e) { } };
+  saveCall();
   const humans = () => [...S.officers.entries()].filter(([id, o]) => !o.bot && id !== S.me.id);
 
   U.menuButtons = () => [...(S.net === 'online' ? [['PLAYERS', 'st:players']] : []), ['CREDITS', 'st:credits:0']];
@@ -33,14 +38,64 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status }) {
       lines.push(clip('   by ' + c.by + ', ' + c.lic + (c.chg ? ', ' + c.chg : '')));
     }
     lines.push('', 'Full list with links: breachline credits page.');
-    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages, lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['CLOSE', 'close']]);
+    U.prev = S.panel === 'start' || (S.panel === 'credits' && U.prev) ? 'start' : null; if (U.prev) { S.panel = 'credits'; placeBoard(); }
+    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages, lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
+  }
+
+  // ---- the in-VR start menu (store build): callsign, voice, solo / online / tutorial ----
+  U.showStart = () => {
+    S.panel = 'start'; placeBoard(); panel.mesh.visible = true;
+    panel.draw("YOU CAN'T HIDE", 'Callsign ' + call, [
+      'Clear buildings, save hostages, disarm bombs.',
+      'PLAY SOLO: you lead three AI officers.',
+      'PLAY ONLINE: up to four players on a room code,',
+      '   AI officers fill the empty places.',
+      'Voice chat with your squad: ' + (voice.on ? 'ON' : 'OFF') + (voice.on && voice.err ? '  (' + voice.err.split(':')[0] + ')' : ''),
+      'Point at a button and pull the trigger.',
+    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], ['VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE', 'st:online'], ['CREDITS', 'st:credits:0'], ['PLAY SOLO', 'st:solo']]);
+  };
+  // the game redraws its own panels twice a second; while the start menu is up it redraws this instead
+  U.redraw = () => { if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); };
+  U.holdsPanel = () => S.panel === 'start' || S.panel === 'keypad' || (S.panel === 'credits' && U.prev);
+
+  // a 4-digit room code typed on a keypad (no system keyboard inside VR)
+  function showKeypad(msg) {
+    if (msg !== undefined) U.msg = msg; msg = U.msg;
+    S.panel = 'keypad'; placeBoard(); panel.mesh.visible = true;
+    if (panel.key === 'keypad' + U.code + (msg || '')) return;
+    const g = panel.c.getContext('2d'); g.fillStyle = '#0c1118'; g.fillRect(0, 0, 1024, 768); g.strokeStyle = '#3a6ea5'; g.lineWidth = 6; g.strokeRect(6, 6, 1012, 756);
+    g.textAlign = 'center'; g.fillStyle = '#e8eef5'; g.font = 'bold 56px sans-serif'; g.fillText('PLAY ONLINE', 512, 80);
+    g.fillStyle = '#8fb4dc'; g.font = '28px sans-serif'; g.fillText(msg || 'Type your squad\'s room code, or NEW for a fresh one to share.', 512, 126);
+    g.fillStyle = '#7dffa0'; g.font = 'bold 72px monospace'; g.fillText((U.code + '____').slice(0, 4).split('').join(' '), 512, 222);
+    const B = [], key = (text, act, x, y, w, col) => B.push({ x, y, w, h: 74, text, act, col });
+    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'DEL', '0', 'NEW'];
+    keys.forEach((k, i) => key(k, k === 'DEL' ? 'st:del' : k === 'NEW' ? 'st:new' : 'st:key:' + k, 222 + (i % 3) * 200, 262 + Math.floor(i / 3) * 86, 180, k.length > 1 ? '#39424e' : '#1f4a8a'));
+    key('BACK', 'st:back', 60, 676, 300, '#39424e'); key(U.code.length === 4 ? 'JOIN ROOM ' + U.code : 'JOIN', 'st:join', 380, 676, 584, U.code.length === 4 ? '#1f7a3d' : '#2a3038');
+    for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold 38px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
+    panel.btns = B; panel.key = 'keypad' + U.code + (msg || ''); panel.tex.needsUpdate = true;
+  }
+  function go(solo, tut) {
+    S.panel = null; panel.mesh.visible = false;
+    if (!solo && voice.on) voice.startMic().then(() => voice.unlock());   // asked inside VR: if the headset refuses, you can still listen
+    play(solo, call, solo ? 'SOLO' : U.code, tut);
   }
 
   // returns true when it handled the action
   U.act = act => {
     if (!act || !act.startsWith('st:')) return false;
     const [, what, arg] = act.split(':'); sfx.click();
-    if (what === 'players') showPlayers();
+    if (what === 'word') { const [w, n] = call.split('-'); call = WORDS[(WORDS.indexOf(w) + 1) % WORDS.length] + '-' + n; saveCall(); U.showStart(); }
+    else if (what === 'num') { call = call.split('-')[0] + '-' + String(Math.floor(Math.random() * 90) + 10); saveCall(); U.showStart(); }
+    else if (what === 'voice') { voice.setOn(!voice.on); U.showStart(); }
+    else if (what === 'solo') go(true, false);
+    else if (what === 'tut') go(true, true);
+    else if (what === 'online') { U.msg = ''; try { U.code = (localStorage.getItem('bl_room') || '').replace(/\D/g, '').slice(0, 4); } catch (e) { U.code = ''; } showKeypad(); }
+    else if (what === 'key') { if (U.code.length < 4) U.code += arg; showKeypad(''); }
+    else if (what === 'del') { U.code = U.code.slice(0, -1); showKeypad(''); }
+    else if (what === 'new') { U.code = String(Math.floor(Math.random() * 9000) + 1000); showKeypad('New room: tell your squad the code ' + U.code + '.'); }
+    else if (what === 'back') { U.prev = null; U.showStart(); }
+    else if (what === 'join') { if (U.code.length === 4) go(false, false); else showKeypad('The room code has four digits.'); }
+    else if (what === 'players') showPlayers();
     else if (what === 'credits') showCredits(+arg || 0);
     else if (what === 'mute') { const id = +arg; voice.mutePeer(id, !voice.isPeerMuted(id)); showPlayers(); }
     else if (what === 'boot') { if (U.owner === S.me.id) net.send({ t: 'boot', p: +arg }); setTimeout(showPlayers, 400); }
@@ -53,6 +108,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status }) {
     if (m.t === 'booted') { status('The room owner removed you from that room.'); return true; }
     return false;
   };
+  U.store = store;
   U.back = back;
   return U;
 }

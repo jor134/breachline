@@ -45,8 +45,13 @@ No store-level conflict found, but a CIPO / USPTO trademark search before launch
 - [x] 0. Branch, version scheme, separate Worker.
 - [x] 1. Compliance basics: generic weapon text, in-game CREDITS (menu) + `credits.html`, obfuscated pistol / jet,
       `privacy.html`, PLAYERS menu: mute anyone, room owner can remove a player (Worker).
-- [ ] 2. VR-only launch: straight into VR, in-VR start menu (callsign picker, room keypad, solo / online, voice), loading
-      indicator inside 4 s, 2D screen and phone / desktop modes hidden.
+- [x] 2. VR-only launch (q3): `js/store/boot.js` asks for VR the moment the page opens and draws a "LOADING" card fixed in the
+      room with raw WebGL (session in ~0.3 s in the headless test); game.js takes the same session over (`js/store/launch.js`)
+      and shows the start menu in VR: CALLSIGN (preset word + number), VOICE CHAT, TUTORIAL, PLAY ONLINE (4-digit keypad,
+      NEW makes a code), CREDITS, PLAY SOLO. The Worker accepts preset callsigns only. The 2D page is just a fallback
+      ENTER VR button; `?classic=1` brings back the full development screen (the headless tests use it).
+      Still to check on the headset (stage 5 sideload): the microphone prompt inside the packaged app, and that the
+      automatic VR request is allowed when the app is opened from its icon.
 - [ ] 3. Full-game unlock (Digital Goods API), demo = training + mansion solo, store-app check.
 - [ ] 4. Performance governor: device framebuffer scale, 72 Hz on Quest 2, quality ladder under load.
 - [ ] 5. Packaging + submission kit: twa-manifest, `/.well-known/assetlinks.json`, GitHub Action APK build, listing text,

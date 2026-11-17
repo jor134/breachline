@@ -16,7 +16,8 @@ import { createRopes } from './rope.js';
 import { createVREditor } from './vredit.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
-import { makeStoreUI } from './store/ui.js';   // quest-store: PLAYERS (mute / remove) and CREDITS in the VR menu
+import { makeStoreUI } from './store/ui.js';
+import { storeLaunch } from './store/launch.js';   // quest-store: straight into VR, start menu inside the headset   // quest-store: PLAYERS (mute / remove) and CREDITS in the VR menu
 
 const $ = id => document.getElementById(id), Q = new URLSearchParams(location.search);
 const V = () => new THREE.Vector3(), v1 = V(), v2 = V(), v3 = V(), v4 = V(), q1 = new THREE.Quaternion(), m1 = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
@@ -366,7 +367,8 @@ class Panel {
   }
 }
 const panel = new Panel();
-const storeUI = makeStoreUI({ panel, S, voice, net, sfx, status, back: () => toggleMenu(true) });
+const storeUI = makeStoreUI({ panel, S, voice, net, sfx, status, back: () => toggleMenu(true), placeBoard: () => { const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); },
+  play: (solo, name, room, tut) => { nameIn.value = name; roomIn.value = room; if (tut) TUT = true; initAudio(); return connect(solo); } });
 const coach = new Panel(); coach.mesh.scale.setScalar(0.7); coach.mesh.visible = false;   // the tutorial's own panel (VR)
 const tut = window.__tut = createTutorial({ THREE, scene, S, M: () => M, head, coach, sfx,
   hits: () => trainLine().hits, mag: k => guns[k].st.mag, yaw: () => S.mode === 'vr' ? head.yaw : S.yaw, holding: k => hands.some(h => h.item === k), botsUp: () => botsUp(),
@@ -378,7 +380,7 @@ const pvpOn = () => (S.squadT || []).some(t => t === 'tango');
 const teamBtn = () => ['TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT'), 'team'];
 const squadLine = () => (pvpOn() ? 'PvP  -  ' : 'Squad: ') + ((S.squad || []).map((n, i) => n + ((S.squadT || [])[i] === 'tango' ? ' (T)' : pvpOn() ? ' (SWAT)' : '')).join(', ') || '-');
 function showLobbyPanel() {
-  if (S.menu) return; if (S.panel === 'fit' && M.training) return showFit(false); if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
+  if (S.menu) return; if (storeUI.holdsPanel()) return storeUI.redraw(); if (S.panel === 'fit' && M.training) return showFit(false); if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
   panel.draw("YOU CAN'T HIDE", M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
     [squadLine(), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, tap B/Y = SHOUT, hold = SQUAD. Helmet = NVG.',
       'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.hint ? M.hint : M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
@@ -415,7 +417,7 @@ function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel
 function goHome() { const to = DRAFT ? 'editor.html' : './'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', S.net === 'online' ? 'Room ' + S.room : 'Solo practice', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
@@ -1056,7 +1058,8 @@ $('vr').onclick = async () => {
   } catch (e) { status('Could not start VR: ' + (e && e.message || e)); }
 };
 $('desk').onclick = () => { initAudio(); if (!$('solo').checked && voice.on) voice.startMic().then(() => voice.unlock()); connect($('solo').checked); begin('desktop'); };
-if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then(ok => { $('vr').disabled = !ok; if (!ok) $('vrnote').textContent = 'No VR headset detected on this device. Open this page in the Quest browser.'; }).catch(() => { $('vr').disabled = true; });
+if (storeLaunch({ renderer, begin, storeUI, initAudio, status, $ })) { /* store build: js/store/launch.js owns ENTER VR */ }
+else if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then(ok => { $('vr').disabled = !ok; if (!ok) $('vrnote').textContent = 'No VR headset detected on this device. Open this page in the Quest browser.'; }).catch(() => { $('vr').disabled = true; });
 else { $('vr').disabled = true; $('vrnote').textContent = 'This browser has no WebXR. Open this page in the Quest browser.'; }
 // ---------- phone / tablet controls: left thumb moves, right thumb looks, buttons do the rest ----------
 function initTouch() {
@@ -1085,7 +1088,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q2';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q3';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
