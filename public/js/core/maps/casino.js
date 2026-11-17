@@ -27,6 +27,11 @@ export const EXIT = { x0: 28, x1: 44, z0: 60, z1: 70 };
 export const BREAKER = { x: 65.87, y: 1.4, z: 4 };
 export const WINX = [22, 32, 37, 51];                              // the four breach windows (2 m wide) in the suites' south glass
 const ROPE_Z = WING.z1 + 0.55;
+// The tower is a crescent, concave toward the entrance: the playable wing is its straight middle, and at each end a solid wing curves
+// forward. ARC: the front face's radius and the sweep of each wing. arcPt(side, t, d) = [x, z] on the west (-1) or east (1) wing at
+// angle t, d metres back from the front face.
+export const ARC = { r: 45, a: 0.62, n: 12 };
+export const arcPt = (side, t, d) => { const x = WING.x0 - (ARC.r + d) * Math.sin(t), z = WING.z1 + ARC.r - (ARC.r + d) * Math.cos(t); return [side < 0 ? x : FOOT.x1 - x, z]; };
 
 // [floor, name, x0, z0, x1, z1, floor finish]
 export const ROOMS = [
@@ -66,7 +71,7 @@ export const OPENINGS = [
 ];
 const gl = []; { let a = 16; for (const x of [...WINX, 57]) { if (x - 1 > a) gl.push([FS, a, 20, Math.min(56, x - 1), 20]); a = x + 1; } }
 export const GLASS = [
-  ...gl, [FS, 16, 11, 16, 20], [FS, 56, 11, 56, 20], [FS, 56, 0, 56, 8],                           // the suites' window walls
+  ...gl,                                                                                       // the suites' south window wall (the ends are solid: the tower's curved wings carry on past them)
   [0, 14, 56, 26, 56], [0, 28, 56, 35, 56], [0, 37, 56, 44, 56], [0, 46, 56, 60, 56],          // the entrance front
   [0, 60, 32, 60, 36], [0, 60, 38, 60, 48], [0, 72, 32, 72, 48],                              // steakhouse glass
 ];
@@ -201,6 +206,10 @@ function extra({ boxes, addDoor }) {
   box('mass', W.x0, W.x1, 3 * H, F3 - 0.01, W.z0, W.z1, { f: 4 });                // and the fourteen under them
   // floor 2 (plant): solid but for the stair shaft and the roof-access corridor
   box('mass', W.x0, SHAFT.x0, POD, 3 * H, W.z0, W.z1, { f: 2 }); box('mass', SHAFT.x1, W.x1, POD, 3 * H, W.z0, W.z1, { f: 2 });
+  // the curved wings: solid, stepped boxes along each arc (down to the casino roof over the podium, to the ground beyond it)
+  for (const side of [-1, 1]) for (let i = 0; i < ARC.n; i++) { const pts = [0, 1].flatMap(k => [0, W.z1 - W.z0].map(d => arcPt(side, ARC.a * (i + k) / ARC.n, d)));
+    const x0 = Math.min(...pts.map(q => q[0])), x1 = Math.max(...pts.map(q => q[0])), z0 = Math.min(...pts.map(q => q[1])) + 0.6, z1 = Math.max(...pts.map(q => q[1])) - 0.6;
+    box('towerc', x0, x1, POD, ROOF, z0, z1); if (x0 < FOOT.x0) box('towerc', x0, FOOT.x0, 0, POD, z0, z1); if (x1 > FOOT.x1) box('towerc', FOOT.x1, x1, 0, POD, z0, z1); }
   const t = 0.25, py = 1.1;                                                     // roof parapet all round (the ropes hang over its south edge)
   box('parapet', W.x0, W.x1, ROOF, ROOF + py, W.z1 - t, W.z1); box('parapet', W.x0, W.x1, ROOF, ROOF + py, W.z0, W.z0 + t); box('parapet', W.x0, W.x0 + t, ROOF, ROOF + py, W.z0, W.z1); box('parapet', W.x1 - t, W.x1, ROOF, ROOF + py, W.z0, W.z1);
   box('parapet', W.x0, W.x1, POD, POD + py, FOOT.z1 - t, FOOT.z1);              // podium edge over the entrance

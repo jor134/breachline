@@ -7,7 +7,7 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import { setRotor } from '../audio.js';
-import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli, FLY, LIFT } from '../core/maps/casino.js';
+import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli, FLY, LIFT, ARC, arcPt } from '../core/maps/casino.js';
 
 let tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null, lifts = null, liftGlow = [], dark = false, inner = null;
 const LAMPS = [[37, 5.6, 27, 16, 22], [22, 5.4, 32, 10, 16], [52, 5.4, 32, 10, 16], [37, 5.4, 43, 10, 15], [37, 5.4, 13, 9, 14], [7, 3.0, 20, 7, 13], [34, F3 + 3.0, 15, 6, 12], [36, 8.0, 66, 12, 22], [29, POD + 3.0, 13, 5, 9]];
@@ -293,7 +293,7 @@ export default {
     for (const [x0, x1, z0, z1] of [[0, 72, 20, 56], [0, 16, 0, 20], [56, 72, 0, 20]]) flat('roofM', x0, x1, z0, z1, POD + 0.004, 0.1);
     // ---- the sky-suite wing: plant floor, the suites behind glass, two dark-glass floors, the roof ----
     for (const w of level.boxes) {
-      if (w.kind === 'mass') { if (w.f === 4) B('tglassW', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 1 / H); else B('podclad', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 0.5); }
+      if (w.kind === 'mass') { if (w.f === 4) B('tglassT', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'zZ', 1 / TILE); else B('podclad', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 0.5); }
       else if (w.kind === 'parapet') { B('podclad', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 0.5); B('cmarble', w.x0 - 0.02, w.x1 + 0.02, w.y1, w.y1 + 0.06, w.z0 - 0.02, w.z1 + 0.02, ALLF, 0.5); }
       else if (w.kind === 'core') B('concrete', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, ALLF, 0.5);
       else if (w.kind === 'fence' && w.sub === 'bars') { for (let z = w.z0; z <= w.z1 + 0.001; z += 0.13) B('cgoldM', w.x0 + 0.03, w.x1 - 0.03, w.y0, w.y1, z - 0.012, z + 0.012, 'xXzZ', 1); B('cgoldM', w.x0, w.x1, w.y1 - 0.08, w.y1, w.z0, w.z1, ALLF, 1); B('cgoldM', w.x0, w.x1, w.y0, w.y0 + 0.05, w.z0, w.z1, 'xXYzZ', 1); }
@@ -378,19 +378,20 @@ export default {
     for (const x of [27, 36, 45]) plane(root, 'EXIT', 0.6, 0.22, x, 2.5, 55.88, Math.PI, { bg: '#0f6b2c' });
     plane(root, 'SKY SUITES', 3, 0.45, 36, F3 + 2.7, 0.12, 0, { bg: '#0f1830', fg: '#d8b468' }); plane(root, 'PRESIDENTIAL', 1.6, 0.24, 34, F3 + 2.5, 10.88, Math.PI, { bg: '#0f1830', fg: '#d8b468' });
     plane(root, 'VAULT', 1.2, 0.24, 68.75, 2.6, 8.12, 0, { bg: '#3a3d42' }); plane(root, 'COUNT ROOM', 1.6, 0.24, 16.12, 2.6, 5.6, Math.PI / 2, { bg: '#3a3d42' });
-    // ---- the hotel tower behind: a crescent of blue glass, lit rooms, a crown ----
-    { const cx = 36, cz = 52, R0 = 84, R1 = 100, A = 0.48, top = ROOF - 4, n = 28, a = t => -Math.PI / 2 + t;
-      for (let i = 0; i < n; i++) { const t0 = -A + 2 * A * i / n, t1 = -A + 2 * A * (i + 1) / n, s0 = R1 * (t0 + A) / 24, s1 = R1 * (t1 + A) / 24, si0 = R0 * (t0 + A) / 24, si1 = R0 * (t1 + A) / 24, V = top / (8 * 3.6);
-        const po = (t, y) => [cx + R1 * Math.cos(a(t)), y, cz + R1 * Math.sin(a(t))], pi = (t, y) => [cx + R0 * Math.cos(a(t)), y, cz + R0 * Math.sin(a(t))], tm = (t0 + t1) / 2;
-        b('tglassT').quad(po(t0, 0), po(t1, 0), po(t1, top), po(t0, top), [Math.cos(a(tm)), 0, Math.sin(a(tm))], 1, [[s0, 0], [s1, 0], [s1, V], [s0, V]]);
-        b('tglassT').quad(pi(t0, 0), pi(t1, 0), pi(t1, top), pi(t0, top), [-Math.cos(a(tm)), 0, -Math.sin(a(tm))], 1, [[si0, 0], [si1, 0], [si1, V], [si0, V]]);
-        b('podclad').quad(pi(t0, top), po(t0, top), po(t1, top), pi(t1, top), [0, 1, 0], 0.1); b('podclad').quad(pi(t0, top + 6), po(t0, top + 6), po(t1, top + 6), pi(t1, top + 6), [0, -1, 0], 0.1);
-        for (const [p, s] of [[po, 1], [pi, -1]]) b('podclad').quad(p(t0, top), p(t1, top), p(t1, top + 7), p(t0, top + 7), [s * Math.cos(a(tm)), 0, s * Math.sin(a(tm))], 0.2); }
-      for (const t of [-A, A]) { const p0 = [cx + R0 * Math.cos(a(t)), 0, cz + R0 * Math.sin(a(t))], p1 = [cx + R1 * Math.cos(a(t)), 0, cz + R1 * Math.sin(a(t))], nn = [-Math.sin(a(t)) * Math.sign(t), 0, Math.cos(a(t)) * Math.sign(t)];
-        b('podclad').quad(p0, p1, [p1[0], top + 7, p1[2]], [p0[0], top + 7, p0[2]], nn, 0.2); }
-      plane(root, 'THE ASTERION', 34, 3.2, cx, top + 3.5, cz - R0 + 0.3, 0, { bg: null, fg: '#e8d29a', pw: 1024, ph: 96 }); }
+    // ---- the tower's curved wings: the crescent carries on past each end of the playable middle, lit rooms behind blue glass ----
+    { const D = WING.z1 - WING.z0, n = ARC.n * 2, band = 3 * H;
+      const oq = (m, q, N, sc, uv) => { const u = [q[1][0] - q[0][0], q[1][1] - q[0][1], q[1][2] - q[0][2]], v = [q[3][0] - q[0][0], q[3][1] - q[0][1], q[3][2] - q[0][2]];   // a quad wound to face N
+        const ok = (u[1] * v[2] - u[2] * v[1]) * N[0] + (u[2] * v[0] - u[0] * v[2]) * N[1] + (u[0] * v[1] - u[1] * v[0]) * N[2] > 0, f = a => ok ? a : [a[1], a[0], a[3], a[2]]; b(m).quad(...f(q), N, sc, uv ? f(uv) : null); };
+      for (const side of [-1, 1]) { const P = (t, d, y) => { const [x, z] = arcPt(side, t, d); return [x, y, z]; };
+        for (let i = 0; i < n; i++) { const t0 = ARC.a * i / n, t1 = ARC.a * (i + 1) / n, tm = (t0 + t1) / 2, inN = [-side * Math.sin(tm), 0, Math.cos(tm)];
+          for (const [d, N] of [[0, inN], [D, inN.map(q => -q)]]) { const s0 = (ARC.r + d) * t0 / TILE, s1 = (ARC.r + d) * t1 / TILE, gx = (P(t0, d, 0)[0] + P(t1, d, 0)[0]) / 2, y0 = d === 0 && gx > FOOT.x0 && gx < FOOT.x1 ? POD : 0;
+            const strip = (m, ya, yb, uv) => oq(m, [P(t0, d, ya), P(t1, d, ya), P(t1, d, yb), P(t0, d, yb)], N, 0.5, uv);
+            strip('podclad', y0, band); strip('tglassT', band, ROOF, [[s0, band / TILE], [s1, band / TILE], [s1, ROOF / TILE], [s0, ROOF / TILE]]); strip('podclad', ROOF, ROOF + 1.1); }
+          oq('roofM', [P(t0, 0, ROOF + 0.02), P(t0, D, ROOF + 0.02), P(t1, D, ROOF + 0.02), P(t1, 0, ROOF + 0.02)], [0, 1, 0], 0.1); }
+        const e0 = P(ARC.a, 0, 0), e1 = P(ARC.a, D, 0); oq('podclad', [e0, e1, [e1[0], ROOF + 1.1, e1[2]], [e0[0], ROOF + 1.1, e0[2]]], [side * Math.cos(ARC.a), 0, Math.sin(ARC.a)], 0.2); }   // the end wall
+      plane(root, 'THE ASTERION', 30, 2.8, 36, ROOF - 3.4, WING.z1 + 0.06, 0, { bg: null, fg: '#e8d29a', pw: 1024, ph: 96 }); }
     // ---- palms along the drive and the boulevard ----
-    { const P = []; for (let x = 6; x <= 66; x += 7.5) P.push([x, 83.5]); for (const x of [3, 69]) for (const z of [61, 67, 73, 79]) P.push([x, z]); for (const z of [8, 20, 32, 44]) P.push([-3, z], [75, z]);
+    { const P = []; for (let x = 6; x <= 66; x += 7.5) P.push([x, 83.5]); for (const x of [3, 69]) for (const z of [61, 67, 73, 79]) P.push([x, z]); for (const z of [38, 46]) P.push([-3, z], [75, z]);
       const tg = new THREE.CylinderGeometry(0.16, 0.26, 9, 8); tg.translate(0, 4.5, 0); const fg = new THREE.PlaneGeometry(0.7, 3.4); fg.translate(0, 1.7, 0); fg.rotateX(-Math.PI / 2); fg.rotateX(-0.45);
       const tm = new THREE.InstancedMesh(tg, MATS.palmT, P.length), fm = new THREE.InstancedMesh(fg, MATS.palmF, P.length * 8), o = new THREE.Object3D(); let k = 0;
       P.forEach(([x, z], i) => { const hgt = 0.85 + rr() * 0.35; o.position.set(x, 0, z); o.rotation.set(0, 0, 0); o.scale.set(1, hgt, 1); o.updateMatrix(); tm.setMatrixAt(i, o.matrix);
@@ -425,4 +426,4 @@ export default {
         renderer.setRenderTarget(cctv.rts[i]); renderer.render(scene, cctv.cams[i]); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; } } }
   },
 };
-const ALLF = 'xXyYzZ', v0 = new THREE.Vector3();
+const TILE = 8 * H, ALLF = 'xXyYzZ', v0 = new THREE.Vector3();
