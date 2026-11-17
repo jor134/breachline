@@ -240,8 +240,10 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   return { root, level, map, doors, look, dispose, sun, tod, gfx: G };
 }
 
-export function label(text, color = '#fff', w = 256, h = 64) {
-  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+// A text tag that always faces you. With no size given it is as wide as its text needs (so nothing is cut off) and `tall` metres high.
+export function label(text, color = '#fff', w = 0, h = 64, tall = 0.11) {
+  const c = document.createElement('canvas'), auto = !w; if (auto) { const m = c.getContext('2d'); m.font = 'bold 34px sans-serif'; w = Math.max(72, Math.ceil(m.measureText(text).width) + 30); }
+  c.width = w; c.height = h; const g = c.getContext('2d');
   g.font = 'bold 34px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, 0, w, h); g.fillStyle = color; g.fillText(text, w / 2, h / 2);
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true, toneMapped: false })); s.scale.set(0.9, 0.9 * h / w, 1); s.renderOrder = 10; return s;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, transparent: true, toneMapped: false })); if (auto) s.scale.set(tall * w / h, tall, 1); else s.scale.set(0.9, 0.9 * h / w, 1); s.renderOrder = 10; return s;
 }

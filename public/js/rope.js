@@ -3,7 +3,9 @@
 // rope, your body moves); let go and the harness holds you. The left stick does the same for anyone who prefers it.
 // Phone and desktop: USE near a rope clips in, forward / back (W / S or the thumb pad) climb and descend, USE at the
 // bottom swings in through a broken window (or steps off at the top). At a breach window the glass must be shot or kicked
-// in first. The fast rope from the helicopter lets you off on the roof by itself.
+// in first. The fast rope from the helicopter lets you off on the roof by itself. A rope can pass a breach window on its way down
+// (r.mid): it stops there for a moment, you can swing in or carry on down, and from inside you can get back on through the broken
+// window. Holding the stick or key runs the rope faster the longer you hold it.
 export function createRopes(ctx) {
   const { THREE, S, rig, head, hands, sfx, buzz, hint } = ctx, v = new THREE.Vector3();
   const R = () => (ctx.M().ropes || []);
@@ -25,11 +27,15 @@ export function createRopes(ctx) {
   // VR: an empty hand gripping near a rope takes hold of it (clipping in if you are not on it yet). True if it did.
   function grabVR(h) {
     if (h.item || ctx.gunIn(h) || S.me.down) return false;
-    const i = near(h.pos, 0.4); if (i < 0) return false;
+    let i = near(h.pos, 0.4); if (i < 0 && !S.rope) { const j = near(h.pos, 0.85); if (j >= 0 && atMid(R()[j], S.feetY) && winOpen(R()[j])) i = j; }   // reaching out of a broken window
+    if (i < 0) return false; if (!S.rope && !usable(R()[i])) return false;
     if (S.rope && S.rope.i !== i) return false;
     if (!S.rope) clip(i, S.feetY);
     h.rope = { y: h.pos.y, t: performance.now() }; buzz(h, 0.5, 40); return true;
   }
+  const atMid = (r, y) => !!r.mid && Math.abs(y - r.mid.y) < 0.4;
+  // can you get on this rope from where you stand: at its top, or at its window once the glass is out (or anywhere on a plain rope)
+  const usable = r => r.heli || Math.abs(S.feetY - r.top) < 1.3 || (atMid(r, S.feetY) && winOpen(r));
   function releaseVR(h) { if (h.rope) { h.rope = null; return true; } return false; }
   // every frame while on a rope
   function tick(dt, L) {
@@ -41,17 +47,20 @@ export function createRopes(ctx) {
       const hs = hands.filter(h => h.rope && h.active && h.in.grip > 0.5).sort((a, b) => b.rope.t - a.rope.t), h = hs[0];
       for (const q of hands) if (q.rope && !(q.in.grip > 0.5)) q.rope = null;
       if (h) y -= h.pos.y - h.rope.y;                                   // pull the rope up: you go down
-      if (L && Math.abs(L.sy) > 0.3 && !hs.length) y -= L.sy * 1.3 * dt;  // the stick, for anyone not pulling (back = down)
-    } else y += (ctx.climb() || 0) * 1.5 * dt;
+      const sy = L && Math.abs(L.sy) > 0.3 && !hs.length ? L.sy : 0; S.rope.run = sy > 0 ? (S.rope.run || 0) + dt : 0;
+      if (sy) y -= sy * (sy > 0 ? Math.min(5, 1.3 + S.rope.run * 1.6) : 1.3) * dt;  // the stick, for anyone not pulling (back = down, faster the longer it is held)
+    } else { const c = ctx.climb() || 0; S.rope.run = c < 0 ? (S.rope.run || 0) + dt : 0; y += c * (c < 0 ? Math.min(5, 1.5 + S.rope.run * 1.6) : 1.5) * dt; }
+    if (r.mid) { const m = r.mid.y, now = performance.now(); if ((y0 - m) * (y - m) < 0 || (Math.abs(y0 - m) < 1e-6 && now < (S.rope.stopT || 0))) { if (Math.abs(y0 - m) > 1e-6) S.rope.stopT = now + 900; y = m; S.rope.run = 0; } }   // pause at the window
     y = Math.max(r.bot, Math.min(r.top, y)); S.rope.y = y; rig.position.y += y - y0; S.feetY = y;
     if (S.mode === 'vr') for (const q of hands) if (q.rope) q.rope.y = q.pos.y + (y - y0);
     // ways off: the fast rope lets you off at the bottom; at a breach window lean in (VR) or USE; at the top step back over the parapet
     const [hx, hz] = hangAt(r), lean = ((hx - head.pos.x) * r.out[0] + (hz - head.pos.z) * r.out[1]);   // how far the head has moved in toward the building
     const atBot = y - r.bot < 0.35, atTop = r.top - y < 0.35, fwd = S.mode === 'vr' && L && L.sy < -0.7;
-    if (r.heli && atBot) { off(r.step); return true; }
-    if (atBot && r.winAt) {
+    const win = r.mid ? (Math.abs(y - r.mid.y) < 0.35 ? r.mid.step : null) : (atBot && r.winAt ? r.step : null);   // level with a breach window
+    if (atBot && !win && (r.heli || r.mid)) { off(r.step); return true; }   // the bottom: let off onto the roof below
+    if (win) {
       if (!winOpen(r)) S.ropeHint = S.mode === 'vr' ? 'SHOOT OR KICK THE GLASS IN' : 'SHOOT OR KICK (Q) THE GLASS IN';
-      else { S.ropeHint = S.mode === 'vr' ? 'LEAN IN TO SWING INSIDE' : 'USE TO SWING INSIDE'; if (S.mode === 'vr' && (lean > 0.35 || fwd)) off(r.step); }
+      else { S.ropeHint = S.mode === 'vr' ? 'LEAN IN TO SWING INSIDE' : 'USE TO SWING INSIDE'; if (S.mode === 'vr' && (lean > 0.35 || fwd)) off(win); }
     } else if (atTop && !r.heli) { S.ropeHint = S.mode === 'vr' ? 'LEAN IN TO CLIMB OVER' : 'USE TO CLIMB OVER'; if (S.mode === 'vr' && (lean > 0.4 || fwd)) off(r.top0); }
     else if (atTop && r.heli) S.ropeHint = S.mode === 'vr' ? 'PULL THE ROPE UP TO LOWER YOURSELF' : 'BACK / S TO GO DOWN';
     else S.ropeHint = '';
@@ -60,13 +69,14 @@ export function createRopes(ctx) {
   // desktop / phone USE: clip in near a rope, or get off it where you can
   function use() {
     if (S.me.down) return false;
-    if (S.rope) { const r = R()[S.rope.i]; if (S.rope.y - r.bot < 0.4 && r.winAt && winOpen(r)) { off(r.step); return true; } if (r.top - S.rope.y < 0.4 && !r.heli) { off(r.top0); return true; } return true; }
-    const p = v.copy(head.pos); p.y = S.feetY + 1; const i = near(p, 1.4); if (i < 0) return false;
+    if (S.rope) { const r = R()[S.rope.i], win = r.mid ? (Math.abs(S.rope.y - r.mid.y) < 0.4 ? r.mid.step : null) : (S.rope.y - r.bot < 0.4 && r.winAt ? r.step : null);
+      if (win && winOpen(r)) { off(win); return true; } if (r.top - S.rope.y < 0.4 && !r.heli) { off(r.top0); return true; } return true; }
+    const p = v.copy(head.pos); p.y = S.feetY + 1; const i = near(p, 1.4); if (i < 0 || !usable(R()[i])) return false;
     clip(i, S.feetY); return true;
   }
   // what to say when you are near a rope and not on it
   function prompt() {
-    if (S.rope || S.me.down) return ''; const p = v.copy(head.pos); p.y = S.feetY + 1; const i = near(p, 1.6); if (i < 0) return '';
+    if (S.rope || S.me.down) return ''; const p = v.copy(head.pos); p.y = S.feetY + 1; const i = near(p, 1.6); if (i < 0 || !usable(R()[i])) return '';
     return S.mode === 'vr' ? (R()[i].arm ? 'GRIP THE ROPE OR ITS ARM WITH AN EMPTY HAND' : 'GRIP THE ROPE WITH AN EMPTY HAND') : 'USE: CLIP IN TO THE ROPE';
   }
   function reset() { S.rope = null; for (const h of hands) h.rope = null; S.ropeHint = ''; }

@@ -9,8 +9,8 @@ import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import { setRotor } from '../audio.js';
 import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli, FLY, LIFT } from '../core/maps/casino.js';
 
-let tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null, lifts = null, liftGlow = [], dark = false;
-const LAMPS = [[37, 5.6, 27, 16, 22], [22, 5.4, 32, 10, 16], [52, 5.4, 32, 10, 16], [37, 5.4, 43, 10, 15], [37, 5.4, 13, 9, 14], [7, 3.0, 20, 7, 13], [34, F3 + 3.0, 15, 6, 12], [36, 8.0, 66, 12, 22]];
+let tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null, lifts = null, liftGlow = [], dark = false, inner = null;
+const LAMPS = [[37, 5.6, 27, 16, 22], [22, 5.4, 32, 10, 16], [52, 5.4, 32, 10, 16], [37, 5.4, 43, 10, 15], [37, 5.4, 13, 9, 14], [7, 3.0, 20, 7, 13], [34, F3 + 3.0, 15, 6, 12], [36, 8.0, 66, 12, 22], [29, POD + 3.0, 13, 5, 9]];
 const DUSK = {
   sky: [[0, '#151a3d'], [0.28, '#33336e'], [0.42, '#8c5585'], [0.475, '#ec8558'], [0.5, '#ffbf78'], [0.53, '#2a2330'], [1, '#18161d']], skyR: 430, moon: [130, 120, -150],
   fog: [0x3b3049], fogD: [0.0026, 0.006], sunAt: [36, 28], sunFrom: [-95, 30, 25], shadow: 70, sunCol: 0xff9e6c, sunK: 1.1, hemi: 1.05, hemiSky: 0xb6b0d6, hemiGround: 0x8a8079,
@@ -140,7 +140,7 @@ const furn = {
 };
 
 // ---------- the casino ceiling: a dropped white soffit with swirling coves cut into it ----------
-const SOFFIT = 6.5, COVE_TOP = 7.15;
+const SOFFIT = 6.5, COVE_TOP = 6.9;   // well under the roof slab, so nothing shows through it from the tower
 const COVES = [[37, 27, 6.2, 6.2, 0], [24, 13.5, 3.6, 2.4, 0.5], [50, 13.5, 3.6, 2.4, -0.5], [24, 38.5, 3.8, 2.5, -0.45], [50, 38.5, 3.8, 2.5, 0.45], [37, 44.2, 4.2, 2.0, 0], [18.5, 25.5, 2.2, 3.4, 0], [55.5, 25.5, 2.2, 3.4, 0]];
 const inCove = (x, z, m = 0.25) => COVES.some(([cx, cz, rx, rz, a]) => { const dx = x - cx, dz = z - cz, u = dx * Math.cos(a) + dz * Math.sin(a), v = -dx * Math.sin(a) + dz * Math.cos(a); return (u / (rx + m)) ** 2 + (v / (rz + m)) ** 2 < 1; });
 const coveAt = ([cx, cz, rx, rz, a], t, d = 0) => { const u = (rx + d) * Math.cos(t), v = (rz + d) * Math.sin(t); return [cx + u * Math.cos(a) - v * Math.sin(a), cz + u * Math.sin(a) + v * Math.cos(a)]; };
@@ -233,7 +233,7 @@ export default {
   outer: w => w.f >= 3 ? 'tglassW1' : 'podclad',
   inner: w => {
     if (w.x0 >= CAR.x0 - 0.3 && w.x1 <= CAR.x1 + 0.3 && w.z1 <= CAR.z1 + 0.2) return 'steelwall';
-    if (w.f >= 3) return 'plaster';
+    if (w.f >= 3) return 'plaster'; if (w.f === 2) return 'bohwall';
     if (w.z1 < 7.95 || (w.x0 > 60.05 && w.z0 >= 7.95 && w.z1 <= 20.3)) return 'bohwall';   // back of house and the cage
     if (w.f === 0 && w.x0 < 13.9 && w.x1 <= 14.3 && w.z0 >= 7.7 && w.z1 <= 32.3) return 'goldwall';
     return 'cwall';
@@ -276,7 +276,7 @@ export default {
     if (cctv) { cctv.on = !night; for (const m of cctv.mats) m.color.set(night ? 0x000000 : nvg ? 0x8cff9c : 0xb8c8e0); }
   },
   scenery({ b, ao, root, hills, hillM, level, MATS }) {
-    signs = []; seed = 11; lifts = null; liftGlow = [];
+    signs = []; seed = 11; lifts = null; liftGlow = []; inner = { root, mat: MATS.cglow, list: null, on: true };
     const C = curves(b), flat = (m, x0, x1, z0, z1, y = 0, s = 0.2) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
     const down = (m, x0, x1, z0, z1, y, s = 0.5) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, -1, 0], s);
     // ---- ground: paving round the podium, the driveway under the canopy, the boulevard ----
@@ -290,7 +290,7 @@ export default {
     B('podclad', -0.12, 0.1, H, POD + 0.4, 0, FOOT.z1, 'xY', 0.5); B('podclad', FOOT.x1 - 0.1, FOOT.x1 + 0.12, H, POD + 0.4, 0, FOOT.z1, 'XY', 0.5);
     B('podclad', 0, FOOT.x1, H, POD + 0.4, -0.12, 0.1, 'zY', 0.5); B('podclad', 0, FOOT.x1, H, CANOPY.y + 0.9, FOOT.z1 - 0.1, FOOT.z1 + 0.12, 'ZY', 0.5);
     for (let x = 0.75; x < FOOT.x1; x += 1.5) B('podclad', x - 0.06, x + 0.06, H, POD + 0.4, FOOT.z1 + 0.12, FOOT.z1 + 0.55, 'xXZy', 1);   // fins on the front band
-    for (const [x0, x1, z0, z1] of [[0, 72, 20, 56], [0, 16, 0, 20], [56, 72, 0, 20]]) flat('roofM', x0, x1, z0, z1, POD + 0.3, 0.1);
+    for (const [x0, x1, z0, z1] of [[0, 72, 20, 56], [0, 16, 0, 20], [56, 72, 0, 20]]) flat('roofM', x0, x1, z0, z1, POD + 0.004, 0.1);
     // ---- the sky-suite wing: plant floor, the suites behind glass, two dark-glass floors, the roof ----
     for (const w of level.boxes) {
       if (w.kind === 'mass') { if (w.f === 4) B('tglassW', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 1 / H); else B('podclad', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 0.5); }
@@ -305,14 +305,14 @@ export default {
     // rope anchors: a davit on the south parapet for each breach window, its rope down the glass
     for (const r of ROPES) { if (r.heli) continue; const pz = WING.z1;
       B('steel', r.x - 0.1, r.x + 0.1, ROOF, ROOF + 1.7, pz - 0.6, pz - 0.4, ALLF, 1); B('steel', r.x - 0.06, r.x + 0.06, ROOF + 1.6, ROOF + 1.72, pz - 0.6, r.z + 0.05, ALLF, 1); B('steel', r.x - 0.25, r.x + 0.25, ROOF, ROOF + 0.06, pz - 0.85, pz - 0.15, ALLF, 1);
-      B('ropeM', r.x - 0.025, r.x + 0.025, r.bot - 0.4, ROOF + 1.6, r.z - 0.025, r.z + 0.025, 'xXzZ', 1); }
+      B('ropeM', r.x - 0.025, r.x + 0.025, r.bot + 0.05, ROOF + 1.6, r.z - 0.025, r.z + 0.025, 'xXzZ', 1); }
     // ---- the fire stairs: three flights of a scissor stair and the landings between them ----
     { const N = 16, RUN = SHAFT.s - SHAFT.n;
-      for (let k = 0; k < 3; k++) { const west = k % 2 === 0, x0 = west ? SHAFT.x0 + 0.08 : SHAFT.mid + 0.1, x1 = west ? SHAFT.mid - 0.1 : SHAFT.x1 - 0.08;
+      for (let k = 0; k < 2; k++) { const west = k % 2 === 0, x0 = west ? SHAFT.x0 + 0.08 : SHAFT.mid + 0.1, x1 = west ? SHAFT.mid - 0.1 : SHAFT.x1 - 0.08;
         for (let i = 0; i < N; i++) { const top = k * H + (i + 1) * H / N, za = west ? SHAFT.s - (i + 1) * RUN / N : SHAFT.n + i * RUN / N, zb = za + RUN / N; B('concrete', x0, x1, top - 0.04, top, za, zb, 'xXYzZ', 1); B('padY', x0, x1, top - 0.002, top + 0.001, west ? zb - 0.05 : za, west ? zb : za + 0.05, 'Y', 1); }
         const zl = west ? SHAFT.s : SHAFT.n, zh = west ? SHAFT.n : SHAFT.s, y0 = k * H - 0.2, y1 = k * H + H - 0.2; b('concrete').quad([x0, y0, zl], [x1, y0, zl], [x1, y1, zh], [x0, y1, zh], [0, -0.857, west ? -0.514 : 0.514], 0.5); }
-      for (const [y, z0, z1] of [[H, SHAFT.z0, SHAFT.n], [2 * H, SHAFT.s, SHAFT.z1], [F3, SHAFT.z0, SHAFT.n]]) B('concrete', SHAFT.x0, SHAFT.x1, y - 0.2, y, z0, z1, 'Yy' + (z0 > 0 ? 'z' : 'Z'), 0.5);
-      plane(root, 'SUITES 3', 1.2, 0.3, SHAFT.x1 - 0.06, F3 + 2.2, 1.8, -Math.PI / 2, { bg: '#c22a24' }); plane(root, 'CASINO 1', 1.2, 0.3, SHAFT.x0 + 0.06, 2.2, 7.3, Math.PI / 2, { bg: '#c22a24' }); }
+      for (const [y, z0, z1] of [[H, SHAFT.z0, SHAFT.n], [2 * H, SHAFT.s, SHAFT.z1]]) B('concrete', SHAFT.x0, SHAFT.x1, y - 0.2, y, z0, z1, 'Yy' + (z0 > 0 ? 'z' : 'Z'), 0.5);
+      plane(root, 'ROOF ACCESS', 1.6, 0.3, 29, POD + 2.55, WING.z1 + 0.13, 0, { bg: '#c22a24' }); plane(root, 'CASINO \u25BC', 1.4, 0.3, 26.13, POD + 2.3, 10, Math.PI / 2, { bg: '#c22a24' }); plane(root, 'CASINO 1', 1.2, 0.3, SHAFT.x0 + 0.06, 2.2, 7.3, Math.PI / 2, { bg: '#c22a24' }); }
     // ---- the service lift: call panels and a hatch light in each car ----
     for (const y of [0, F3]) { B('steelwall', CAR.x1 - 0.06, CAR.x1 - 0.04, y + 1.0, y + 1.5, CAR.z1 - 0.7, CAR.z1 - 0.4, 'x', 1); b('cglow').box(CAR.x1 - 0.07, CAR.x1 - 0.06, y + 1.2, y + 1.3, CAR.z1 - 0.6, CAR.z1 - 0.5, 'x', 1); b('cglow').box(CAR.x0 + 0.5, CAR.x1 - 0.5, y + H - 0.03, y + H - 0.02, CAR.z0 + 0.6, CAR.z1 - 0.6, 'y', 1);
       plane(root, y ? 'SERVICE  1  ▼' : 'SERVICE  3  ▲', 1.6, 0.22, (CAR.x0 + CAR.x1) / 2, y + 3.3, CAR.z1 + 0.12, 0, { bg: '#0d0f12', fg: '#ff9a3a' }); }
@@ -336,8 +336,8 @@ export default {
       // the crystal chandelier: rings of strands hanging into the lounge cove, longest in the middle
       const strands = []; for (let r = 0.25; r <= 4.4; r += 0.3) { const n = Math.max(6, Math.round(6.283 * r / 0.26)); for (let i = 0; i < n; i++) { const a = i * 6.283 / n + r, L = 0.35 + 2.7 * Math.sqrt(Math.max(0, 1 - (r / 4.6) ** 2)) * (0.85 + rr() * 0.3); strands.push([37 + r * Math.cos(a), 27 + r * Math.sin(a), L]); } }
       const sg = new THREE.BoxGeometry(0.022, 1, 0.022); sg.translate(0, -0.5, 0); const im = new THREE.InstancedMesh(sg, MATS.crystal, strands.length), o = new THREE.Object3D();
-      strands.forEach(([x, z, L], i) => { o.position.set(x, COVE_TOP - 0.02, z); o.scale.set(1, L, 1); o.updateMatrix(); im.setMatrixAt(i, o.matrix); }); root.add(im);
-      const bg = new THREE.OctahedronGeometry(0.05); const beads = new THREE.InstancedMesh(bg, MATS.crystal, strands.length); strands.forEach(([x, z, L], i) => { o.position.set(x, COVE_TOP - 0.02 - L, z); o.scale.set(1, 1.6, 1); o.updateMatrix(); beads.setMatrixAt(i, o.matrix); }); root.add(beads);
+      strands.forEach(([x, z, L], i) => { o.position.set(x, COVE_TOP - 0.02, z); o.scale.set(1, L, 1); o.updateMatrix(); im.setMatrixAt(i, o.matrix); }); root.add(im); inner.im = [im];
+      const bg = new THREE.OctahedronGeometry(0.05); const beads = new THREE.InstancedMesh(bg, MATS.crystal, strands.length); strands.forEach(([x, z, L], i) => { o.position.set(x, COVE_TOP - 0.02 - L, z); o.scale.set(1, 1.6, 1); o.updateMatrix(); beads.setMatrixAt(i, o.matrix); }); root.add(beads); inner.im.push(beads);
       C.ring('cgoldM', 37, 27, 4.4, 4.7, 0, 6.283, COVE_TOP - 0.03, 40, true);
       // high-limit room: gold quilted ceiling with a lit edge and two gold chandeliers
       down('quilt', 0.12, 13.9, 8.12, 31.9, H - 0.03, 0.5);
@@ -379,7 +379,7 @@ export default {
     plane(root, 'SKY SUITES', 3, 0.45, 36, F3 + 2.7, 0.12, 0, { bg: '#0f1830', fg: '#d8b468' }); plane(root, 'PRESIDENTIAL', 1.6, 0.24, 34, F3 + 2.5, 10.88, Math.PI, { bg: '#0f1830', fg: '#d8b468' });
     plane(root, 'VAULT', 1.2, 0.24, 68.75, 2.6, 8.12, 0, { bg: '#3a3d42' }); plane(root, 'COUNT ROOM', 1.6, 0.24, 16.12, 2.6, 5.6, Math.PI / 2, { bg: '#3a3d42' });
     // ---- the hotel tower behind: a crescent of blue glass, lit rooms, a crown ----
-    { const cx = 36, cz = 52, R0 = 84, R1 = 100, A = 0.48, top = 132, n = 28, a = t => -Math.PI / 2 + t;
+    { const cx = 36, cz = 52, R0 = 84, R1 = 100, A = 0.48, top = ROOF - 4, n = 28, a = t => -Math.PI / 2 + t;
       for (let i = 0; i < n; i++) { const t0 = -A + 2 * A * i / n, t1 = -A + 2 * A * (i + 1) / n, s0 = R1 * (t0 + A) / 24, s1 = R1 * (t1 + A) / 24, si0 = R0 * (t0 + A) / 24, si1 = R0 * (t1 + A) / 24, V = top / (8 * 3.6);
         const po = (t, y) => [cx + R1 * Math.cos(a(t)), y, cz + R1 * Math.sin(a(t))], pi = (t, y) => [cx + R0 * Math.cos(a(t)), y, cz + R0 * Math.sin(a(t))], tm = (t0 + t1) / 2;
         b('tglassT').quad(po(t0, 0), po(t1, 0), po(t1, top), po(t0, top), [Math.cos(a(tm)), 0, Math.sin(a(tm))], 1, [[s0, 0], [s1, 0], [s1, V], [s0, V]]);
@@ -408,6 +408,8 @@ export default {
   // the helicopter's rotors turn; once nobody is aboard for a few seconds in a live mission it climbs away (and comes back for anyone who spawns in it).
   // The CCTV wall refreshes one camera at a time, only while someone stands in the security office with the power on.
   tick(dt, { S, head, officers, renderer, scene, level }) {
+    // from up the tower the casino's ceiling lights sit a hair under its roof, too close for a coarse depth buffer to separate: hide them from up there
+    if (inner) { if (!inner.list) inner.list = [...inner.im, ...inner.root.children.filter(m => m.material === inner.mat)]; const on = head.pos.y < 25; if (on !== inner.on) { inner.on = on; for (const m of inner.list) m.visible = on; } }
     if (lifts) for (const L of lifts) { const di = level.doors.findIndex(d => d.lift === L.k), to = S.doorOpen && S.doorOpen[di] ? 1 : 0; if (L.cur === to) continue; L.cur = L.cur < 0 ? to : L.cur + Math.sign(to - L.cur) * Math.min(Math.abs(to - L.cur), dt * 1.1);
       const e = L.cur * L.cur * (3 - 2 * L.cur); for (const d of L.doors) { d.o.position.z = d.s * 0.8 * e; d.o.scale.z = 1 - (d.inner ? 0.45 : 0.3) * e; /* the panels telescope as they open, so they stay inside the wall */ } }
     if (heli) { const h = heli; h.rotor.rotation.y += dt * 7; h.tail.rotation.z += dt * 30; h.beacon.visible = (performance.now() % 1200) < 150;

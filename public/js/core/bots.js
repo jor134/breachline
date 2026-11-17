@@ -11,6 +11,9 @@ const CUFFABLE = { s: 1, k: 1, y: 1, i: 1 }, DONE = { d: 1, u: 1, j: 1 };
 const ang = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
 
+// The ways down a rope: from a (stand here, clip in) down to height y, then step to b. win: a window to break at the 'end' of the
+// leg (rappelling in) or at its 'start' (going out through it). A rope with a window part way (r.mid) is two legs.
+const ropeLegs = r => r.mid ? [{ a: r.top0, y: r.mid.y, b: r.mid.step, win: 'end' }, { a: r.mid.step, y: r.bot, b: r.step, win: 'start' }] : [{ a: r.top0, y: r.bot, b: r.step, win: r.winAt ? 'end' : null }];
 export const BotMixin = {
   // Fill the squad: four minus the human SWAT players, at most three bots. Called from reset().
   spawnBots() {
@@ -194,35 +197,36 @@ export const BotMixin = {
   botLook(p, dt) { const b = p.bot; b.pitch *= 0.9; if (b.heard && this.t - b.heard[3] < 4) this.botFace(p, b.heard[0], b.heard[1], dt); },
   botPath(p, x, z, y) {
     const b = p.bot; b.path = findPath(this.level, b.x, b.z, b.y, x, z, y); b.pi = 1; b.ropeGo = null;
-    if (!b.path && this.M.ropes) { const r = this.ropePlan(b.x, b.z, b.y, x, z, y, 2); if (r) { b.path = r.path; b.ropeGo = r.i; b.pi = 1; } }   // no way on foot: down a rope
+    if (!b.path && this.M.ropes) { const r = this.ropePlan(b.x, b.z, b.y, x, z, y, 2); if (r) { b.path = r.path; b.ropeGo = r.i; b.ropeLeg = r.k; b.pi = 1; } }   // no way on foot: down a rope
     return !!b.path;
   },
   // The first rope on the way from (sx, sz, sy) to (tx, tz, ty): reachable on foot, and from where it lands the target is
   // reachable on foot or by another rope (depth ropes at most). Returns { i, path } (the walk to the rope's top) or null.
   ropePlan(sx, sz, sy, tx, tz, ty, depth) {
     let best = null, bc = Infinity;   // the cheapest: a short walk, landing near the target, and a rope nobody else is on
-    for (const [i, r] of this.M.ropes.entries()) {
-      if (Math.abs(r.top - sy) > 1.6) continue; const path = findPath(this.level, sx, sz, sy, r.top0[0], r.top0[1], r.top0[2]); if (!path) continue;
-      const e = path[path.length - 1]; if (Math.hypot(e[0] - r.top0[0], e[1] - r.top0[1]) > 1.2) continue;
-      const [x2, z2, y2] = r.step, on = findPath(this.level, x2, z2, y2, tx, tz, ty), ok = on && Math.hypot(on[on.length - 1][0] - tx, on[on.length - 1][1] - tz) < 1.5;
+    for (const [i, r] of this.M.ropes.entries()) for (const [k, g] of ropeLegs(r).entries()) {
+      if (Math.abs(g.a[2] - sy) > 1.6) continue; const path = findPath(this.level, sx, sz, sy, g.a[0], g.a[1], g.a[2]); if (!path) continue;
+      const e = path[path.length - 1]; if (Math.hypot(e[0] - g.a[0], e[1] - g.a[1]) > 1.2) continue;
+      const [x2, z2, y2] = g.b, on = findPath(this.level, x2, z2, y2, tx, tz, ty), ok = on && Math.hypot(on[on.length - 1][0] - tx, on[on.length - 1][1] - tz) < 1.5;
       if (!ok && !(depth > 1 && this.ropePlan(x2, z2, y2, tx, tz, ty, depth - 1))) continue;
       const users = this.bots().filter(q => q.bot.rope ? q.bot.rope.i === i : q.bot.ropeGo === i).length, c = path.length * 0.5 + (ok ? on.length * 0.5 : 20) + users * 8;
-      if (c < bc) { bc = c; best = { i, path }; }
+      if (c < bc) { bc = c; best = { i, k, path }; }
     }
     return best;
   },
-  // Rappelling: hang off the rope facing the building and let it run, break the window at the bottom, step in (or onto the roof).
+  // Rappelling: hang off the rope facing the building and let it run to the end of this leg, break the window there if it is one, step off.
   botRope(p, dt) {
-    const b = p.bot, R = b.rope, r = this.M.ropes[R.i], hx = r.x + r.out[0] * 0.4, hz = r.z + r.out[1] * 0.4;
+    const b = p.bot, R = b.rope, r = this.M.ropes[R.i], g = ropeLegs(r)[R.k || 0], hx = r.x + r.out[0] * 0.4, hz = r.z + r.out[1] * 0.4;
     b.x += (hx - b.x) * Math.min(1, dt * 6); b.z += (hz - b.z) * Math.min(1, dt * 6); b.yaw = Math.atan2(-r.out[0], -r.out[1]); b.crouch = false; b.spd = 0; b.aim = 0;
-    if (R.ph === 'down') { b.y = Math.max(r.bot, b.y - 1.7 * dt); if (b.y <= r.bot) { R.ph = 'win'; R.t = 0; } }
+    if (R.ph === 'down') { b.y = Math.max(g.y, b.y - (b.y - g.y > 8 ? 4.5 : 1.7) * dt); if (b.y <= g.y) { R.ph = 'win'; R.t = 0; } }
     else if ((R.t += dt) > 0.5) {
-      const w = r.winAt ? this.level.doors.find(d => d.win && Math.abs(d.cx - r.winAt[0]) < 0.1 && Math.abs(d.cz - r.winAt[1]) < 0.1) : null;
+      const w = g.win === 'end' ? this.ropeWin(r) : null;
       if (w && !this.doorOpen[w.id]) { p.y = b.y; this.shatter(w.id, p); this.ev({ e: 'kick', d: w.id, ok: true, p: p.id }); R.t = 0.2; }
-      else { [b.x, b.z, b.y] = r.step; b.rope = null; b.path = null; b.ropeGo = null; }
+      else { [b.x, b.z, b.y] = g.b; b.rope = null; b.path = null; b.ropeGo = null; }
     }
     p.hx = b.x; p.hz = b.z; p.y = b.y;
   },
+  ropeWin(r) { return r.winAt ? this.level.doors.find(d => d.win && Math.abs(d.cx - r.winAt[0]) < 0.1 && Math.abs(d.cz - r.winAt[1]) < 0.1) : null; },
   botGo(p, x, z, y, dt, sp) { const b = p.bot; if (!b.path && !this.botPath(p, x, z, y)) return false; return this.botWalk(p, dt, sp, 0); },
   // Walk the path, stopping `stop` metres short; a closed door on the way is handled on the spot (wire check, pick or kick, open).
   botWalk(p, dt, sp, stop, skipDoor = -1, inner = false) {
@@ -234,7 +238,9 @@ export const BotMixin = {
       if (did >= 0) { const T = { k: 'door', how: this.doorLocked[did] ? 'pick' : 'open', d: did, ph: 'go', t: 0, sub: true }; b.sub = { T }; b.doorT = 0; break; }
     }
     if (!inner && b.sub) { const s = b.sub; if (!this.botDoor(p, s.T, dt)) return true; b.sub = null; b.doorT = null; b.path = null; return false; }   // a fresh path from here once it is open
-    if (b.ropeGo != null) { const r = this.M.ropes[b.ropeGo]; if (Math.hypot(r.top0[0] - b.x, r.top0[1] - b.z) < 0.9 && Math.abs(r.top - b.y) < 1) { b.rope = { i: b.ropeGo, ph: 'down', t: 0 }; b.ropeGo = null; b.path = null; this.ev({ e: 'clip', p: p.id }); return true; } }   // at the anchor: clip in
+    if (b.ropeGo != null) { const r = this.M.ropes[b.ropeGo], g = ropeLegs(r)[b.ropeLeg || 0];   // at the anchor (or inside the window): clip in, breaking the glass first if the way out is through it
+      if (Math.hypot(g.a[0] - b.x, g.a[1] - b.z) < 0.9 && Math.abs(g.a[2] - b.y) < 1) { const w = g.win === 'start' ? this.ropeWin(r) : null; if (w && !this.doorOpen[w.id]) { this.shatter(w.id, p); this.ev({ e: 'kick', d: w.id, ok: true, p: p.id }); }
+        b.rope = { i: b.ropeGo, k: b.ropeLeg || 0, ph: 'down', t: 0 }; b.ropeGo = null; b.path = null; this.ev({ e: 'clip', p: p.id }); return true; } }
     const moving = this.walk(b, dt, sp, false, true);
     p.hx = b.x; p.hz = b.z; p.y = b.y;
     return moving;

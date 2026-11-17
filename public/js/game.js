@@ -492,7 +492,7 @@ function applySnap(m) {
   nadeView(m.G || [], m.SM || []);
   for (const [id, name, , hp, down, h, l, r, g, w] of m.P) {
     if (id === S.me.id) { const tm = w & 2048 ? 'tango' : 'swat'; if (tm !== S.me.team) { S.me.team = tm; myBody.setTeam(tm); } S.me.locks = w >> 13 & 3; S.me.traps = w >> 15 & 3; const hd = !!(w & 4096); if (hd !== !!S.me.holding) { S.me.holding = hd; if (!hd) for (const q of hands) q.shield = false; } S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
-    seen.add(id); let o = S.officers.get(id); const bot = !!(w & 1 << 17); if (!o) { o = new Officer(name, label(bot ? name + ' (AI)' : name, bot ? '#a8ffb8' : '#9fd0ff')); scene.add(o.g); S.officers.set(id, o); }
+    seen.add(id); let o = S.officers.get(id); const bot = !!(w & 1 << 17); if (!o) { o = new Officer(name, label(bot ? name + ' (AI)' : name, bot ? '#a8ffb8' : '#9fd0ff', 0, 64, 0.07)); scene.add(o.g); S.officers.set(id, o); }
     o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team); o.bot = bot; o.bst = w >> 18 & 7; o.slot = id - 900;
   }
   for (const [id, o] of S.officers) if (!seen.has(id)) { scene.remove(o.g); S.officers.delete(id); }
@@ -680,7 +680,8 @@ function collide() {
     }
     if (S.perch) { const y = S.perch.y1; [x, z] = resolveCircle(level, S.doorOpen, x, z, 0.25, y); rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; S.feetY = y; rig.position.y += (y - rig.position.y) * 0.3; headWorld(); return; }
   }
-  headWorld(); const [x, z] = resolveCircle(level, S.doorOpen, head.pos.x, head.pos.z, 0.25, S.feetY);
+  headWorld(); let [x, z] = resolveCircle(level, S.doorOpen, head.pos.x, head.pos.z, 0.25, S.feetY);
+  if (M.maxDrop) { if (S.feetY - level.groundY(x, z, S.feetY) > M.maxDrop && S.safe) [x, z] = S.safe; else S.safe = [x, z]; }   // no walking off a tower (out of a broken window, off a roof's edge)
   rig.position.x += x - head.pos.x; rig.position.z += z - head.pos.z; S.feetY = level.groundY(x, z, S.feetY); rig.position.y += (S.feetY - rig.position.y) * 0.35; headWorld();
 }
 
@@ -965,7 +966,7 @@ function frame(t) {
   updateTargets(dt); tut.tick(dt); for (const o of S.officers.values()) o.tick(dt); tickShards(dt);
   for (const o of S.officers.values()) { const p = o.head.position; if (S.fly && M.fly.aboard(p.x, p.z, p.y)) o.g.position.copy(S.fly.off); else o.g.position.set(0, 0, 0); }   // others aboard the helicopter ride in with it
   if (world && world.gfx.tick) world.gfx.tick(dt, { S, head, officers: S.officers, level, M, renderer, scene });
-  { const rt = S.mode && S.phase !== 'ended' ? (S.ropeHint || ropes.prompt() || liftHint()) : ''; if (rt && S.now - (S.ropeHintT || 0) > 2.6) { S.ropeHintT = S.now; sayAt(head.pos.x + head.fwd.x * 1.1, head.pos.y - 0.25, head.pos.z + head.fwd.z * 1.1, rt, '#9fffb0'); } }
+  { const rt = S.mode && S.phase !== 'ended' ? (S.ropeHint || ropes.prompt() || liftHint()) : ''; if (rt !== S.ropeSaid && !rt) S.ropeSaid = ''; if (rt && (rt !== S.ropeSaid || (S.rope && S.now - (S.ropeHintT || 0) > 7))) { S.ropeSaid = rt; S.ropeHintT = S.now;   /* once as it comes up; repeated now and then only while you hang on the rope */ sayAt(head.pos.x + head.fwd.x * 1.1, head.pos.y - 0.25, head.pos.z + head.fwd.z * 1.1, rt, '#9fffb0'); } }
   spectate(dt);
   if (race) { S.raceT += dt; race.update(S.raceT, head.pos, level.inside(head.pos.x, head.pos.z, head.pos.y)); }
   // world animation
@@ -1050,7 +1051,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'v53';
+const BUILD = 'v54';
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

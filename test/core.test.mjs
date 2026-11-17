@@ -570,18 +570,20 @@ await t('PvP: a nearby suspect revives a downed terrorist, up to three times a m
   for (let k = 0; k < 10; k++) s2.tick(1 / 15); const med = s2.npcs.find(n => n.medic === 1); assert.ok(med, 'a medic is on the way');
   const b = s2.bots()[0], dd = Math.hypot(m2.hx - med.x, m2.hz - med.z); b.bot.x = med.x + (m2.hx - med.x) / dd * 1.5; b.bot.z = med.z + (m2.hz - med.z) / dd * 1.5; b.bot.y = med.y;   // in his way s2.botPose(b); s2.tickMedic(med, 1 / 15); assert.equal(med.medic, null, 'sees SWAT: fights instead');
 });
-await t('casino: suites and casino reachable on foot from the entrance, the roof and helicopter only by rope; two HVTs', async () => {
+await t('casino: the casino on foot from the entrance, the suites only by rope or lift, the casino roof by rope or the fire stairs; two HVTs', async () => {
   const { buildLevel: BL, findPath: FP } = await import('../public/js/core/level.js'), C = await import('../public/js/core/maps/casino.js');
-  const L = BL('casino'), M = L.map, ex = [36, 62];
-  const reach = ([f, x, z]) => { const p = FP(L, ex[0], ex[1], 0, x, z, M.yAt(f, x, z), true); const e = p && p[p.length - 1]; return !!p && Math.hypot(e[0] - x, e[1] - z) < 1.2; };
-  for (const sp of [...M.spots.s, ...M.spots.c, ...M.civMust, ...M.hvts.map(h => h.at), ...M.hvts.filter(h => h.flee).map(h => h.flee)]) assert.ok(reach(sp), 'reachable ' + sp);
+  const L = BL('casino'), M = L.map, near = (p, x, z) => { const e = p && p[p.length - 1]; return !!p && Math.hypot(e[0] - x, e[1] - z) < 1.2; };
+  const from = (sx, sz, sy) => ([f, x, z]) => near(FP(L, sx, sz, sy, x, z, M.yAt(f, x, z), true), x, z), walk = from(36, 62, 0), suite = from(36, 5, C.F3);
+  for (const sp of [...M.spots.s, ...M.spots.c, ...M.civMust, ...M.hvts.map(h => h.at), ...M.hvts.filter(h => h.flee).map(h => h.flee)]) assert.ok(sp[0] === C.FS ? suite(sp) && !walk(sp) : walk(sp), 'reachable ' + sp);
   assert.ok(!FP(L, 36, 15, C.ROOF, 30, 15, C.F3, true), 'no walking from the roof to the suites');
   assert.ok(!FP(L, 36, 8.3, C.HELI.y, 30, 15, C.ROOF, true), 'no walking off the helicopter');
+  const r = C.ROPES.find(q => q.mid); assert.ok(near(FP(L, 36, 62, 0, r.step[0], r.step[1], C.POD, true), r.step[0], r.step[1]), 'from the foot of a rope on the casino roof, through ROOF ACCESS and down the stairs');
+  assert.ok(C.ROOF > 70 && r.bot === C.POD && r.mid.y === C.F3, 'ropes run from the tower roof past the suites to the casino roof');
   assert.equal(L.doors.filter(d => d.win).length, 4, 'four breach windows'); assert.equal(L.doors.filter(d => d.lift !== undefined).length, 2, 'a lift door at each stop');
   const s = new Sim('casino'); s.addPlayer(1, 'A'); s.start(3, false, 'clear', 'casino');
   const hv = s.npcs.filter(n => n.hvt); assert.equal(hv.length, 2, 'two high-value targets'); assert.ok(hv.some(n => Math.abs(n.y - C.F3) < 0.01) && hv.some(n => n.y === 0), 'one in the suites, one in the casino');
   for (const n of hv) n.st = 'u'; for (const n of s.npcs) if (n.kind === 's' && !n.hvt) n.st = 'd';
-  const r = s.score('MISSION COMPLETE'); assert.ok(r.lines.some(l => /arrested \(leader\)/.test(l[0])) && r.lines.some(l => /arrested \(money man\)/.test(l[0])), 'a report line for each');
+  const rep = s.score('MISSION COMPLETE'); assert.ok(rep.lines.some(l => /arrested \(leader\)/.test(l[0])) && rep.lines.some(l => /arrested \(money man\)/.test(l[0])), 'a report line for each');
 });
 await t('casino: breach windows burst when shot or kicked; the service lift carries a player between the casino and the suites', async () => {
   const C = await import('../public/js/core/maps/casino.js');
@@ -608,6 +610,9 @@ await t('casino: bots fast-rope out of the helicopter, rappel down the glass, br
   const ev = run(s, 150, () => s.bots().every(p => Math.abs(p.bot.y - C.F3) < 0.3 && p.bot.z < 20 && p.bot.z > 8));
   for (const p of s.bots()) assert.ok(Math.abs(p.bot.y - C.F3) < 0.3 && p.bot.z < 20, p.name + ' in the suites: ' + [p.bot.x, p.bot.y, p.bot.z].map(v => v.toFixed(1)));
   assert.ok(ev.some(e => e.e === 'clip') && ev.some(e => e.e === 'shatter'), 'clipped in and broke a window');
+  s.pose(1, { h: [36, 1.65, 30, 0, 0, 0, 1] }); s.players.get(1).y = 0;   // the leader is down in the casino now: out of the window, down the rope to the casino roof, in by the stairs
+  run(s, 240, () => s.bots().every(p => p.bot.y < 1 && !p.bot.rope));
+  for (const p of s.bots()) assert.ok(p.bot.y < 1 && !p.bot.rope, p.name + ' down in the casino: ' + [p.bot.x, p.bot.y, p.bot.z].map(v => v.toFixed(1)));
 });
 await t('casino: the lift leaves by itself once someone stands in it and comes when called from the other floor; the parapet is a ledge', async () => {
   const C = await import('../public/js/core/maps/casino.js'), { ledgeNear } = await import('../public/js/core/level.js');
