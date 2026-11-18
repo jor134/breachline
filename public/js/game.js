@@ -769,7 +769,13 @@ function spectate(dt) {
 function headWorld() {
   rig.updateMatrixWorld(true); head.pos.copy(camera.position).applyMatrix4(rig.matrixWorld); head.quat.copy(rig.quaternion).multiply(camera.quaternion);
   head.fwd.set(0, 0, -1).applyQuaternion(head.quat); head.yaw = Math.atan2(-head.fwd.x, -head.fwd.z);
-  const d = angd(head.yaw, S.bodyYaw); if (S.mode !== 'vr' || Math.abs(d) > 0.7) S.bodyYaw += S.mode !== 'vr' ? d : d - Math.sign(d) * 0.7;   // hips only turn once you look well past your shoulder
+  // quest-store: your body faces between where you look and where your hands are (both hands out in front: halfway to them),
+  // and catches up smoothly past 5 degrees. It used to turn only once you looked 40 degrees off it, so turning to aim left the
+  // body behind: the far hand (usually the left, on the foregrip) had to reach across the chest and the arm looked broken.
+  let want = head.yaw;
+  if (S.mode === 'vr' && hands[0].active && hands[1].active) { const mx = (hands[0].pos.x + hands[1].pos.x) / 2 - head.pos.x, mz = (hands[0].pos.z + hands[1].pos.z) / 2 - head.pos.z;
+    if (mx * mx + mz * mz > 0.04) { const hy = Math.atan2(-mx, -mz), dh = angd(hy, head.yaw); if (Math.abs(dh) < 1.2) want = head.yaw + dh * 0.5; } }
+  const d = angd(want, S.bodyYaw); if (S.mode !== 'vr') S.bodyYaw += d; else if (Math.abs(d) > 0.08) S.bodyYaw += (d - Math.sign(d) * 0.08) * 0.15;
 }
 function collide() {
   if (S.spec) return;   // spectating: the camera floats behind a teammate
@@ -1161,7 +1167,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q22';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q23';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

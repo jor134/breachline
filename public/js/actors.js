@@ -284,7 +284,7 @@ export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.0, -0.76, -0.2], pou
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qPi = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), _eul = new THREE.Euler(), _ax = new THREE.Vector3(1, 0, 0), _kneeFwd = new THREE.Vector3(0, 0, 1), GRIP = { i: 0.7, g: 0.8, t: 0.5 };
 const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
 let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null, TORSO = null, gearParts = null, gearG = null;
-const gearGeo = () => gearG || (gearG = merge(gearParts.map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);   // pouches, radio, holster, grenades on the squad model's vest
+const gearGeo = () => gearG || (gearG = merge(gearParts.filter(p => !(p[3] === -0.15 && p[4] === -0.2)).map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);   // minus the radio antenna: on your own vest it sat 15 cm under your eyes and showed as a black pole in front of you   // pouches, radio, holster, grenades on the squad model's vest
 // ---------- articulated glove: palm plus four fingers of three joints and a thumb, curled by a pose { i: index, g: other fingers, t: thumb } ----------
 // Local frame matches the controller grip: back of the hand up (+y), fingers forward (-z), thumb on the left for a right hand (mirrored for the left).
 const FINGERS = [[-0.027, [0.04, 0.024, 0.02], 0.0085, 0.06], [-0.009, [0.044, 0.027, 0.021], 0.0088, 0.01], [0.009, [0.041, 0.025, 0.02], 0.0082, -0.04], [0.026, [0.032, 0.019, 0.017], 0.0073, -0.11]];
