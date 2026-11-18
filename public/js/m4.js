@@ -49,27 +49,27 @@ function mergeIdx(list) {   // same vertex layout (each is a clone of one part):
   out.setIndex(idx); return out;
 }
 
-// Sidearm: "tactical pistol with red dot" by N3ON_fx (Sketchfab Standard licence, see models/pistol/LICENSE.md): a .22 target pistol
-// with an integral suppressor, a red dot on the receiver and a light under the barrel. It is measured from its own parts when it
-// loads and turned to the gun frame: muzzle toward -z, the bore 4 cm over the hand, the grip panels' middle where the hand holds.
-// The bolt knob at the back of the receiver is the part that locks back on an empty gun; the magazine shows in the grip.
-const SIDE = { h: 0.166, bore: 0.040, gripZ: 0.022 };   // overall height (grip foot to the top of the sight), bore over the hand, the grip's middle
+// Sidearm: "Pistol 9mm Custom" by ~D-Try~ (CC BY 4.0, see models/pistol/LICENSE.md), cut out of its display scene by
+// tools/pistol9_glb.py: a 9 mm duty pistol with a red dot on a rail plate, a weapon light and a side laser. Its parts arrive named
+// (frame, slide, mag, sight, light) with the muzzle toward -z; it is measured when it loads and placed in the gun frame: the bore
+// 4 cm over the hand, the grip's middle where the hand holds. The slide is the part that locks back on an empty gun.
+const SIDE = { h: 0.166, bore: 0.040, gripZ: 0.022 };   // overall height (magazine foot to the top of the sight), bore over the hand, the grip's middle
 let fnPromise = null;
 export function loadSidearm() {
-  return fnPromise || (fnPromise = new Promise((res, rej) => new ObfLoader().load('models/pistol/pistol.glb', g => {
-    const sc = g.scene; sc.updateMatrixWorld(true); const part = n => { let m = null; sc.traverse(o => { if (o.isMesh && o.parent && o.parent.name === n) m = o; }); return m; };
-    const box = o => new THREE.Box3().setFromObject(o), all = box(sc), k = SIDE.h / (all.max.y - all.min.y);
-    const rec = box(part('pCylinder6')), grip = box(part('pCube14')).union(box(part('pCube16'))), barrel = box(part('pCylinder8')), dot = box(part('pCube10')), lightB = box(part('pCube13'));
-    const boreY = (rec.min.y + rec.max.y) / 2, gz = (grip.min.z + grip.max.z) / 2, cx = (all.min.x + all.max.x) / 2;
-    // model -> gun frame: centre it, turn it round (its muzzle is toward +z), scale it, put the bore and the grip where the hand expects them
-    const T = new THREE.Matrix4().makeTranslation(0, SIDE.bore, SIDE.gripZ).multiply(new THREE.Matrix4().makeScale(k, k, k)).multiply(new THREE.Matrix4().makeRotationY(Math.PI)).multiply(new THREE.Matrix4().makeTranslation(-cx, -boreY, -gz));
+  return fnPromise || (fnPromise = new Promise((res, rej) => new ObfLoader().load('models/pistol/pistol9.glb', g => {
+    const sc = g.scene; sc.updateMatrixWorld(true); const parts = n => { const l = []; sc.traverse(o => { if (o.isMesh && o.name.startsWith(n)) l.push(o); }); return l; };
+    const box = l => l.reduce((b, o) => b.union(new THREE.Box3().setFromObject(o)), new THREE.Box3()), all = new THREE.Box3().setFromObject(sc), k = SIDE.h / (all.max.y - all.min.y);
+    const slB = box(parts('slide')), magB = box(parts('mag')), lightB = box(parts('light')), glass = parts('sight').filter(o => o.material.transparent), dot = box(glass.length ? glass : parts('sight'));
+    const boreY = (slB.min.y + slB.max.y) / 2, gz = (magB.min.z + magB.max.z) / 2;
+    const T = new THREE.Matrix4().makeTranslation(0, SIDE.bore, SIDE.gripZ).multiply(new THREE.Matrix4().makeScale(k, k, k)).multiply(new THREE.Matrix4().makeTranslation(0, -boreY, -gz));
     const at = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(T);
     const frame = new THREE.Group(), slide = new THREE.Group(); let plate = null;
     sc.traverse(o => { if (!o.isMesh) return; const m = o.material; m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.5; if (!pbrMats.includes(m)) pbrMats.push(m);
-      const geo = o.geometry.clone().applyMatrix4(o.matrixWorld).applyMatrix4(T), n = o.parent.name;
-      if (n === 'pCube15') plate = { geo, mat: m }; else (n === 'pCylinder7' ? slide : frame).add(new THREE.Mesh(geo, m)); });
-    const pts = { muzzle: at(cx, boreY, barrel.max.z), light: at(cx, (lightB.min.y + lightB.max.y) / 2, lightB.max.z), magwell: at(cx, all.min.y, gz), rack: at(cx, boreY, rec.min.z),
-      sightY: at(cx, (dot.min.y + dot.max.y) / 2, 0).y, sightZ: at(cx, 0, (dot.min.z + dot.max.z) / 2).z, sightW: (dot.max.x - dot.min.x) * k * 0.36, sightH: (dot.max.y - dot.min.y) * k * 0.3 };
+      if (m.transparent) m.depthWrite = false;   // the red dot's glass
+      const geo = o.geometry.clone().applyMatrix4(o.matrixWorld).applyMatrix4(T);
+      if (o.name.startsWith('mag')) plate = { geo, mat: m }; else (o.name.startsWith('slide') ? slide : frame).add(new THREE.Mesh(geo, m)); });
+    const pts = { muzzle: at(0, boreY, slB.min.z), light: at(0, (lightB.min.y + lightB.max.y) / 2, lightB.min.z), magwell: at(0, all.min.y, gz), rack: at(0, boreY, slB.max.z),
+      sightY: at(0, (dot.min.y + dot.max.y) / 2, 0).y, sightZ: at(0, 0, (dot.min.z + dot.max.z) / 2).z, sightW: (dot.max.x - dot.min.x) * k * 0.5, sightH: (dot.max.y - dot.min.y) * k * 0.4 };
     res({ frame, slide, plate, pts });
   }, undefined, rej)));
 }
