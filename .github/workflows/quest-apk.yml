@@ -29,6 +29,10 @@ jobs:
       - name: Point Bubblewrap at the JDK and Android SDK (skips its interactive installers)
         run: |
           mkdir -p ~/.bubblewrap
+          # Bubblewrap only accepts an SDK folder that has bin/ (or the old tools/) at its top level, the layout of the SDK it
+          # installs itself. The runner keeps sdkmanager under cmdline-tools/<version>/bin, so link it in.
+          if [ ! -e "$ANDROID_HOME/bin" ]; then SDKBIN="$(dirname "$(command -v sdkmanager)")"; ln -s "$SDKBIN" "$ANDROID_HOME/bin" 2>/dev/null || sudo ln -s "$SDKBIN" "$ANDROID_HOME/bin"; fi
+          ls -la "$ANDROID_HOME" "$ANDROID_HOME/build-tools"
           echo "{\"jdkPath\":\"$JAVA_HOME\",\"androidSdkPath\":\"$ANDROID_HOME\"}" > ~/.bubblewrap/config.json
       - name: Wait for the site (Bubblewrap downloads the icon from it)
         run: for i in $(seq 1 40); do curl -sfo /dev/null https://youcanthidegame.com/icon-512.png && exit 0; sleep 15; done; echo "youcanthidegame.com is not serving yet"; exit 1
