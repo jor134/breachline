@@ -24,7 +24,10 @@ with sync_playwright() as p:
     # VR ends without quitting (the headset leaves VR for a permission prompt): the game keeps going, ENTER VR comes back to it
     pg.evaluate("window.__bl.renderer.xr.getSession().end()"); pg.wait_for_timeout(800)
     out['afterEnd'] = pg.evaluate("[getComputedStyle(document.getElementById('ui')).display, window.__bl.S.net, window.__bl.S.mode, document.getElementById('status').textContent]")
-    pg.click('#vr'); pg.wait_for_function('window.__bl.renderer.xr.isPresenting', timeout=10000); pg.wait_for_timeout(800)
+    pg.click('#vr'); pg.wait_for_timeout(1500)
+    out['micAsk'] = pg.evaluate("document.getElementById('status').textContent")   # first ENTER VR asks for the microphone on the flat page
+    if not pg.evaluate('window.__bl.renderer.xr.isPresenting'): pg.click('#vr')
+    pg.wait_for_function('window.__bl.renderer.xr.isPresenting', timeout=10000); pg.wait_for_timeout(800)
     out['resumed'] = pg.evaluate("[window.__bl.S.mode, window.__bl.S.net, window.__bl.S.panel, getComputedStyle(document.getElementById('ui')).display]")
     out['errors'] = errs
     b.close()

@@ -1071,7 +1071,7 @@ $('vr').onclick = async () => {
   } catch (e) { status('Could not start VR: ' + (e && e.message || e)); }
 };
 $('desk').onclick = () => { initAudio(); if (!$('solo').checked && voice.on) voice.startMic().then(() => voice.unlock()); connect($('solo').checked); begin('desktop'); };
-if (storeLaunch({ renderer, begin, resume: () => { S.mode = 'vr'; $('ui').style.display = 'none'; camera.position.set(0, 1.66, 0); camera.rotation.set(0, 0, 0); try { voice.unlock(); } catch (e) { } }, storeUI, initAudio, status, $ })) { /* store build: js/store/launch.js owns ENTER VR */ }
+if (storeLaunch({ renderer, begin, resume: () => { S.mode = 'vr'; $('ui').style.display = 'none'; camera.position.set(0, 1.66, 0); camera.rotation.set(0, 0, 0); try { voice.unlock(); } catch (e) { } }, storeUI, voice, initAudio, status, $ })) { /* store build: js/store/launch.js owns ENTER VR */ }
 else if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then(ok => { $('vr').disabled = !ok; if (!ok) $('vrnote').textContent = 'No VR headset detected on this device. Open this page in the Quest browser.'; }).catch(() => { $('vr').disabled = true; });
 else { $('vr').disabled = true; $('vrnote').textContent = 'This browser has no WebXR. Open this page in the Quest browser.'; }
 // ---------- phone / tablet controls: left thumb moves, right thumb looks, buttons do the rest ----------
@@ -1101,7 +1101,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q4';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q5';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
