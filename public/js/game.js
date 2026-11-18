@@ -141,6 +141,7 @@ const net = {
     ws.onerror = ws.onclose = () => { if (ok) return; setTimeout(() => this.rejoin(room, name, n + 1), Math.min(5000, 1000 + n * 500)); };
   },
   local(name) { this.host = new RoomHost((id, o) => onMsg(JSON.parse(JSON.stringify(o)))); this.host.join(1, name); this.timer = setInterval(() => this.host.tick(), TICK * 1000); },
+  leave() { if (this.ws) { const w = this.ws; this.ws = null; w.onclose = w.onerror = w.onmessage = null; try { w.close(1000); } catch (e) { } } if (this.timer) { clearInterval(this.timer); this.timer = null; } this.host = null; },
   send(o) { if (o && window.__tut) window.__tut.note(o.t); if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); else if (this.host) this.host.message(1, o); },
 };
 
@@ -472,7 +473,17 @@ function showEndPanel() {
 }
 function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z); }
 // back to the start screen (or, testing a draft, to the editor): leave VR first, then reload the page fresh
-function goHome() { const to = DRAFT ? 'editor.html' : 'play.html'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
+// quest-store: MAIN MENU inside VR goes back to the start menu (SOLO / ONLINE / TUTORIAL) without leaving VR. It used to end the
+// VR session and reload the page, which drops you out of the headset view. The room is left, the world goes back to the
+// training facility, the microphone is kept (asking for it again would take the headset out of VR).
+function backToStart() {
+  sfx.click(); try { voice.stop(true); } catch (e) { } try { tut.stop(); } catch (e) { } TUT = false;
+  net.leave(); connecting = null; S.net = 'offline'; S.phase = 'lobby'; S.rope = null; S.fly = null; S.tmenu = false; S.me.down = false; S.me.hp = 100;
+  for (const o of S.officers.values()) scene.remove(o.g); S.officers.clear();
+  applyInit({ map: 'training', npcs: [], bombs: [], ph: 'lobby' });
+  begin('vr'); storeUI.showStart(); status('Back at the start menu.');
+}
+function goHome() { if (renderer.xr.isPresenting && !DRAFT) return backToStart(); const to = DRAFT ? 'editor.html' : 'play.html'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
   if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + '   ·   resolution ' + Math.round(perf.scale * 100) + '%', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
@@ -1150,9 +1161,9 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q21';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q22';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { perf, storeUI, toggleMenu, ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { perf, storeUI, toggleMenu, goHome, ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }
