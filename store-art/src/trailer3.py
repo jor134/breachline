@@ -5,8 +5,8 @@ U = '/mnt/user-data/uploads/'
 V = {'N': U + 'com_jordanbreccia_youcanthide-20261118-170551-0.mp4', 1: U + 'com_oculus_browser-20261117-234609-0.mp4', 2: U + 'com_oculus_browser-20261117-235049-0.mp4', 3: U + 'com_oculus_browser-20261117-235412-0.mp4'}
 MUSIC, M0 = U + 'a7a53981-youcanthide2.mp3', 14.0
 EDL = [  # (video, start, length): N = the 18 Nov capture (casino, airport, Grand Prix)
-  ('N', 275.5, 3.6), ('N', 280.0, 3.6), ('N', 286.5, 4.96),   # helicopter over the city, onto the casino roof -> drop
-  ('N', 306.2, 3.6), ('N', 343.0, 3.6), ('N', 311.6, 1.8), ('N', 327.0, 3.0),   # rappel down the tower, through the glass, squad inside
+  (2, 37.4, 2.4), ('N', 280.0, 2.4), ('N', 286.5, 2.4), ('N', 305.6, 4.96),   # the mansion front in the rain, a few seconds of helicopter, over the roof edge -> drop
+  ('N', 343.0, 3.6), ('N', 348.0, 3.6), ('N', 311.4, 1.4), ('N', 326.6, 3.4),   # down the tower on the rope, through the glass, squad inside
   (2, 5.0, 2.4), (2, 60.6, 3.6),                              # squad wheel: kick / breach, flashbang
   ('N', 66.6, 2.4), ('N', 76.6, 3.6), ('N', 20.0, 2.4),       # Grand Prix: out on the track, cars flat out past you, a garage arrest
   (3, 21.0, 2.4), (3, 129.0, 2.4), (3, 201.0, 2.4),           # map editor (the music's quiet stretch)
