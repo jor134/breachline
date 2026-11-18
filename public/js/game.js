@@ -1028,7 +1028,7 @@ const arr7 = (p, q) => [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +q.x.
 const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 'mag' ? 3 : 0;
 function frame(t) {
   perf.tick((t - last) / 1000, renderer.xr.isPresenting);
-  { const want = !!S.mode && !!M.training && S.music !== false; if (want !== S.musicOn) { S.musicOn = want; setMusic(want); } }   // quest-store: training-room music (MUSIC on the start menu)
+  { const want = !!S.mode && (!!M.training || !storeUI.started()) && S.music !== false; if (want !== S.musicOn) { S.musicOn = want; setMusic(want); } }   // quest-store: theme music on the main menu and in the training room (MUSIC toggle on the start menu)
   const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t; S.now += dt;
   nvgFlip.tick(dt);
   if (ED.on) {   // building in the map editor: only the hands, the editor and the map
@@ -1150,7 +1150,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q15';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q16';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
