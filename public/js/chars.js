@@ -113,6 +113,14 @@ function rigCivilian(parts, i, name) {
       const isHead = p.y > collar - 0.01 && Math.abs(p.x) < 0.15, sideL = p.x > 0, armV = !isHead && isArm(p.x, p.y);
       seg.forEach(([s0, s1, f], q) => { if (isHead && !headOnly.includes(q)) return; const arm = q >= 5 && q <= 10; if (arm ? (!armV || (q <= 7) !== sideL) : armV) return; l3.set(s0, s1); l3.closestPointToPoint(p, true, c); const d = c.distanceTo(p) * f; if (d < da) { b = a; db = da; a = q; da = d; } else if (d < db) { b = q; db = d; } });
       let wa = 1, wb = 0; if (db < da * 1.35) { const ia = 1 / Math.pow(da + 1e-3, 4), ib = 1 / Math.pow(db + 1e-3, 4); wa = ia / (ia + ib); wb = 1 - wa; }
+      // quest-store: the shoulder blends. Arm and torso were split hard, so a raised arm tore away from a flap of shoulder left on the
+      // chest (hands-up hostages looked to have arms coming out of their chests). Round the shoulder joint the weight now passes
+      // gradually from the chest to the upper arm, across the deltoid and the top of the armpit.
+      if (!isHead) { const S = sideL ? 'L' : 'R', ui = sideL ? 5 : 8, shx = Math.abs(J['up' + S][0]), ax = Math.abs(p.x), dy = p.y - shY;
+        if (ax > shx - 0.1 && ax < shx + 0.12 && dy > -0.2 && dy < 0.12 && (a === 2 || a === 1 || (a === ui && ax < shx + 0.02))) {
+          const sm = (e0, e1, v) => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+          const t = sm(shx - 0.1, shx + 0.05, ax) * (1 - sm(0.04, 0.12, dy)) * sm(-0.2, -0.1, dy);
+          if (t > 0.02 && t < 0.98) { a = ui; b = 2; wa = t; wb = 1 - t; } else if (t >= 0.98) { a = ui; b = 0; wa = 1; wb = 0; } } }
       si[k * 4] = a; si[k * 4 + 1] = b; sw[k * 4] = wa; sw[k * 4 + 1] = wb;
     }
     geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));

@@ -288,7 +288,7 @@ const gearGeo = () => gearG || (gearG = merge(gearParts.map(p => { const q = p.s
 // ---------- articulated glove: palm plus four fingers of three joints and a thumb, curled by a pose { i: index, g: other fingers, t: thumb } ----------
 // Local frame matches the controller grip: back of the hand up (+y), fingers forward (-z), thumb on the left for a right hand (mirrored for the left).
 const FINGERS = [[-0.027, [0.04, 0.024, 0.02], 0.0085, 0.06], [-0.009, [0.044, 0.027, 0.021], 0.0088, 0.01], [0.009, [0.041, 0.025, 0.02], 0.0082, -0.04], [0.026, [0.032, 0.019, 0.017], 0.0073, -0.11]];
-const CURL = [[1.25, 1.5, 0.95], [1.4, 1.65, 1.05]];
+const CURL = [[1.25, 1.5, 0.95], [1.4, 1.65, 1.05]], TH_SIGN = -1;   // TH_SIGN: with sgn (R +1, L -1), turns the thumb toward the palm
 function makeHand(sx) {
   const GL = 0x17191c, mat = sheen({ color: GL }, 'cloth'), g = new THREE.Group(); g.scale.x = sx;   // matte glove fabric
   g.add(new THREE.Mesh(merge([[BOX(0.08, 0.03, 0.086), GL, 0, -0.012, 0.031], [BOX(0.074, 0.04, 0.05), 0x1b2230, 0, -0.012, 0.1], [BOX(0.058, 0.006, 0.05), 0x2a2d33, 0, 0.0045, 0.028], [BOX(0.07, 0.012, 0.014), 0x24272c, 0, -0.002, -0.009]], 'cloth').geometry, vertexSheen('cloth')));
@@ -362,14 +362,23 @@ export class Body {
       // quest-store: index and middle fingers are posed from the hand's own frame, not as extra bend on top of the model's rest pose.
       // The squad model rests with its fingers already bent, and differently on each hand, so added bend over-curled the right
       // hand's fingers downward. sp: the finger's straight direction at rest (its rest splay kept, its rest bend taken out).
-      const lat0 = new THREE.Vector3().crossVectors(b, f).normalize();
+      // The finger frame uses the knuckle line (index base to middle base) for the back of the hand: the thumb-based one is ~36 deg
+      // off on this model, which left a 'straight' finger bent backwards (fingers looked twisted on an open hand).
+      const latK = r.fingers ? P[r.fingers[S][0][0]].clone().sub(P[r.fingers[S][1][0]]) : new THREE.Vector3().crossVectors(b, f), bK = S === 'R' ? f.clone().cross(latK) : latK.clone().cross(f);
+      bK.addScaledVector(f, -bK.dot(f)).normalize(); if (bK.dot(b) < 0) bK.negate();
+      const lat0 = new THREE.Vector3().crossVectors(bK, f).normalize();
+      // the thumb likewise, from the hand's frame (both hands the same, mirrored): out to the index side, a little toward the palm,
+      // and it wraps by turning about the hand's length axis toward the palm
+      const latT = latK.clone().addScaledVector(f, -latK.dot(f)).addScaledVector(bK, -latK.dot(bK)).normalize();
+      const jd = i => { const nx = sk.par.indexOf(i); return (nx >= 0 ? P[nx].clone().sub(P[i]) : P[i].clone().sub(P[sk.par[i]])).normalize(); };
+      const thumbAbs = r.thumb ? { base: f.clone().multiplyScalar(0.5).addScaledVector(latT, 0.78).addScaledVector(bK, -0.3).normalize(), ax: f.clone(), sgn: S === 'R' ? 1 : -1, joints: r.thumb[S].map(i => ({ i, d: jd(i) })) } : null;
       const fingersAbs = r.fingers ? r.fingers[S].map(ch => {
         const d0 = P[ch[1]].clone().sub(P[ch[0]]).normalize(), sp = f.clone().multiplyScalar(d0.dot(f)).addScaledVector(lat0, d0.dot(lat0)).normalize();
-        return { sp, ax: new THREE.Vector3().crossVectors(b, sp).normalize(), joints: ch.map(i => { const nx = sk.par.indexOf(i), d = (nx >= 0 ? P[nx].clone().sub(P[i]) : P[i].clone().sub(P[sk.par[i]])).normalize(); return { i, d }; }) };
+        return { sp, bK, ax: new THREE.Vector3().crossVectors(bK, sp).normalize(), joints: ch.map(i => { const nx = sk.par.indexOf(i), d = (nx >= 0 ? P[nx].clone().sub(P[i]) : P[i].clone().sub(P[sk.par[i]])).normalize(); return { i, d }; }) };
       }) : [];
       const thumb = r.thumb ? jointAxes(r.thumb[S]) : [];
       const [L1, L2] = sk.len(S), up = P[r.fore[S]].clone().sub(P[r.up[S]]).normalize(), fo = P[r.hand[S]].clone().sub(P[r.fore[S]]).normalize();
-      this.H[S] = { f0: f, b0: b, b1: new THREE.Vector3(), fingersAbs, palm, fingers, thumb, L1, L2, up0: up, fo0: fo, pole0: new THREE.Vector3(0, 0, -1), cur: { i: 0.6, g: 0.7, t: 0.5 }, wq: new THREE.Quaternion(), wp: new THREE.Vector3(), el: new THREE.Vector3(), pole: new THREE.Vector3(), on: false };
+      this.H[S] = { f0: f, b0: b, bK, thumbAbs, b1: new THREE.Vector3(), fingersAbs, palm, fingers, thumb, L1, L2, up0: up, fo0: fo, pole0: new THREE.Vector3(0, 0, -1), cur: { i: 0.6, g: 0.7, t: 0.5 }, wq: new THREE.Quaternion(), wp: new THREE.Vector3(), el: new THREE.Vector3(), pole: new THREE.Vector3(), on: false };
     }
     for (const S of ['L', 'R']) { const th = P[r.thigh[S]], sh = P[r.shin[S]], ft = P[r.foot[S]]; this.H['leg' + S] = { L1: th.distanceTo(sh), L2: sh.distanceTo(ft), d0: sh.clone().sub(th).normalize(), s0: ft.clone().sub(sh).normalize(), foot: ft.clone(), ft: ft.clone(), knee: new THREE.Vector3() }; }
     // feet point where the body faces (a little toe-out, as people stand), whatever angle the model's feet had at rest. Left to follow
@@ -421,10 +430,14 @@ export class Body {
         W.set(r.up[S], this.fns['up' + S]); W.set(r.fore[S], this.fns['fo' + S]);
         const want = h.pose || GRIP, c = H.cur, kk = Math.min(1, dt * 22); c.i += (want.i - c.i) * kk; c.g += (want.g - c.g) * kk; c.t += (want.t - c.t) * kk;
         if (H.fingersAbs.length) H.fingersAbs.forEach((F, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; let th = 0;
-          F.joints.forEach((j, s) => { th += v * a[s]; _q3.setFromAxisAngle(F.ax, th); const t = a1.copy(F.sp).applyQuaternion(_q3), bb = a2.copy(H.b0).applyQuaternion(_q3);
-            W.set(j.i, Rh.clone().multiply(align2(j.d, H.b0, t, bb, new THREE.Quaternion())).multiply(sk.restQ[j.i])); }); });
+          F.joints.forEach((j, s) => { th += v * a[s]; _q3.setFromAxisAngle(F.ax, th); const t = a1.copy(F.sp).applyQuaternion(_q3), bb = a2.copy(F.bK).applyQuaternion(_q3);
+            W.set(j.i, Rh.clone().multiply(align2(j.d, F.bK, t, bb, new THREE.Quaternion())).multiply(sk.restQ[j.i])); }); });
         else H.fingers.forEach((ch, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; ch.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, v * a[s]))); });
-        H.thumb.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, c.t * [0.35, 0.65, 0.55][s])));   // wraps round a grip
+        if (H.thumbAbs) { const Tt = H.thumbAbs; let th = 0.15;
+          Tt.joints.forEach((j, s) => { th += c.t * [0.5, 0.45, 0.4][s];
+            _q3.setFromAxisAngle(Tt.ax, th * Tt.sgn * TH_SIGN); const t = a1.copy(Tt.base).applyQuaternion(_q3), bb = a2.copy(H.bK).applyQuaternion(_q3);
+            W.set(j.i, Rh.clone().multiply(align2(j.d, H.bK, t, bb, new THREE.Quaternion())).multiply(sk.restQ[j.i])); }); }
+        else H.thumb.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, c.t * [0.35, 0.65, 0.55][s])));   // wraps round a grip
       } else { for (const i of [r.up[S], r.fore[S], r.hand[S]]) W.set(i, sk.rig(i, _q3.identity(), new THREE.Quaternion())); }
       W.set(r.thigh[S], this.fns['th' + S]); W.set(r.shin[S], this.fns['sh' + S]);
       if (!down && r.foot[S] >= 0) { const Lg = this.H['leg' + S]; W.set(r.foot[S], Lg.fq.setFromAxisAngle(UPY, Lg.out - Lg.yaw0 - Gt.lag).multiply(sk.restQ[r.foot[S]])); }   // feet left behind by a turn keep their old heading too

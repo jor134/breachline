@@ -73,7 +73,24 @@ export function buildLevel(id = 'mansion') {
     }
   };
   merge(edges, 'wall', T); merge(gedges, 'glass', 0.06);
-  for (const [f, x0, z0, x1, z1, h, kind, face] of map.furniture || []) boxes.push({ f, kind: 'furn', sub: kind, face, x0, x1, z0, z1, y0: f * H, y1: f * H + h });
+  // quest-store: furniture never blocks a doorway. Each door, arch and gap keeps a clear zone 0.85 m deep on both sides (for a wide
+  // gap, a 1.1 m passage at its middle). A piece reaching into one is cut back to the largest part outside it (a bench running past
+  // a door becomes two benches); a piece left too small is dropped. Rugs and other flat pieces stay. Applies to custom maps too.
+  const CLEAR = [];
+  for (const [f, x0, z0, x1, z1, kind] of map.openings || []) { if (kind !== 'door' && kind !== 'arch' && kind !== 'gap') continue;
+    const hz = z0 === z1, a = hz ? x0 : z0, b = hz ? x1 : z1, w = b - a, m = (a + b) / 2, half = w > 1.6 ? 0.55 : w / 2 + 0.05, c = hz ? z0 : x0;
+    CLEAR.push(hz ? { f, x0: m - half, x1: m + half, z0: c - 0.85, z1: c + 0.85 } : { f, x0: c - 0.85, x1: c + 0.85, z0: m - half, z1: m + half }); }
+  const hits = (p, z) => p.f === z.f && p.x0 < z.x1 && p.x1 > z.x0 && p.z0 < z.z1 && p.z1 > z.z0;
+  const keepable = p => Math.min(p.x1 - p.x0, p.z1 - p.z0) >= 0.3 && (p.x1 - p.x0) * (p.z1 - p.z0) >= 0.2;
+  for (const [f, x0, z0, x1, z1, h, kind, face] of map.furniture || []) {
+    let parts = [{ f, x0, z0, x1, z1 }];
+    if (h >= 0.15) for (const z of CLEAR) { const next = [];
+      for (const p of parts) { if (!hits(p, z)) { next.push(p); continue; }
+        const cand = [{ ...p, x1: z.x0 }, { ...p, x0: z.x1 }, { ...p, z1: z.z0 }, { ...p, z0: z.z1 }].filter(keepable).sort((A, B) => (B.x1 - B.x0) * (B.z1 - B.z0) - (A.x1 - A.x0) * (A.z1 - A.z0));
+        if (cand[0]) { next.push(cand[0]); const o = cand.find(q => q !== cand[0] && (q.x1 <= cand[0].x0 || q.x0 >= cand[0].x1 || q.z1 <= cand[0].z0 || q.z0 >= cand[0].z1) && Math.max(q.x1 - q.x0, q.z1 - q.z0) >= 0.6); if (o) next.push(o); } }
+      parts = next; }
+    for (const p of parts) boxes.push({ f, kind: 'furn', sub: kind, face, x0: p.x0, x1: p.x1, z0: p.z0, z1: p.z1, y0: f * H, y1: f * H + h });
+  }
   const veg = map.veg;
   if (veg) {
     for (const [x, z] of veg.trees) { const y = map.terrainY(z, x); boxes.push({ f: y < -H / 2 ? -1 : 0, kind: 'trunk', x0: x - 0.17, x1: x + 0.17, z0: z - 0.17, z1: z + 0.17, y0: y - 0.3, y1: y + 3.2 }); }

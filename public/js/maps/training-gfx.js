@@ -20,6 +20,7 @@ export default {
       ply: S(tex('#b8955e', 2500, grid(2, 1, 'rgba(60,40,20,0.45)')), 'satin'), tconc: S(tex('#8a8780', 4000, grid(1, 1, 'rgba(40,38,34,0.25)')), 'stone'),
       steelplate: S(tex('#8c939b', 900), 'metal'), rubber: S(tex('#1c1b1a', 6000, grid(1, 6, 'rgba(0,0,0,0.5)')), 'matte'), steeldoor: S(tex('#5c6670', 300), 'paint'),
       asphalt: S(tex('#3b3c3e', 9000), 'matte'), stripe: sheen({ color: 0xd8b13a }, 'matte'),
+      awning: S(tex('#1f3f5c', 1200, grid(12, 1, 'rgba(0,0,0,0.22)')), 'cloth'), awnTrim: sheen({ color: 0x2a2d31 }, 'metal'),
     });
     LANES.forEach((x, i) => { M['n' + i] = sheen({ map: tex('rgba(0,0,0,0)', 0, num(i + 1)), transparent: true }, 'matte'); });
   },
@@ -27,6 +28,9 @@ export default {
     const flat = (m, x0, x1, z0, z1, y, s = 0.25) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
     flat('asphalt', -80, 110, 28, 90, 0, 0.15); flat('gravel', -80, 110, -80, 28, -0.02, 0.15);
     for (let x = 1; x < 19; x += 2.6) flat('stripe', x, x + 0.1, 32, 37, 0.01);   // parking bays
+    // quest-store: an awning over the lobby glass: a fabric canopy on a steel frame, its valance at the front, posts down to the lot
+    b('awning').box(0.2, 19.8, 2.98, 3.08, 28.12, 30.4, 'yY', 0.5); b('awning').box(0.2, 19.8, 2.7, 3.08, 30.4, 30.46, 'zZxX', 0.5);
+    b('awnTrim').box(0.2, 19.8, 3.08, 3.14, 28.12, 30.46, 'yzZxX', 1); for (const x of [0.4, 5.2, 10, 14.8, 19.6]) b('awnTrim').box(x - 0.05, x + 0.05, 0, 2.98, 30.2, 30.3, 'xXzZ', 1);
     // range: firing line, lane stripes downrange, distance marks, lane numbers on the floor behind the counter
     flat('stripe', 0.2, 19.8, 14.75, 14.85, 0.012); for (const x of [4, 8, 12, 16]) flat('stripe', x - 0.03, x + 0.03, -15, 10, 0.012);
     for (const z of [7, 2, -4, -11]) flat('stripe', 0.2, 19.8, z - 0.02, z + 0.02, 0.012);

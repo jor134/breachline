@@ -1,6 +1,7 @@
 // Map: the training facility, where everyone arrives. A 34 m shooting range with static, pop-up and moving targets,
 // a four-room shoot / no-shoot kill house, skill stations (a locked door to pick, one to kick, a rigged door, a dummy bomb)
 // and the mission board in the lobby that sends the squad out to a real map. Nothing here can hurt you.
+import { park } from './cars.js';
 export const H = 3.2, DOOR_H = 2.1;
 export const YARD = { x0: -2, z0: -18, x1: 36, z1: 30 };
 export const ROOMS = [   // [floor, name, x0, z0, x1, z1, floor finish]
@@ -42,6 +43,8 @@ export const BOMB = [0, 32.1, 22.1, 0.78];
 export const SPAWN = [[8, 23], [10, 23], [12, 23], [14, 23]];
 export const BREAKER = { x: 33.5, y: 1.4, z: 27.87 };
 
+// quest-store: cars in the car park outside the lobby glass, nose to the building (bays between the stripes); out of reach, so no collision
+export const PARKED = park([[2.35, 34.6, Math.PI], [4.95, 34.4, Math.PI], [10.15, 34.6, Math.PI], [12.75, 34.5, Math.PI], [17.95, 34.4, Math.PI]], 4);
 const inside = (x, z) => ROOMS.some(r => x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]);
 function surfaces(x, z) { return inside(x, z) ? [[0, 0]] : []; }
 function floorRay(ox, oy, oz, dx, dy, dz, best) {
@@ -51,7 +54,7 @@ function floorRay(ox, oy, oz, dx, dy, dz, best) {
 const solidFloor = (x, y, z) => y < 0 || y > H;
 export default {
   id: 'training', name: 'TRAINING', op: 'Training facility', training: true, H, DOOR_H, YARD, layers: 1, layerFloor: [0],
-  spawn: SPAWN, exit: { x0: 0, x1: 0, z0: 0, z1: 0 }, breaker: BREAKER, cars: [], rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
+  spawn: SPAWN, exit: { x0: 0, x1: 0, z0: 0, z1: 0 }, breaker: BREAKER, cars: [], parked: PARKED, rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
   spots: { s: [], c: [], b: [BOMB] }, veg: null, counts: { s: 0, c: 0, b: 1 }, time: 0, stairs: [],
   targets: TARGETS, houseRooms: HOUSE_ROOMS, doorsOf: DOOR,
   lobby: { x: 10, y: 1.65, z: 27.75, tx: 10, tz: 22 },
