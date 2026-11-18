@@ -198,7 +198,10 @@ function testDraft(map) {
   else go();
 }
 const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
-const torch = new THREE.SpotLight(0xfff2dd, 16, 30, 0.44, 0.8, 1.6); torch.visible = false; scene.add(torch, torch.target);
+// quest-store: the flashlight is switched by its intensity, never by visible. Three.js builds every shader for the number of lights
+// in view, so showing or hiding a light rebuilds them all: on a headset that was seconds of stutter each time a gun was drawn or
+// holstered with the light on (in the casino, right after the rappel through the suite window). TORCH_I: its brightness when on.
+const TORCH_I = 16, torch = new THREE.SpotLight(0xfff2dd, 0, 30, 0.44, 0.8, 1.6); scene.add(torch, torch.target);
 const xrc = [0, 1].map(i => { const ray = renderer.xr.getController(i), grip = renderer.xr.getControllerGrip(i); rig.add(ray, grip); const o = { ray, grip, src: null }; ray.addEventListener('connected', e => { o.src = e.data; }); ray.addEventListener('disconnected', () => { o.src = null; }); return o; });
 const tiltQ = new THREE.Quaternion(); const setTilt = d => { S.tilt = d; tiltQ.setFromAxisAngle(new THREE.Vector3(1, 0, 0), d * Math.PI / 180); localStorage.setItem('bl_tilt', d); }; setTilt(S.tilt);
 
@@ -250,6 +253,7 @@ function puff(p, color) { const m = puffs[puffI = (puffI + 1) % puffs.length]; m
 const says = [];
 // glass bursting out of a breach window: a spray of glints that falls and fades
 const SHARDS = []; const shardM = new THREE.PointsMaterial({ color: 0xcfe6ff, size: 0.035, transparent: true, opacity: 0.9, depthWrite: false });
+{ const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array([0, -500, 0]), 3)); scene.add(new THREE.Points(g, shardM)); }   // quest-store: one far-away point, so the shard shader is built with the rest at load (no hitch at the first broken window)
 function shards(x, y, z, horiz) {
   const n = 90, pos = new Float32Array(n * 3), vel = [];
   for (let i = 0; i < n; i++) { pos[i * 3] = x + (Math.random() - 0.5) * (horiz ? 2 : 0.1); pos[i * 3 + 1] = y + (Math.random() - 0.5) * 2.4; pos[i * 3 + 2] = z + (Math.random() - 0.5) * (horiz ? 0.1 : 2); vel.push([(Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3]); }
@@ -772,7 +776,7 @@ function placeGuns(dt) {
   }
   guns.rifle.ud.ret.visible = guns.rifle.where !== 'holster'; if (guns.pistol.ud.ret) guns.pistol.ud.ret.visible = guns.pistol.where !== 'holster';   // the reticle's own shader decides, per eye, how much of it shows through the sight window
   // flashlight follows the gun in hand
-  const A = gunIn(hands[1]) || gunIn(hands[0]); torch.visible = !!A && S.light;
+  const A = gunIn(hands[1]) || gunIn(hands[0]); torch.intensity = A && S.light ? TORCH_I : 0;
   if (A) { A.mesh.localToWorld(torch.position.copy(A.ud.light)); torch.target.position.set(0, 0, -6).add(A.ud.light); A.mesh.localToWorld(torch.target.position); torch.target.updateMatrixWorld(); }
 }
 function fire(h, G, o) {
@@ -1067,7 +1071,7 @@ function frame(t) {
   setAmbience(S.wx === 'storm' ? 1 : S.wx === 'rain' ? 0.7 : 0, weather.state.inside);
   { const ins = level.inside(head.pos.x, head.pos.z, head.pos.y); setListener(head.pos, head.fwd, ins); setEnvInside(ins); }   // the reflections show pot lights indoors, the sky outside
   footsteps(dt); exitPrompt(dt);
-  if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(fo(head.pos), head.quat), l: hands[0].active ? (lh => arr7(fo(lh.pos), lh.quat))(handOnGun(hands[0])) : null, r: hands[1].active ? (rh => arr7(fo(rh.pos), rh.quat))(handOnGun(hands[1])) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.visible ? 1 : 0 }); }
+  if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(fo(head.pos), head.quat), l: hands[0].active ? (lh => arr7(fo(lh.pos), lh.quat))(handOnGun(hands[0])) : null, r: hands[1].active ? (rh => arr7(fo(rh.pos), rh.quat))(handOnGun(hands[1])) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.intensity > 0 ? 1 : 0 }); }
   renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(frame);
@@ -1127,7 +1131,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q9';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q10';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
