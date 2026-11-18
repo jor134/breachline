@@ -5,7 +5,7 @@ import { Human, Officer, Bomb, Body, RIG, SELF_BACK, GROUND, makeRifle, makePist
 import { loadCar, loadParkedCars } from './car.js';
 import { setEnvInside } from './mats.js';
 import { CHARS, charReady } from './chars.js';
-import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
+import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx, setMusic } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
 import { resolveCircle, rayStatic, ledgeNear, MAP_IDS, MAPS, MISSION_IDS, registerMap } from './core/level.js';
@@ -1010,6 +1010,7 @@ const arr7 = (p, q) => [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +q.x.
 const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 'mag' ? 3 : 0;
 function frame(t) {
   perf.tick((t - last) / 1000, renderer.xr.isPresenting);
+  { const want = !!S.mode && !!M.training && S.music !== false; if (want !== S.musicOn) { S.musicOn = want; setMusic(want); } }   // quest-store: training-room music (MUSIC on the start menu)
   const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t; S.now += dt;
   nvgFlip.tick(dt);
   if (ED.on) {   // building in the map editor: only the hands, the editor and the map
@@ -1131,7 +1132,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q11';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q12';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

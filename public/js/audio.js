@@ -18,6 +18,16 @@ export function initAudio() {
   send = ctx.createGain(); send.gain.value = 0.1; send.connect(conv); conv.connect(tone); tone.connect(master);
   loadSamples();
 }
+// quest-store: background music for the training room (sfx/music_training.mp3, an original loop made by tools/training_music.py).
+// MP3 adds silence at both ends, so the loop runs between MUSIC.pad and pad + len for a seamless repeat. setMusic(true) fades it in.
+const MUSIC = { url: 'sfx/music_training.mp3', pad: 1105 / 44100, len: 24 * 4 * 60 / 110, gain: 0.2 };
+let musicBuf = null, musicLoading = false, musicSrc = null, musicGain = null, musicWant = false;
+export function setMusic(on) {
+  musicWant = !!on; if (!ctx) return;
+  if (on && !musicBuf) { if (!musicLoading) { musicLoading = true; fetch(MUSIC.url).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { musicBuf = buf; if (musicWant) setMusic(true); }).catch(e => console.warn('music not loaded', e)); } return; }
+  if (on && !musicSrc) { musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(ctx.destination); musicSrc = ctx.createBufferSource(); musicSrc.buffer = musicBuf; musicSrc.loop = true; musicSrc.loopStart = MUSIC.pad; musicSrc.loopEnd = MUSIC.pad + MUSIC.len; musicSrc.connect(musicGain); musicSrc.start(0, MUSIC.pad); musicGain.gain.setTargetAtTime(MUSIC.gain, ctx.currentTime, 0.8); }
+  else if (!on && musicSrc) { const s = musicSrc, g = musicGain; musicSrc = musicGain = null; g.gain.setTargetAtTime(0, ctx.currentTime, 0.4); setTimeout(() => { try { s.stop(); } catch (e) { } g.disconnect(); }, 2500); }
+}
 // occluded(x, y, z) -> true when a solid surface lies between the listener and that point
 export function setOccluder(fn) { occluder = fn; }
 export function setListener(p, f, isInside) {

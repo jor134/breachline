@@ -8,6 +8,7 @@ import { makeUnlock } from './unlock.js';
 const PER_PAGE = 4, clip = (s, n = 60) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 
 export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoard, play }) {
+  try { S.music = localStorage.getItem('bl_music') !== '0'; } catch (e) { }
   const U = { owner: 0, page: 0, code: '', prev: null };
   const store = !!(window.__boot && window.__boot.store), unlock = makeUnlock(); U.unlock = unlock;
   let call = (() => { try { const c = localStorage.getItem('bl_name'); return isCallsign(c) ? c : randomCallsign(); } catch (e) { return randomCallsign(); } })();
@@ -56,7 +57,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       '   AI officers fill the empty places.',
       'Voice chat with your squad: ' + (voice.on ? 'ON' : 'OFF') + (voice.on && voice.err ? '  (' + voice.err.split(':')[0] + ')' : ''),
       'Point at a button and pull the trigger.',
-    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE', 'st:online'], ['CREDITS', 'st:credits:0'], ['PLAY SOLO', 'st:solo']]);
+    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE', 'st:online'], ['CREDITS', 'st:credits:0'], ['MUSIC: ' + (S.music === false ? 'OFF' : 'ON'), 'st:music'], ['PLAY SOLO', 'st:solo']]);
   };
   // ---- the full game: what the demo leaves out, and Meta's purchase dialog ----
   function showBuy(why, from) {
@@ -109,6 +110,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'num') { call = call.split('-')[0] + '-' + String(Math.floor(Math.random() * 90) + 10); saveCall(); U.showStart(); }
     // voice: OFF -> ON asks for the microphone straight away (in the store app that is Android's permission prompt), so the question
     // comes up here at the start, not in the middle of a mission. ON without a mic (refused or not asked yet) asks again.
+    else if (what === 'music') { S.music = S.music === false; try { localStorage.setItem('bl_music', S.music ? '1' : '0'); } catch (e) { } U.showStart(); }
     else if (what === 'voice') {
       if (voice.on && voice.mic) { voice.setOn(false); return U.showStart(); }
       if (!voice.on) voice.setOn(true);
