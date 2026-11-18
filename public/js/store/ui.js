@@ -43,10 +43,13 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages, lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
   }
 
+  // which edition this headset is running, on the start menu, so a developer unlock is never mistaken for the demo
+  U.edition = () => unlock.dev ? 'FULL GAME (developer unlock)' : unlock.owned ? 'FULL GAME' : unlock.gate ? 'DEMO' : 'FULL GAME';
+  unlock.ready.then(() => { if (S.panel === 'start') U.showStart(); });
   // ---- the in-VR start menu (store build): callsign, voice, solo / online / tutorial ----
   U.showStart = () => {
     S.panel = 'start'; placeBoard(); panel.mesh.visible = true;
-    panel.draw("YOU CAN'T HIDE", 'Callsign ' + call, [
+    panel.draw("YOU CAN'T HIDE", 'Callsign ' + call + '   ·   ' + U.edition(), [
       'Clear buildings, save hostages, disarm bombs.',
       'PLAY SOLO: you lead three AI officers.',
       'PLAY ONLINE: up to four players on a room code,',

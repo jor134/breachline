@@ -11,7 +11,8 @@ export function makeUnlock() {
   const U = { gate: STORE.gate === 'iap', owned: false, dev: get('bl_dev') === '1', store: false, svc: null, price: '', err: '' };
   U.ready = (async () => {
     const code = new URLSearchParams(location.search).get('dev');
-    if (code) {
+    if (code === 'off') { try { localStorage.removeItem('bl_dev'); localStorage.removeItem('bl_full'); } catch (e) { } U.dev = false; history.replaceState(null, '', location.pathname); }   // ?dev=off: back to what a buyer sees
+    else if (code) {
       try { const r = await fetch('api/unlock', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) }); if (r.ok) { put('bl_dev', '1'); U.dev = true; } } catch (e) { }
       history.replaceState(null, '', location.pathname);   // the code never stays in the address bar
     }

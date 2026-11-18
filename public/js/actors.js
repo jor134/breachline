@@ -211,7 +211,8 @@ export class Human {
     this.fwd += ((up ? vf / vl : 1) - this.fwd) * Math.min(1, dt * 6); this.side += ((up ? vs / vl : 0) - this.side) * Math.min(1, dt * 6);
     const yawRate = (fy - (this.lastYaw ?? fy)) / Math.max(dt, 1e-3); this.lastYaw = fy;
     const turning = up && this.speed < 0.4 && Math.abs(yawRate) > 0.9, w = up ? Math.max(Math.min(1, this.speed / 1.3), turning ? 0.35 : 0) : 0, run = up ? Math.max(0, Math.min(1, (this.speed - 1.6) / 1.4)) : 0;
-    if (up) this.phase += moved * (2 * Math.PI / (1.25 + 0.5 * run)) + (turning ? Math.abs(yawRate) * dt * 1.6 : 0); this.idle += dt;
+    const sideK = up ? Math.min(1, this.side * this.side * 1.3) : 0;   // sidestepping: shorter, quicker steps, so the feet never cross
+    if (up) this.phase += moved * (2 * Math.PI / ((1.25 + 0.5 * run) * (1 - 0.45 * sideK))) + (turning ? Math.abs(yawRate) * dt * 1.6 : 0); this.idle += dt;
     const low = this.fl & 2 && up, ph = this.phase, A = (0.42 + 0.25 * run) * w * (low ? 0.75 : 1), F = turning ? 0.4 : this.fwd, Sd = turning ? 0 : this.side, still = up ? 1 - w : 0;
     const br = Math.sin(this.idle * 1.6) * 0.012, sway = up ? Math.sin(this.idle * (st === 'z' ? 3.1 : 0.55)) * (st === 'z' ? 0.09 : 0.02) * still : 0, hurt = st === 'i' ? Math.sin(this.idle * 2.2) * 0.1 : 0;
     this.flinch = Math.max(0, this.flinch - dt * 4); const fl = this.flinch * this.flinch, kick = this.flashT > 0 ? 0.07 : 0;
@@ -228,7 +229,14 @@ export class Human {
     const aL = fold(dL), aR = fold(dR); this.footSink += (sink - this.footSink) * Math.min(1, dt * 10);
     L.hip.rotation.x = c.hl - A * Math.sin(ph) * F - aL - 0.08 * Math.max(0, shift); L.knee.rotation.x = c.kl + (0.25 + 0.75 * Math.max(0, Math.cos(ph))) * A * 1.5 + 2 * aL + 0.16 * Math.max(0, shift);
     R.hip.rotation.x = c.hr + A * Math.sin(ph) * F - aR - 0.08 * Math.max(0, -shift); R.knee.rotation.x = c.kr + (0.25 + 0.75 * Math.max(0, -Math.cos(ph))) * A * 1.5 + 2 * aR + 0.16 * Math.max(0, -shift);
-    L.hip.rotation.z = -Sd * A * 0.75 * Math.sin(ph) - 0.03 * shift; R.hip.rotation.z = Sd * A * 0.75 * Math.sin(ph + Math.PI) - 0.03 * shift;   // sideways steps: the legs scissor out and in
+    // sideways steps: each leg swings toward the way he is moving while its knee lifts the foot, and slides back planted, so the feet
+    // step instead of gliding. (The old version swung both legs the same way, the swinging foot against the direction of travel.)
+    // The stance widens a little so the trailing foot closes up to the leading one without crossing it.
+    // The planted foot slides back at exactly his speed (linear, a quarter of a stride each side), the swing is eased.
+    const Lc = (1.25 + 0.5 * run) * (1 - 0.45 * sideK), As = Sd * Lc / 3.5, wide = 0.09 * Math.abs(Sd) * w;
+    const sideOf = p2 => { const u = ((p2 / (2 * Math.PI) + 0.25) % 1 + 1) % 1; if (u >= 0.5) return 1 - 4 * (u - 0.5); const t = u * 2; return -1 + 2 * t * t * (3 - 2 * t); };   // swing u 0..0.5, stance 0.5..1
+    L.hip.rotation.z = As * sideOf(ph) - wide - 0.03 * shift; R.hip.rotation.z = As * sideOf(ph + Math.PI) + wide - 0.03 * shift;
+    L.hip.rotation.x -= 0.45 * A * Math.abs(Sd) * Math.max(0, Math.cos(ph)); R.hip.rotation.x -= 0.45 * A * Math.abs(Sd) * Math.max(0, -Math.cos(ph));   // the hip flexes as the knee lifts, keeping the foot under him
     this.body.position.y = c.drop - Math.abs(Math.sin(ph)) * 0.035 * w - 0.02 * w + this.footSink; this.body.position.x = 0.025 * shift; this.body.rotation.z = sway + 0.03 * shift;
     this.upper.rotation.set(c.spine + 0.07 * w * Math.max(0, F) - 0.04 * w * Math.max(0, -F) + 0.12 * run + br + fl * 0.25, Math.sin(ph) * 0.07 * w + fl * 0.4 + look + scared * 0.6 + check * 0.25, -Math.sin(ph) * 0.03 * w - sway + scared * 0.05);
     const [la, ra] = this.arms, bob = Math.sin(ph * 2) * 0.04 * w;
@@ -352,6 +360,10 @@ export class Body {
       this.H[S] = { f0: f, b0: b, palm, fingers, thumb, L1, L2, up0: up, fo0: fo, pole0: new THREE.Vector3(0, 0, -1), cur: { i: 0.6, g: 0.7, t: 0.5 }, wq: new THREE.Quaternion(), wp: new THREE.Vector3(), el: new THREE.Vector3(), pole: new THREE.Vector3(), on: false };
     }
     for (const S of ['L', 'R']) { const th = P[r.thigh[S]], sh = P[r.shin[S]], ft = P[r.foot[S]]; this.H['leg' + S] = { L1: th.distanceTo(sh), L2: sh.distanceTo(ft), d0: sh.clone().sub(th).normalize(), s0: ft.clone().sub(sh).normalize(), foot: ft.clone(), ft: ft.clone(), knee: new THREE.Vector3() }; }
+    // feet point where the body faces (a little toe-out, as people stand), whatever angle the model's feet had at rest. Left to follow
+    // the shin, the squad's rest-pose feet splayed outwards and they walked like ducks. yaw0: the rest foot's heading, from its toe bone.
+    for (const S of ['L', 'R']) { const fi = r.foot[S], ti = sk.par.indexOf(fi), toe = ti >= 0 ? P[ti].clone().sub(P[fi]) : new THREE.Vector3(0, 0, 1);
+      Object.assign(this.H['leg' + S], { yaw0: Math.atan2(toe.x, toe.z), out: S === 'L' ? 0.08 : -0.08, fq: new THREE.Quaternion() }); }
     this.legLen = this.H.legL.L1 + this.H.legL.L2;
     this.q = [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()];
     this.fns = {}; const IKq = new THREE.Quaternion(), tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
@@ -398,6 +410,7 @@ export class Body {
         H.thumb.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, c.t * [0.35, 0.65, 0.55][s])));   // wraps round a grip
       } else { for (const i of [r.up[S], r.fore[S], r.hand[S]]) W.set(i, sk.rig(i, _q3.identity(), new THREE.Quaternion())); }
       W.set(r.thigh[S], this.fns['th' + S]); W.set(r.shin[S], this.fns['sh' + S]);
+      if (!down && r.foot[S] >= 0) { const Lg = this.H['leg' + S]; W.set(r.foot[S], Lg.fq.setFromAxisAngle(UPY, Lg.out - Lg.yaw0 - Gt.lag).multiply(sk.restQ[r.foot[S]])); }   // feet left behind by a turn keep their old heading too
     }
     sk.solve(W);
   }
