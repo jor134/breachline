@@ -137,7 +137,13 @@ voice.getIce();
 // a small speaker over a teammate's head while they talk
 const TALK_MAT = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#40e070'; g.beginPath(); g.moveTo(10, 24); g.lineTo(22, 24); g.lineTo(36, 10); g.lineTo(36, 54); g.lineTo(22, 40); g.lineTo(10, 40); g.fill(); g.strokeStyle = '#40e070'; g.lineWidth = 5; for (const r of [12, 22]) { g.beginPath(); g.arc(36, 32, r, -0.8, 0.8); g.stroke(); } const t = new THREE.CanvasTexture(c); return new THREE.SpriteMaterial({ map: t, depthTest: false, fog: false }); })();
 function voiceLine() { if (S.net !== 'online' || !voice.on) return ''; return voice.mic ? (voice.muted ? 'MIC OFF' : 'MIC ON') : 'NO MIC'; }
-function toggleMic() { if (!voice.mic) { if (voice.err) hint(head.pos.x + head.fwd.x, head.pos.y, head.pos.z + head.fwd.z, 'NO MIC'); return; } voice.setMuted(!voice.muted); sfx.beep(null, voice.muted ? 500 : 900); hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.2, head.pos.z + head.fwd.z * 1.2, voice.muted ? 'MIC MUTED' : 'MIC ON'); }
+function toggleMic() {
+  if (!voice.mic) {   // quest-store: no microphone yet: ask for it now (the app's first request shows Android's permission prompt)
+    if (!voice.on) voice.setOn(true);
+    hint(head.pos.x + head.fwd.x, head.pos.y, head.pos.z + head.fwd.z, 'ASKING FOR THE MICROPHONE...');
+    voice.startMic().then(ok => { if (ok) voice.unlock(); hint(head.pos.x + head.fwd.x, head.pos.y, head.pos.z + head.fwd.z, ok ? 'MIC ON' : 'NO MIC: ' + (voice.err || 'blocked').split(':')[0].toUpperCase()); if (S.menu) toggleMenu(true); });
+    return;
+  } voice.setMuted(!voice.muted); sfx.beep(null, voice.muted ? 500 : 900); hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.2, head.pos.z + head.fwd.z * 1.2, voice.muted ? 'MIC MUTED' : 'MIC ON'); }
 
 // ---------- hands & guns ----------
 const mkIn = () => ({ trig: 0, grip: 0, a: 0, b: 0, stick: 0, sx: 0, sy: 0, thumb: 0, trigT: 0 });
@@ -146,6 +152,22 @@ const press = (h, k) => h.in[k] > 0.5 && !(h.prev[k] > 0.5), released = (h, k) =
 const buzz = (h, s, ms) => { try { h.pad && h.pad.hapticActuators && h.pad.hapticActuators[0] && h.pad.hapticActuators[0].pulse(s, ms); } catch { } };
 const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(kind), mesh, ud: mesh.userData, where: 'holster', mags: GUNS[kind].mags, kick: 0, flashT: 0 }; };
 const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol(true, true)) };
+// quest-store: the sidearm drawn 1.6x its modelled size (it read as a toy in the hand). Its points (muzzle, sight, magwell) are in the
+// mesh's own frame, so they scale with it; the grip stays at the hand because the gun frame's origin is the top of the grip.
+const PISTOL_SCALE = 1.6; guns.pistol.mesh.scale.setScalar(PISTOL_SCALE); for (const h of hands) h.mags.pistol.scale.setScalar(PISTOL_SCALE);
+// quest-store: hands lock onto the gun. A held gun follows the controller (or, two-handed, the line to the support hand), and the
+// hand drawn on it takes its pose from the gun: the gun hand round the pistol grip, the support hand round the foregrip, wherever
+// the controllers really are. GRIP_AT: where the controller origin would be for a proper grip, in the gun's frame.
+const GRIP_AT = { rifle: new THREE.Vector3(0, -0.035, 0.02), pistol: new THREE.Vector3(0, -0.03, 0.012), fore: new THREE.Vector3(0, -0.035, 0) };
+let PISTOL_UNTILT = null; const lockQ = [new THREE.Quaternion(), new THREE.Quaternion()], lockP = [new THREE.Vector3(), new THREE.Vector3()];
+function handOnGun(h) {
+  if (!h.active) return null;
+  const G = gunIn(h), o = hands[1 - h.i], OG = gunIn(o), q = lockQ[h.i], p = lockP[h.i];
+  if (G) { q.copy(G.mesh.quaternion); if (G.kind === 'pistol' && S.mode === 'vr') q.multiply(PISTOL_UNTILT || (PISTOL_UNTILT = PISTOL_TILT.clone().invert())); G.mesh.localToWorld(p.copy(GRIP_AT[G.kind]).multiplyScalar(G.kind === 'pistol' ? 1 / PISTOL_SCALE : 1)); }
+  else if (h.support && OG && OG.kind === 'rifle') { q.copy(OG.mesh.quaternion); OG.mesh.localToWorld(p.copy(OG.ud.fore).add(GRIP_AT.fore)); }
+  else return h;
+  return { pos: p, quat: q, pose: h.pose, i: h.i };
+}
 const gunIn = h => (h.item === 'rifle' || h.item === 'pistol') ? guns[h.item] : null;
 const PISTOL_TILT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -0.3);
 const HOLSTER = RIG, HOLSTER_ROT = { rifle: [0, 1.45, 0.25, 'ZYX'], pistol: [-1.5, 0, 0, 'XYZ'] }, _he = new THREE.Euler();   // the rifle hangs across your front, muzzle to the left and a little down   // grab zones sit exactly where the holders are drawn on the vest and belt
@@ -1001,7 +1023,7 @@ function frame(t) {
   for (const h of hands) { if (h.active) { v1.copy(h.pos).sub(h.last).multiplyScalar(1 / dt); if (v1.lengthSq() < 900) h.vel.lerp(v1, 0.45); h.last.copy(h.pos); } }
   placeGuns(dt);
   for (const h of hands) h.pose = handPose(h, hands[1 - h.i]);
-  myBody.g.visible = S.mode === 'vr'; if (S.mode === 'vr') myBody.update(head.pos, S.bodyYaw, [hands[0].active ? hands[0] : null, hands[1].active ? hands[1] : null], S.feetY, head.quat, { down: !!S.me.down, stride: 0.5 });   // your own legs step, smaller
+  myBody.g.visible = S.mode === 'vr'; if (S.mode === 'vr') myBody.update(head.pos, S.bodyYaw, [handOnGun(hands[0]), handOnGun(hands[1])], S.feetY, head.quat, { down: !!S.me.down, stride: 0.5 });   // your own legs step, smaller
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
   if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (S.doorOpen[P.id] && (P.lock || P.trap) || !(P.lock ? !S.doorLocked[P.id] : P.trap ? !S.doorTrap[P.id] : P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.lock ? 'lockdoor' : P.trap ? 'trapdoor' : P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
@@ -1045,7 +1067,7 @@ function frame(t) {
   setAmbience(S.wx === 'storm' ? 1 : S.wx === 'rain' ? 0.7 : 0, weather.state.inside);
   { const ins = level.inside(head.pos.x, head.pos.z, head.pos.y); setListener(head.pos, head.fwd, ins); setEnvInside(ins); }   // the reflections show pot lights indoors, the sky outside
   footsteps(dt); exitPrompt(dt);
-  if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(fo(head.pos), head.quat), l: hands[0].active ? arr7(fo(hands[0].pos), hands[0].quat) : null, r: hands[1].active ? arr7(fo(hands[1].pos), hands[1].quat) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.visible ? 1 : 0 }); }
+  if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(fo(head.pos), head.quat), l: hands[0].active ? (lh => arr7(fo(lh.pos), lh.quat))(handOnGun(hands[0])) : null, r: hands[1].active ? (rh => arr7(fo(rh.pos), rh.quat))(handOnGun(hands[1])) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.visible ? 1 : 0 }); }
   renderer.render(scene, camera);
 }
 renderer.setAnimationLoop(frame);
@@ -1105,7 +1127,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q8';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q9';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

@@ -56,7 +56,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       '   AI officers fill the empty places.',
       'Voice chat with your squad: ' + (voice.on ? 'ON' : 'OFF') + (voice.on && voice.err ? '  (' + voice.err.split(':')[0] + ')' : ''),
       'Point at a button and pull the trigger.',
-    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], ['VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE', 'st:online'], ['CREDITS', 'st:credits:0'], ['PLAY SOLO', 'st:solo']]);
+    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE', 'st:online'], ['CREDITS', 'st:credits:0'], ['PLAY SOLO', 'st:solo']]);
   };
   // ---- the full game: what the demo leaves out, and Meta's purchase dialog ----
   function showBuy(why, from) {
@@ -107,7 +107,14 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     const [, what, arg] = act.split(':'); sfx.click();
     if (what === 'word') { const [w, n] = call.split('-'); call = WORDS[(WORDS.indexOf(w) + 1) % WORDS.length] + '-' + n; saveCall(); U.showStart(); }
     else if (what === 'num') { call = call.split('-')[0] + '-' + String(Math.floor(Math.random() * 90) + 10); saveCall(); U.showStart(); }
-    else if (what === 'voice') { voice.setOn(!voice.on); U.showStart(); }
+    // voice: OFF -> ON asks for the microphone straight away (in the store app that is Android's permission prompt), so the question
+    // comes up here at the start, not in the middle of a mission. ON without a mic (refused or not asked yet) asks again.
+    else if (what === 'voice') {
+      if (voice.on && voice.mic) { voice.setOn(false); return U.showStart(); }
+      if (!voice.on) voice.setOn(true);
+      status('Asking for the microphone...'); U.showStart();
+      voice.startMic().then(ok => { if (ok) voice.unlock(); status(ok ? 'Microphone ready.' : voice.err); U.showStart(); });
+    }
     else if (what === 'solo') go(true, false);
     else if (what === 'tut') go(true, true);
     else if (what === 'online' && !unlock.full()) showBuy('online', 'start');

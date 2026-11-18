@@ -96,7 +96,11 @@ export function makePistol(holo = false, hq = false) {   // built-in pistol; hq:
   }).catch(e => console.warn('pistol model not loaded', e));
   return g;
 }
-export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = r.magMat; } }).catch(() => { }); return m; };
+// quest-store: the downloaded magazine was cut out of the receiver mesh, so its top is open: a lid closes it (feed lips and top round)
+export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = r.magMat;
+  const P = r.magLoose.attributes.position, top = new THREE.Box3(), v = new THREE.Vector3(), yMax = r.magLoose.boundingBox.max.y;   // the opening: the vertices within 8 mm of the top
+  for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i); if (v.y > yMax - 0.008) top.expandByPoint(v); }
+  if (!top.isEmpty()) { const lid = new THREE.Mesh(new THREE.BoxGeometry(top.max.x - top.min.x, 0.007, top.max.z - top.min.z), r.magMat); lid.position.set((top.min.x + top.max.x) / 2, yMax - 0.0045, (top.min.z + top.max.z) / 2); m.add(lid); } } }).catch(() => { }); return m; };
 const makeMag0 = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
 
 export const makeNade = kind => kind === 'flash' ? merge([[CYL(0.022, 0.09), 0x5a6048, 0, 0, 0], [CYL(0.018, 0.02), 0x9aa0a8, 0, 0.055, 0], [BOX(0.008, 0.07, 0.02), 0x9aa0a8, 0.024, 0.02, 0]], 'metal') : merge([[CYL(0.027, 0.1), 0x6a6e72, 0, 0, 0], [CYL(0.027, 0.016), 0xd8d8d8, 0, 0.03, 0], [CYL(0.016, 0.02), 0x30343a, 0, 0.06, 0]], 'metal');
@@ -355,9 +359,17 @@ export class Body {
       const jointAxes = ch => ch.map((i, k) => { const nx = ch[k + 1] ?? null, pv = ch[k - 1] ?? null, d = nx !== null ? P[nx].clone().sub(P[i]) : pv !== null ? P[i].clone().sub(P[pv]) : f.clone();
         const ax = new THREE.Vector3().crossVectors(b, d); if (ax.lengthSq() < 1e-10) ax.copy(curlAxis); ax.normalize(); return { i, ax: ax.applyQuaternion(sk.restQ[i].clone().invert()) }; });
       const fingers = r.fingers ? r.fingers[S].map(jointAxes) : [];
+      // quest-store: index and middle fingers are posed from the hand's own frame, not as extra bend on top of the model's rest pose.
+      // The squad model rests with its fingers already bent, and differently on each hand, so added bend over-curled the right
+      // hand's fingers downward. sp: the finger's straight direction at rest (its rest splay kept, its rest bend taken out).
+      const lat0 = new THREE.Vector3().crossVectors(b, f).normalize();
+      const fingersAbs = r.fingers ? r.fingers[S].map(ch => {
+        const d0 = P[ch[1]].clone().sub(P[ch[0]]).normalize(), sp = f.clone().multiplyScalar(d0.dot(f)).addScaledVector(lat0, d0.dot(lat0)).normalize();
+        return { sp, ax: new THREE.Vector3().crossVectors(b, sp).normalize(), joints: ch.map(i => { const nx = sk.par.indexOf(i), d = (nx >= 0 ? P[nx].clone().sub(P[i]) : P[i].clone().sub(P[sk.par[i]])).normalize(); return { i, d }; }) };
+      }) : [];
       const thumb = r.thumb ? jointAxes(r.thumb[S]) : [];
       const [L1, L2] = sk.len(S), up = P[r.fore[S]].clone().sub(P[r.up[S]]).normalize(), fo = P[r.hand[S]].clone().sub(P[r.fore[S]]).normalize();
-      this.H[S] = { f0: f, b0: b, palm, fingers, thumb, L1, L2, up0: up, fo0: fo, pole0: new THREE.Vector3(0, 0, -1), cur: { i: 0.6, g: 0.7, t: 0.5 }, wq: new THREE.Quaternion(), wp: new THREE.Vector3(), el: new THREE.Vector3(), pole: new THREE.Vector3(), on: false };
+      this.H[S] = { f0: f, b0: b, b1: new THREE.Vector3(), fingersAbs, palm, fingers, thumb, L1, L2, up0: up, fo0: fo, pole0: new THREE.Vector3(0, 0, -1), cur: { i: 0.6, g: 0.7, t: 0.5 }, wq: new THREE.Quaternion(), wp: new THREE.Vector3(), el: new THREE.Vector3(), pole: new THREE.Vector3(), on: false };
     }
     for (const S of ['L', 'R']) { const th = P[r.thigh[S]], sh = P[r.shin[S]], ft = P[r.foot[S]]; this.H['leg' + S] = { L1: th.distanceTo(sh), L2: sh.distanceTo(ft), d0: sh.clone().sub(th).normalize(), s0: ft.clone().sub(sh).normalize(), foot: ft.clone(), ft: ft.clone(), knee: new THREE.Vector3() }; }
     // feet point where the body faces (a little toe-out, as people stand), whatever angle the model's feet had at rest. Left to follow
@@ -372,7 +384,9 @@ export class Body {
     for (const S of ['L', 'R']) {
       const H = this.H[S], out = S === 'R' ? -1 : 1, Lg = this.H['leg' + S];
       this.fns['up' + S] = (gp) => { if (!H.on) return null; H.pole.set(out * 0.5, -0.75, -0.45); elbowAt(gp, H.wp, H.L1, H.L2, H.pole, H.el); return align2(H.up0, H.pole0, tmpA.copy(H.el).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.up[S]]).clone(); };
-      this.fns['fo' + S] = (gp) => { if (!H.on) return null; return align2(H.fo0, H.pole0, tmpA.copy(H.wp).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.fore[S]]).clone(); };
+      // quest-store: the forearm takes its roll from the hand (the back of the hand at rest -> the back of the hand now), not from the
+      // elbow's bend direction. Rolled by the elbow, the right forearm ended up turned against the hand and the wrist looked twisted.
+      this.fns['fo' + S] = (gp) => { if (!H.on) return null; return align2(H.fo0, H.b0, tmpA.copy(H.wp).sub(gp), H.b1, IKq).multiply(sk.restQ[r.fore[S]]).clone(); };
       this.fns['th' + S] = (gp) => { elbowAt(gp, Lg.ft, Lg.L1, Lg.L2, _kneeFwd, Lg.knee); return align2(Lg.d0, _kneeFwd, tmpA.copy(Lg.knee).sub(gp), _kneeFwd, IKq).multiply(sk.restQ[r.thigh[S]]).clone(); };
       this.fns['sh' + S] = (gp) => align2(Lg.s0, _kneeFwd, tmpA.copy(Lg.ft).sub(gp), _kneeFwd, IKq).multiply(sk.restQ[r.shin[S]]).clone();
     }
@@ -403,10 +417,13 @@ export class Body {
         // a hand round a controller (or a grip) is a fist on its side: back of the hand faces out and a little up, knuckles forward
         const sx = S === 'R' ? 1 : -1; H.wq.copy(ihq).multiply(h.quat); const f1 = a3.set(0, -0.25, -1).normalize().applyQuaternion(H.wq), b1 = a4.set(sx * HAND_BACK[0], HAND_BACK[1], HAND_BACK[2]).normalize().applyQuaternion(H.wq);
         const knuckle = hd.worldToLocal(a2.set(sx * HAND_KN[0], HAND_KN[1], HAND_KN[2]).applyQuaternion(h.quat).add(h.pos)); H.wp.copy(knuckle).addScaledVector(f1, -H.palm);
-        W.set(r.hand[S], align2(H.f0, H.b0, f1, b1, new THREE.Quaternion()).multiply(sk.restQ[r.hand[S]]));
+        const Rh = align2(H.f0, H.b0, f1, b1, new THREE.Quaternion()); H.b1.copy(b1); W.set(r.hand[S], Rh.clone().multiply(sk.restQ[r.hand[S]]));
         W.set(r.up[S], this.fns['up' + S]); W.set(r.fore[S], this.fns['fo' + S]);
         const want = h.pose || GRIP, c = H.cur, kk = Math.min(1, dt * 22); c.i += (want.i - c.i) * kk; c.g += (want.g - c.g) * kk; c.t += (want.t - c.t) * kk;
-        H.fingers.forEach((ch, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; ch.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, v * a[s]))); });
+        if (H.fingersAbs.length) H.fingersAbs.forEach((F, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; let th = 0;
+          F.joints.forEach((j, s) => { th += v * a[s]; _q3.setFromAxisAngle(F.ax, th); const t = a1.copy(F.sp).applyQuaternion(_q3), bb = a2.copy(H.b0).applyQuaternion(_q3);
+            W.set(j.i, Rh.clone().multiply(align2(j.d, H.b0, t, bb, new THREE.Quaternion())).multiply(sk.restQ[j.i])); }); });
+        else H.fingers.forEach((ch, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; ch.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, v * a[s]))); });
         H.thumb.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, c.t * [0.35, 0.65, 0.55][s])));   // wraps round a grip
       } else { for (const i of [r.up[S], r.fore[S], r.hand[S]]) W.set(i, sk.rig(i, _q3.identity(), new THREE.Quaternion())); }
       W.set(r.thigh[S], this.fns['th' + S]); W.set(r.shin[S], this.fns['sh' + S]);
