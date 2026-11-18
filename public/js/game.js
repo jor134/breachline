@@ -386,7 +386,11 @@ function openOW() {
 }
 function owMove(dx, dy) { OW.mx += dx; OW.my += dy; if (Math.hypot(OW.mx, OW.my) < 30) OW.sel = null; else { const a = Math.atan2(OW.my, OW.mx) * 180 / Math.PI; let bd = 999; for (const [k, , deg] of OW.items) { let d = Math.abs(a - deg) % 360; if (d > 180) d = 360 - d; if (d < bd) { bd = d; OW.sel = k; } } } for (const b of $('ow').querySelectorAll('.owb')) b.classList.toggle('on', b.dataset.k === OW.sel); }
 function closeOW(pick) { if (!OW.open) return; OW.open = false; $('ow').style.display = 'none'; hideOrderAim(); if (pick && OW.sel) giveOrder(OW.sel, OW.T); }
-function botSay(e) { const o = S.officers.get(e.p), L = BSAY[e.k]; if (!o || !L) return; const p = o.head.position; sayAt(p.x, p.y + 0.5, p.z, o.name + ': ' + L[0], '#a8ffb8'); if (L[1] && (e.k !== 'contact' || p.distanceTo(head.pos) < 25)) sfx.say(L[1], 0.9 + (o.slot || 0) * 0.08); }
+function botSay(e) { const o = S.officers.get(e.p), L = BSAY[e.k]; if (!o || !L) return; const p = o.head.position; sayAt(p.x, p.y + 0.5, p.z, o.name + ': ' + L[0], '#a8ffb8');
+  const now = performance.now(); if (now - (botSay.t[e.k] || 0) < 900) return;   // one voice per call-out: the whole squad answering "copy" at once is a mess
+  if (sfx.vo('vo_o_' + e.k, p, 1.4)) { botSay.t[e.k] = now; return; }   // recorded radio line (SWAT walkie-talkie pack)
+  if (L[1] && (e.k !== 'contact' || p.distanceTo(head.pos) < 25)) { botSay.t[e.k] = now; sfx.say(L[1], 0.9 + (o.slot || 0) * 0.08); } }
+botSay.t = {};
 
 // ---------- panels ----------
 class Panel {
@@ -1146,7 +1150,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q14';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q15';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

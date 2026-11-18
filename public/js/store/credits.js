@@ -9,6 +9,7 @@ export const CREDITS = [
   { use: 'Civilians and police hostages', title: 'Male civilian v1, v2, v5; Female civilian v1, v4; Male police v1', by: 'Michael Constantine', lic: BY, url: 'https://sketchfab.com/devdesgames', chg: CHG },
   { use: 'Officers\' rifle', title: 'Assault rifle M4A1', by: 'bobeer', lic: BY, url: 'https://sketchfab.com/3d-models/assault-rifle-m4a1-1b858701dd7142d9b82bbe3fd121a97b', chg: CHG },
   { use: 'Officers\' pistol', title: 'tactical pistol with red dot', by: 'N3ON_fx', lic: 'Sketchfab Standard', url: 'https://sketchfab.com/3d-models/tactical-pistol-with-red-dot-free-9316252a82e045299d561c8ec02a0360', chg: CHG },
+  { use: 'Squad radio voices', title: 'SWAT Radio Walkie-Talkie Voices - General Acks', by: 'Epic Stock Media', lic: 'Royalty-free licence', url: 'https://epicstockmedia.com', chg: 'trimmed and levelled' },
   { use: 'Suspect voices', title: 'AAA Game Character English Henchman', by: 'Epic Stock Media', lic: 'Royalty-free licence', url: 'https://epicstockmedia.com', chg: 'trimmed and levelled' },
   { use: 'Airport jet', title: 'British Aerospace 146', by: 'helijah', lic: 'Sketchfab Standard', url: 'https://sketchfab.com/3d-models/british-aerospace-146-8ea4b2716a314fb6ad1aee15c0bd1922', chg: CHG },
   { use: 'Casino helicopter', title: 'Bell Huey helicopter', by: 'Duane\'s Mind', lic: BY, url: 'https://sketchfab.com/3d-models/bell-huey-helicopter-755d8518a06e41b19752c1b54c0da588', chg: CHG },

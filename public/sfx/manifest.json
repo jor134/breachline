@@ -188,5 +188,40 @@
  "vo_s_die": [
   "vo_s_die_1.mp3",
   "vo_s_die_2.mp3"
+ ],
+ "vo_o_clear": [
+  "vo_o_clear_1.mp3",
+  "vo_o_clear_2.mp3"
+ ],
+ "vo_o_contact": [
+  "vo_o_contact_1.mp3",
+  "vo_o_contact_2.mp3",
+  "vo_o_contact_3.mp3",
+  "vo_o_contact_4.mp3",
+  "vo_o_contact_5.mp3",
+  "vo_o_contact_6.mp3"
+ ],
+ "vo_o_flash": [
+  "vo_o_flash_1.mp3",
+  "vo_o_flash_2.mp3"
+ ],
+ "vo_o_follow": [
+  "vo_o_follow_1.mp3",
+  "vo_o_follow_2.mp3",
+  "vo_o_follow_3.mp3",
+  "vo_o_follow_4.mp3"
+ ],
+ "vo_o_hold": [
+  "vo_o_hold_1.mp3",
+  "vo_o_hold_2.mp3",
+  "vo_o_hold_3.mp3"
+ ],
+ "vo_o_onit": [
+  "vo_o_onit_1.mp3",
+  "vo_o_onit_2.mp3",
+  "vo_o_onit_3.mp3",
+  "vo_o_onit_4.mp3",
+  "vo_o_onit_5.mp3",
+  "vo_o_onit_6.mp3"
  ]
 }
