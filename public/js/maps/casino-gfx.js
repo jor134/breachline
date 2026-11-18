@@ -9,7 +9,7 @@ import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import { setRotor } from '../audio.js';
 import { H, FOOT, WING, MAIN, F3, ROOF, POD, HELI, SHAFT, CAR, CANOPY, WINX, COLUMNS, ROPES, inHeli, FLY, LIFT, ARC, arcPt } from '../core/maps/casino.js';
 
-let tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null, lifts = null, liftGlow = [], dark = false, inner = null;
+let MATS_SLOT = null, tod = 'dusk', signs = [], glows = [], heli = null, cctv = null, towerM = null, skyM = null, lifts = null, liftGlow = [], dark = false, inner = null;
 const LAMPS = [[37, 5.6, 27, 16, 22], [22, 5.4, 32, 10, 16], [52, 5.4, 32, 10, 16], [37, 5.4, 43, 10, 15], [37, 5.4, 13, 9, 14], [7, 3.0, 20, 7, 13], [34, F3 + 3.0, 15, 6, 12], [36, 8.0, 66, 12, 22], [29, POD + 3.0, 13, 5, 9]];
 const DUSK = {
   sky: [[0, '#151a3d'], [0.28, '#33336e'], [0.42, '#8c5585'], [0.475, '#ec8558'], [0.5, '#ffbf78'], [0.53, '#2a2330'], [1, '#18161d']], skyR: 430, moon: [130, 120, -150],
@@ -43,6 +43,43 @@ const slotAtlas = () => cvs(1024, 512, (g) => {
     for (let k = 0; k < 3; k++) { const rx = x + 22 + k * 74; g.fillStyle = '#f4f1ea'; g.fillRect(rx, y + 70, 64, 110); g.fillStyle = ['#c0202a', '#1a1a1a', '#d4a020'][(i + k) % 3]; g.font = 'bold 50px sans-serif'; g.fillText(['7', 'BAR', '◆'][(i * 2 + k) % 3], rx + 32, y + 125); }
     g.fillStyle = '#ffde6a'; g.font = 'bold 20px monospace'; g.fillText('CREDIT ' + (1000 + i * 731) % 9000, x + 128, y + 214); g.strokeStyle = fg; g.lineWidth = 4; g.strokeRect(x + 6, y + 6, 244, 244); });
 });
+// the reel symbols, one column of 8 (the screens' shader scrolls them while a machine spins)
+const SYMS = [['7', '#c8202a'], ['BAR', '#1a1a1a'], ['\u25C6', '#1f5fd0'], ['\u2605', '#d4a020'], ['$', '#1d8a3a'], ['\u2663', '#1a1a1a'], ['\u2665', '#c8202a'], ['\u25CF', '#7a2ac0']];
+const symStrip = () => cvs(128, 1024, (g) => { SYMS.forEach(([t, c], i) => { const y = i * 128; g.fillStyle = '#f6f2e8'; g.fillRect(0, y, 128, 128); g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(0, y + 122, 128, 6);
+  g.fillStyle = c; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `bold ${t.length > 1 ? 46 : 84}px sans-serif`; g.fillText(t, 64, y + 68); }); });
+// Slot screens come alive: the reels spin, slow down one after another and stop on new symbols; now and then a win flashes the
+// screen and the marquee pulses. All of it in the shader (one material, no texture uploads), each machine on its own timing.
+function slotScreenMat(atlas) {
+  const sym = symStrip(); sym.wrapT = THREE.RepeatWrapping; sym.generateMipmaps = false; sym.minFilter = THREE.LinearFilter;   // no mip seams where the strip wraps
+  const m = new THREE.ShaderMaterial({ uniforms: { map: { value: atlas }, sym: { value: sym }, time: { value: 0 }, tint: { value: new THREE.Color(0xffffff) } },
+    vertexShader: `varying vec2 vUv; varying float vPh; void main() { vUv = uv; vPh = normal.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform sampler2D map, sym; uniform float time; uniform vec3 tint; varying vec2 vUv; varying float vPh;
+      float h1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
+      void main() {
+        float id = floor(vPh * 997.0 + 0.5), ph = id / 997.0;   // the machine's number (interpolation wobbles vPh by a hair; hashing that made speckles)
+        vec2 lt = fract(vUv * vec2(4.0, 2.0)); float tile = floor(vUv.x * 4.0) + 4.0 * floor(vUv.y * 2.0);
+        float px = lt.x * 256.0, py = (1.0 - lt.y) * 256.0;
+        vec4 c = texture2D(map, vUv);
+        float T = 7.0, t = time + ph * 61.0 + tile * 0.9, cyc = mod(t, T), n = floor(t / T);
+        bool win = h1(n * 3.7 + id * 0.917) < 0.22; float doneT = 2.9;
+        if (py > 70.0 && py < 180.0) { float k = floor((px - 22.0) / 74.0), rx = px - 22.0 - k * 74.0;
+          if (k >= 0.0 && k < 3.0 && rx < 64.0) {
+            float stopT = 1.6 + 0.55 * k, rem = max(0.0, stopT - cyc), sy = floor(h1(n * 7.1 + k * 1.3 + id * 0.173) * 8.0);
+            if (win) sy = floor(h1(n * 5.3 + id * 0.291) * 8.0);
+            float pos = sy - 0.5 + (py - 70.0) / 110.0 * 1.7 - 0.35 + rem * rem * 4.0 + rem * 9.0;
+            vec4 s = texture2D(sym, vec2(rx / 64.0, 1.0 - fract(pos / 8.0)));
+            float blur = clamp(rem * 2.0, 0.0, 1.0); c = mix(s, s * 0.7 + 0.25, blur * 0.6);
+            if (abs((py - 70.0) / 110.0 - 0.5) < 0.012 && win && cyc > doneT) c = vec4(1.0, 0.85, 0.2, 1.0);
+          } }
+        if (py < 60.0) c.rgb *= 0.85 + 0.25 * (0.5 + 0.5 * sin(time * 2.6 + ph * 40.0));
+        if (win && cyc > doneT && cyc < doneT + 2.5) { float f = 0.5 + 0.5 * sin((cyc - doneT) * 18.0); c.rgb = mix(c.rgb, c.rgb * 1.35 + vec3(0.12, 0.09, 0.0), f * 0.6);
+          if (py > 196.0 && py < 232.0) c.rgb = mix(c.rgb, vec3(1.0, 0.86, 0.3), f); }
+        gl_FragColor = vec4(c.rgb * tint, 1.0);
+        #include <colorspace_fragment>
+      }` });
+  m.color = m.uniforms.tint.value;   // the power and night-vision look sets .color on every glowing material
+  return m;
+}
 const rlayout = () => cvs(512, 160, (g, w, h) => { g.fillStyle = '#1e4a68'; g.fillRect(0, 0, w, h); g.strokeStyle = '#f2efe6'; g.lineWidth = 2; const cw = (w - 40) / 12, ch = (h - 40) / 3;
   for (let i = 0; i < 12; i++) for (let j = 0; j < 3; j++) { const n = i * 3 + 3 - j; g.fillStyle = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36].includes(n) ? '#a8202a' : '#141414'; g.fillRect(36 + i * cw + 3, 6 + j * ch + 3, cw - 6, ch - 6); g.strokeRect(36 + i * cw, 6 + j * ch, cw, ch); }
   g.fillStyle = '#1d7a3a'; g.fillRect(4, 6, 30, h - 40); g.strokeRect(4, 6, 30, h - 40); g.strokeRect(36, h - 32, w - 40, 26); });
@@ -90,9 +127,9 @@ const hash = (a, b) => { let h = (Math.round(a * 10) * 374761393 + Math.round(b 
 const furn = {
   slot({ P, b, W, len, dep, h, w, face }) {
     P('slotbody', 0.04, len - 0.04, 0.02, dep - 0.02, 0, 0.86); P('chrome', 0.02, len - 0.02, dep - 0.32, dep, 0.86, 0.95); P('slotbtn', 0.2, len - 0.2, dep - 0.24, dep - 0.08, 0.95, 0.955, 'Y');
-    P('slotbody', 0.06, len - 0.06, 0.05, 0.42, 0.95, 1.8); P('slotgold', 0.06, len - 0.06, 0.05, 0.42, 1.8, h - 0.03, 'xXzZ'); P('slotbody', 0.05, len - 0.05, 0.04, 0.43, h - 0.03, h); P('chrome', 0.05, len - 0.05, 0.42, 0.46, 0.95, 1.8, 'xXzZ');
+    P('slotbody', 0.06, len - 0.06, 0.05, 0.42, 0.95, 1.8); P('slotgold', 0.06, len - 0.06, 0.05, 0.42, 1.8, h - 0.03, 'xXzZ'); P('slotbody', 0.05, len - 0.05, 0.04, 0.43, h - 0.03, h); P('chrome', 0.05, len - 0.05, 0.42, 0.46, 0.95, 1.8, 'xX');   /* bezel sides (its front face used to cover the screen) */
     const c = hash(w.x0, w.z0) % 8, u0 = (c % 4) / 4, u1 = u0 + 0.25, v0 = 1 - ((c >> 2) + 1) / 2, v1 = v0 + 0.5, mir = face === '-z' || face === '+x', L = mir ? u1 : u0, R = mir ? u0 : u1, vS = 0.425;
-    b('slotscreen').quad(W(0.1, vS, 0.99), W(len - 0.1, vS, 0.99), W(len - 0.1, vS, 1.76), W(0.1, vS, 1.76), [W(0, 1, 0)[0] - W(0, 0, 0)[0], 0, W(0, 1, 0)[2] - W(0, 0, 0)[2]], 1, [[L, v0], [R, v0], [R, v1], [L, v1]]);
+    b('slotscreen').quad(W(0.1, vS, 0.99), W(len - 0.1, vS, 0.99), W(len - 0.1, vS, 1.76), W(0.1, vS, 1.76), [W(0, 1, 0)[0] - W(0, 0, 0)[0], (hash(w.z0 * 7 + 3, w.x0 * 3 + 1) % 997) / 997, W(0, 1, 0)[2] - W(0, 0, 0)[2]], 1, [[L, v0], [R, v0], [R, v1], [L, v1]]);   // normal.y: this machine's phase for the reels
   },
   bj({ P, b, W, len, dep, h }) { const C = curves(b, W), cu = len / 2, ru = len / 2 - 0.04, rv = dep - 0.22;
     P('fascia', len * 0.38, len * 0.62, 0.3, 0.7, 0, h - 0.12); P('walnut', 0.05, len - 0.05, 0.04, 0.22, h - 0.12, h);
@@ -287,7 +324,7 @@ export default {
     towerM = M.tglassT = sheen({ map: towerTex(false), emissiveMap: towerTex(true), emissive: 0xffffff }, 'glass');
     const glow = (k, c) => { M[k] = new THREE.MeshBasicMaterial({ color: c }); M[k].userData.c = c; glows.push(M[k]); };
     glow('cglow', 0xfff0d6); glow('crystal', 0xfff4e0); glow('slotgold', 0xffc65a); glow('slotbtn', 0xff7a3a); glow('lampshade', 0xffe7c0);
-    M.slotscreen = new THREE.MeshBasicMaterial({ map: slotAtlas() }); M.slotscreen.userData.c = 0xffffff; glows.push(M.slotscreen);
+    M.slotscreen = MATS_SLOT = slotScreenMat(slotAtlas()); M.slotscreen.userData.c = 0xffffff; glows.push(M.slotscreen);
     M.palmF = new THREE.MeshLambertMaterial({ color: 0x2c4628, side: THREE.DoubleSide });
   },
   look(night, nvg) {
@@ -432,6 +469,7 @@ export default {
   // the helicopter's rotors turn; once nobody is aboard for a few seconds in a live mission it climbs away (and comes back for anyone who spawns in it).
   // The CCTV wall refreshes one camera at a time, only while someone stands in the security office with the power on.
   tick(dt, { S, head, officers, renderer, scene, level }) {
+    if (MATS_SLOT) MATS_SLOT.uniforms.time.value = performance.now() / 1000;
     if (inner && inner.root.userData.zones) {   // show the casino floor and the suites only from where they can be seen
       const Z = inner.root.userData.zones, p = head.pos, live = !!S.mode, inCar = p.x > CAR.x0 && p.x < CAR.x1 && p.z > CAR.z0 && p.z < CAR.z1;
       const inPod = p.x > FOOT.x0 && p.x < FOOT.x1 && p.z > FOOT.z0 && p.z < FOOT.z1, showC = !live || inCar || p.y < POD + 2.6, showS = !live || inCar || !(inPod && p.y < POD - 0.3);
