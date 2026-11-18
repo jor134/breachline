@@ -22,8 +22,8 @@
     "path": "./android.keystore",
     "alias": "youcanthide"
   },
-  "appVersionCode": 1,
-  "appVersion": "1.0.0",
+  "appVersionCode": 2,
+  "appVersion": "1.0.1",
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://youcanthidegame.com/manifest.webmanifest",

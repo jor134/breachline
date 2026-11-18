@@ -50,6 +50,11 @@ jobs:
           BUBBLEWRAP_KEY_PASSWORD: ${{ env.KSPW }}
         run: |
           bubblewrap update --skipVersionUpgrade
+          # Meta's build scan flags android:allowBackup (anyone with the headset could copy the app's private data, e.g. the
+          # saved progress and unlock flag): switch backups off in the generated manifest before building.
+          M=app/src/main/AndroidManifest.xml
+          if grep -q 'android:allowBackup=' $M; then sed -i 's/android:allowBackup="[a-z]*"/android:allowBackup="false"/' $M; else sed -i '0,/<application/s//<application android:allowBackup="false"/' $M; fi
+          grep -o 'android:allowBackup="[a-z]*"' $M
           bubblewrap build --skipPwaValidation
           ls -la *.apk *.aab || true
       - name: Check the APK targets Android API 32 or lower (Quest requirement)
@@ -57,6 +62,8 @@ jobs:
         run: |
           AAPT=$ANDROID_HOME/build-tools/34.0.0/aapt
           $AAPT dump badging app-release-signed.apk | grep -E "package:|targetSdkVersion|uses-permission" | head -20
+          $AAPT dump xmltree app-release-signed.apk AndroidManifest.xml | grep -i allowBackup
+          $AAPT dump xmltree app-release-signed.apk AndroidManifest.xml | grep -iq 'allowBackup.*0x0' || { echo "allowBackup is not false"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: you-cant-hide-apk
