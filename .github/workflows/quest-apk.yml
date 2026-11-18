@@ -20,13 +20,16 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@v3
+        with:
+          # the action's default list still asks for the retired 'tools' package, which made sdkmanager fail.
+          # build-tools 34.0.0 is the version Bubblewrap signs and aligns with; android-32 is the Quest target.
+          packages: 'platform-tools build-tools;34.0.0 platforms;android-32'
       - name: Install Bubblewrap (Meta Quest fork)
         run: npm install --global @meta-quest/bubblewrap-cli@1.24.1
       - name: Point Bubblewrap at the JDK and Android SDK (skips its interactive installers)
         run: |
           mkdir -p ~/.bubblewrap
           echo "{\"jdkPath\":\"$JAVA_HOME\",\"androidSdkPath\":\"$ANDROID_HOME\"}" > ~/.bubblewrap/config.json
-          yes | sdkmanager --licenses > /dev/null || true
       - name: Wait for the site (Bubblewrap downloads the icon from it)
         run: for i in $(seq 1 40); do curl -sfo /dev/null https://youcanthidegame.com/icon-512.png && exit 0; sleep 15; done; echo "youcanthidegame.com is not serving yet"; exit 1
       - name: Restore the signing key
@@ -45,7 +48,7 @@ jobs:
       - name: Check the APK targets Android API 32 or lower (Quest requirement)
         working-directory: android
         run: |
-          AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | tail -1)
+          AAPT=$ANDROID_HOME/build-tools/34.0.0/aapt
           $AAPT dump badging app-release-signed.apk | grep -E "package:|targetSdkVersion|uses-permission" | head -20
       - uses: actions/upload-artifact@v4
         with:
