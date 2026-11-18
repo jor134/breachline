@@ -141,6 +141,7 @@ export const sfx = {
   thunder() { burst(null, 3.2, 160, 2.2); tone(null, 70, 24, 2.6, 1.6); setTimeout(() => burst(null, 2.2, 110, 1.2), 500); },
   nvg(on) { tone(null, on ? 500 : 2600, on ? 2800 : 400, on ? 0.5 : 0.25, 0.12, 'sine'); burst(null, 0.03, 4000, 0.3, 'highpass'); },
   say(text, pitch = 1) { speak(text, pitch); },
+  vo(name, pos, gain = 1.6) { return sample(name, pos, gain); },   // quest-store: recorded voice lines (sfx/vo_*.mp3); false when there is none
 };
 
 // A race-car engine, panned in 3D: the recorded F1 loop (sfx/engine_f1.mp3, built by tools/engine_loop.py) once it has loaded,

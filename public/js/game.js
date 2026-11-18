@@ -591,7 +591,7 @@ function applySnap(m) {
   for (const e of m.E) onEvent(e);
   if (S.phase !== prev) { S.menu = false; if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'active' && !M.training) { panel.mesh.visible = false; S.panel = null; } else showLobbyPanel(); }
 }
-const LINES = { medic: ['HANG ON!', '#ffb070', "Hang on, I've got you!"], surrender: ["DON'T SHOOT!", '#ffe080', "Don't shoot! I give up!"], defy: ['NO!', '#ff7070', 'No way!'], comply: ['OK! OK!', '#a0e0ff', 'Okay, okay!'], plead: ['PLEASE!', '#a0e0ff', 'Please help us!'], threat: ['BACK OFF OR THEY DIE!', '#ff3030', 'Back off or the hostage dies!'], fake: ['(draws weapon)', '#ff4040', ''] };
+const LINES = { spot: ['THERE!', '#ff7070', ''], medic: ['HANG ON!', '#ffb070', "Hang on, I've got you!"], surrender: ["DON'T SHOOT!", '#ffe080', "Don't shoot! I give up!"], defy: ['NO!', '#ff7070', 'No way!'], comply: ['OK! OK!', '#a0e0ff', 'Okay, okay!'], plead: ['PLEASE!', '#a0e0ff', 'Please help us!'], threat: ['BACK OFF OR THEY DIE!', '#ff3030', 'Back off or the hostage dies!'], fake: ['(draws weapon)', '#ff4040', ''] };
 function onEvent(e) {
   tut.event(e, S.me.id);
   const a = e.n != null ? S.actors.get(e.n) : null;
@@ -612,7 +612,7 @@ function onEvent(e) {
     case 'drop': { const a = S.actors.get(e.n); if (a && e.why !== 'let go') sayAt(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, e.why === 'flash' ? 'HOSTAGE BROKE FREE (FLASHED)' : e.why === 'shot' ? 'HOSTAGE BROKE FREE (SHOT)' : 'HOSTAGE FREE', '#80d0ff'); break; }
     case 'carhit': if (e.p != null) { sfx.boom({ x: e.x, y: 0.5, z: e.z }); if (e.p === S.me.id) sayAt(head.pos.x + head.fwd.x * 1.5, head.pos.y, head.pos.z + head.fwd.z * 1.5, 'HIT BY A RACE CAR', '#ff6060'); } break;
     case 'revive': if (e.p === S.me.id) { sfx.ok(); if (e.by) sayAt(head.pos.x + head.fwd.x * 1.2, head.pos.y, head.pos.z + head.fwd.z * 1.2, 'BACK ON YOUR FEET', '#7dffa0'); } break;
-    case 'hit': if (a) a.flinch = 1; break;
+    case 'hit': if (a) { a.flinch = 1; if (a.kind === 's' && (e.dead || Math.random() < 0.7)) sfx.vo(e.dead ? 'vo_s_die' : 'vo_s_pain', v1.set(a.g.position.x, a.g.position.y + 1.4, a.g.position.z)); } break;
     case 'power': if (M.breaker) sfx.power(v1.set(M.breaker.x, M.breaker.y, M.breaker.z), e.on); break;
     case 'door': { const d = level.doors[e.d]; sfx.door(v1.set(d.cx, d.y + 1, d.cz), e.open); break; }
     case 'locked': { const d = level.doors[e.d]; sfx.rattle(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'LOCKED', '#ffb060'); break; }
@@ -622,9 +622,9 @@ function onEvent(e) {
     case 'lift': { const L = M.lift; if (L) { const y = L.stops[e.from], c = L.car; sfx.chime(v1.set((c.x0 + c.x1) / 2, y + 2, c.z1)); sayAt((c.x0 + c.x1) / 2, y + 2.4, c.z1 + 0.3, e.to > e.from ? 'GOING UP' : 'GOING DOWN', '#9fd8ff'); } break; }
     case 'liftmove': { if (e.ids.includes(S.me.id)) { rig.position.y += e.dy; S.feetY += e.dy; headWorld(); for (const h of hands) buzz(h, 0.4, 120); } const L = M.lift; if (L) { const y = L.stops[e.at], c = L.car; sfx.chime(v1.set((c.x0 + c.x1) / 2, y + 2, c.z1)); } break; }
     case 'kick': { const d = level.doors[e.d]; const ko = S.officers.get(e.p); if (ko) ko.body.kick(); if (e.p === S.me.id) myBody.kick(); sfx.kick(v1.set(d.cx, d.y + 1, d.cz), e.ok); if (e.ok) world.doors[e.d].cur = 0.9; else sayAt(d.cx, d.y + 1.5, d.cz, 'HELD', '#ffb060'); break; }
-    case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (L[2] && a.g.position.distanceTo(head.pos) < 14) { sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); if (voiceState.error) noteErr(voiceState.error); } } } break;
+    case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (a.kind === 's' && sfx.vo('vo_s_' + e.k, v1.set(a.g.position.x, a.g.position.y + 1.6, a.g.position.z))) { /* recorded suspect line */ } else if (L[2] && a.g.position.distanceTo(head.pos) < 14) { sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); if (voiceState.error) noteErr(voiceState.error); } } } break;
     case 'shout': if (e.p !== S.me.id) sfx.say('Police! Hands up!', 1); break;
-    case 'cuff': if (a) sfx.cuff(a.g.position); break;
+    case 'cuff': if (a) { sfx.cuff(a.g.position); if (a.kind === 's') sfx.vo('vo_s_cuffed', v1.set(a.g.position.x, a.g.position.y + 0.9, a.g.position.z), 1.3); } break;
     case 'flash': { v1.set(e.x, e.y, e.z); sfx.bang(v1); puff([e.x, e.y + 0.2, e.z], 0xffffff); const d = v1.distanceTo(head.pos);
       if (d < 12) { v2.copy(v1).sub(head.pos).multiplyScalar(1 / Math.max(d, 0.01)); if (rayStatic(level, S.doorOpen, head.pos.x, head.pos.y, head.pos.z, v2.x, v2.y, v2.z, d) >= d - 0.15) { const k = (1 - d / 12) * (v2.dot(head.fwd) > 0.15 ? 1 : 0.35) * (S.nvg ? 1.4 : 1); flashWhite = Math.max(flashWhite, k * 2.2); sfx.ring(k); for (const h of hands) buzz(h, 1, 200); } } break; }
     case 'smoke': sfx.hiss(v1.set(e.x, e.y, e.z)); break;
@@ -1146,7 +1146,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q13';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q14';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

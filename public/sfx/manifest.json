@@ -138,5 +138,55 @@
   "step_metal_3.mp3",
   "step_metal_4.mp3"
  ],
- "engine_f1": "engine_f1.mp3"
+ "engine_f1": "engine_f1.mp3",
+ "vo_s_surrender": [
+  "vo_s_surrender_1.mp3",
+  "vo_s_surrender_2.mp3",
+  "vo_s_surrender_3.mp3",
+  "vo_s_surrender_4.mp3",
+  "vo_s_surrender_5.mp3"
+ ],
+ "vo_s_defy": [
+  "vo_s_defy_1.mp3",
+  "vo_s_defy_2.mp3",
+  "vo_s_defy_3.mp3",
+  "vo_s_defy_4.mp3",
+  "vo_s_defy_5.mp3",
+  "vo_s_defy_6.mp3"
+ ],
+ "vo_s_threat": [
+  "vo_s_threat_1.mp3",
+  "vo_s_threat_2.mp3",
+  "vo_s_threat_3.mp3",
+  "vo_s_threat_4.mp3"
+ ],
+ "vo_s_spot": [
+  "vo_s_spot_1.mp3",
+  "vo_s_spot_2.mp3",
+  "vo_s_spot_3.mp3",
+  "vo_s_spot_4.mp3",
+  "vo_s_spot_5.mp3",
+  "vo_s_spot_6.mp3",
+  "vo_s_spot_7.mp3",
+  "vo_s_spot_8.mp3"
+ ],
+ "vo_s_cuffed": [
+  "vo_s_cuffed_1.mp3",
+  "vo_s_cuffed_2.mp3",
+  "vo_s_cuffed_3.mp3",
+  "vo_s_cuffed_4.mp3",
+  "vo_s_cuffed_5.mp3"
+ ],
+ "vo_s_pain": [
+  "vo_s_pain_1.mp3",
+  "vo_s_pain_2.mp3",
+  "vo_s_pain_3.mp3",
+  "vo_s_pain_4.mp3",
+  "vo_s_pain_5.mp3",
+  "vo_s_pain_6.mp3"
+ ],
+ "vo_s_die": [
+  "vo_s_die_1.mp3",
+  "vo_s_die_2.mp3"
+ ]
 }
