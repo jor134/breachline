@@ -39,7 +39,10 @@ const cache = {}, ready = {};
 export function loadChar(id) {
   return cache[id] || (cache[id] = new Promise((res, rej) => new GLTFLoader().load('models/chars/' + CHARS[id].file, g => {
     const sc = g.scene; sc.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(sc), k = CHARS[id].h / (bb.max.y - bb.min.y);
-    sc.traverse(o => { if (o.isMesh) { const m = o.material; m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.35; if (!pbrMats.includes(m)) pbrMats.push(m); o.castShadow = false; o.receiveShadow = true; } });
+    // Both sides of every face: the models have thin single-sided pieces (helmet straps, collar, pouch flaps, the inside of the gloves
+    // and sleeves) and some faces wound the wrong way, which showed as see-through holes. Blended parts (eyes) become cut-outs so
+    // they never sort wrongly against the rest.
+    sc.traverse(o => { if (o.isMesh) { const m = o.material; m.side = THREE.DoubleSide; if (m.transparent) { m.transparent = false; m.alphaTest = 0.5; m.depthWrite = true; } m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.35; if (!pbrMats.includes(m)) pbrMats.push(m); o.castShadow = false; o.receiveShadow = true; } });
     ready[id] = { id, scene: sc, k, y0: -bb.min.y * k }; res(ready[id]);
   }, undefined, rej)));
 }

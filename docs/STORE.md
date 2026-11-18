@@ -52,6 +52,11 @@ No store-level conflict found, but a CIPO / USPTO trademark search before launch
       ENTER VR button; `?classic=1` brings back the full development screen (the headless tests use it).
       Still to check on the headset (stage 5 sideload): the microphone prompt inside the packaged app, and that the
       automatic VR request is allowed when the app is opened from its icon.
+- [x] q4 fixes from the first headset test: PLAY ONLINE kept (leaving VR for the microphone prompt no longer reloads the page;
+      ENTER VR goes back to the same room), character models double-sided (holes), each finger joint curls about its own axis,
+      walk cycle with eased stride and planted feet, casino floor / suites drawn only when they can be seen (gfx `zone`), shaders
+      compiled at map load (`prewarm` in game.js), night-vision goggles flip down and up (`js/store/nvgflip.js`).
+      These touch shared files (actors.js, chars.js, gfx.js, game.js, casino-gfx.js): worth bringing to main too.
 - [ ] 3. Full-game unlock (Digital Goods API), demo = training + mansion solo, store-app check.
 - [ ] 4. Performance governor: device framebuffer scale, 72 Hz on Quest 2, quality ladder under load.
 - [ ] 5. Packaging + submission kit: twa-manifest, `/.well-known/assetlinks.json`, GitHub Action APK build, listing text,

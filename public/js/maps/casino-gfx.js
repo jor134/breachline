@@ -254,6 +254,15 @@ export default {
   },
   door: d => d.win ? 'winpane' : d.lift !== undefined ? 'steel' : d.exterior ? 'glassdoor' : 'door',
   furn,
+  // Two zones that are drawn only when they can be seen (gfx.js puts every piece lying wholly inside one into its own meshes):
+  // 'casino', everything inside the podium under its roof, hidden while you are up the tower (helicopter, roof, suites, ropes
+  // above the casino roof); 'suites', the sky-suite floor, hidden while you are down in the casino. In the service lift both show.
+  zone(x, y, z, bb) {
+    const a = bb ? bb.min : { x, y, z }, c = bb ? bb.max : { x, y, z };
+    if (a.x >= FOOT.x0 + 0.15 && c.x <= FOOT.x1 - 0.15 && a.z >= FOOT.z0 + 0.15 && c.z <= FOOT.z1 - 0.15 && a.y >= -0.05 && c.y <= POD - 0.05) return 'casino';
+    if (a.x >= WING.x0 + 0.15 && c.x <= WING.x1 - 0.15 && a.z >= WING.z0 + 0.15 && c.z <= WING.z1 - 0.15 && a.y >= F3 - 0.3 && c.y <= ROOF - 0.05) return 'suites';
+    return null;
+  },
   mats(M) {
     if (M.cnavy) return;
     const S = (t, gl) => sheen({ map: t }, gl);
@@ -423,8 +432,14 @@ export default {
   // the helicopter's rotors turn; once nobody is aboard for a few seconds in a live mission it climbs away (and comes back for anyone who spawns in it).
   // The CCTV wall refreshes one camera at a time, only while someone stands in the security office with the power on.
   tick(dt, { S, head, officers, renderer, scene, level }) {
+    if (inner && inner.root.userData.zones) {   // show the casino floor and the suites only from where they can be seen
+      const Z = inner.root.userData.zones, p = head.pos, live = !!S.mode, inCar = p.x > CAR.x0 && p.x < CAR.x1 && p.z > CAR.z0 && p.z < CAR.z1;
+      const inPod = p.x > FOOT.x0 && p.x < FOOT.x1 && p.z > FOOT.z0 && p.z < FOOT.z1, showC = !live || inCar || p.y < POD + 2.6, showS = !live || inCar || !(inPod && p.y < POD - 0.3);
+      if (showC !== inner.showC) { inner.showC = showC; for (const m of Z.casino || []) m.visible = showC; }
+      if (showS !== inner.showS) { inner.showS = showS; for (const m of Z.suites || []) m.visible = showS; }
+    }
     // from up the tower the casino's ceiling lights sit a hair under its roof, too close for a coarse depth buffer to separate: hide them from up there
-    if (inner) { if (!inner.list) inner.list = [...inner.im, ...inner.root.children.filter(m => m.material === inner.mat)]; const on = head.pos.y < 25; if (on !== inner.on) { inner.on = on; for (const m of inner.list) m.visible = on; } }
+    if (inner) { if (!inner.list) { const zz = inner.root.userData.zones || {}, zc = [...(zz.casino || []), ...(zz.suites || [])]; inner.list = [...inner.im, ...inner.root.children.filter(m => m.material === inner.mat)].filter(m => !zc.includes(m)); } /* the casino zone handles its own pieces */ const on = head.pos.y < 25; if (on !== inner.on) { inner.on = on; for (const m of inner.list) m.visible = on; } }
     if (lifts) for (const L of lifts) { const di = level.doors.findIndex(d => d.lift === L.k), to = S.doorOpen && S.doorOpen[di] ? 1 : 0; if (L.cur === to) continue; L.cur = L.cur < 0 ? to : L.cur + Math.sign(to - L.cur) * Math.min(Math.abs(to - L.cur), dt * 1.1);
       const e = L.cur * L.cur * (3 - 2 * L.cur); for (const d of L.doors) { d.o.position.z = d.s * 0.8 * e; d.o.scale.z = 1 - (d.inner ? 0.45 : 0.3) * e; /* the panels telescope as they open, so they stay inside the wall */ } }
     if (heli) { const h = heli; h.rotor.rotation.y += dt * 7; h.tail.rotation[h.tailAx || 'z'] += dt * 30; h.beacon.visible = (performance.now() % 1200) < 150;

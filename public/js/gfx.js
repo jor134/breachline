@@ -41,10 +41,16 @@ export function initMats() {
   MATS.door = sheen({ map: MATS.walnut.map }, 'polished'); MATS.steel = sheen({ color: 0xb8bcc2 }, 'metal');
 }
 
+const QB = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
 // Accumulates quads with world-space UVs into one mesh per material.
 export class Builder {
-  constructor() { this.p = []; this.n = []; this.uv = []; this.idx = []; }
+  constructor(zone = null) { this.p = []; this.n = []; this.uv = []; this.idx = []; this.zone = zone; this.sub = null; }
   quad(a, b, c, d, nrm, s = 0.5, uv4 = null) {   // uv4: explicit corner UVs for a, b, c, d (used by the shading decals)
+    if (this.zone) {   // a map can split its geometry into zones it shows and hides (gfx.zone: the casino floor while you are up the tower)
+      const q = QB; q.min.x = Math.min(a[0], b[0], c[0], d[0]); q.min.y = Math.min(a[1], b[1], c[1], d[1]); q.min.z = Math.min(a[2], b[2], c[2], d[2]); q.max.x = Math.max(a[0], b[0], c[0], d[0]); q.max.y = Math.max(a[1], b[1], c[1], d[1]); q.max.z = Math.max(a[2], b[2], c[2], d[2]);
+      const z = this.zone((q.min.x + q.max.x) / 2, (q.min.y + q.max.y) / 2, (q.min.z + q.max.z) / 2, q);   // the whole quad must lie in a zone, not just its middle
+      if (z) { const sb = (this.sub = this.sub || {})[z] || (this.sub[z] = new Builder()); return sb.quad(a, b, c, d, nrm, s, uv4); }
+    }
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
     const flip = ((uy * vz - uz * vy) * nrm[0] + (uz * vx - ux * vz) * nrm[1] + (ux * vy - uy * vx) * nrm[2]) < 0;
     const vs = flip ? [a, d, c, b] : [a, b, c, d], uo = flip ? [0, 3, 2, 1] : [0, 1, 2, 3], base = this.p.length / 3, ax = Math.abs(nrm[0]), ay = Math.abs(nrm[1]); let vi = 0;
@@ -128,7 +134,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   initMats();
   const level = buildLevel(id), map = level.map, H = map.H, YARD = map.YARD, G = MAPGFX[level.id] || (map.custom ? (map.gfx = map.gfx || customGfx(map)) : MAPGFX.mansion); if (G.setTod) G.setTod(tod); const env = G.env, root = new THREE.Group(), B = {}; root.name = 'world'; scene.add(root);
   if (G.mats) G.mats(MATS); MAPFURN = G.furn || null;
-  const b = k => B[k] || (B[k] = new Builder()), cx = (YARD.x0 + YARD.x1) / 2, cz = (YARD.z0 + YARD.z1) / 2;
+  const b = k => B[k] || (B[k] = new Builder(G.zone || null)), cx = (YARD.x0 + YARD.x1) / 2, cz = (YARD.z0 + YARD.z1) / 2;
   // sky dome (gradient), stars, moon, far silhouettes
   const sc = document.createElement('canvas'); sc.width = 4; sc.height = 256; const sg = sc.getContext('2d'), gr = sg.createLinearGradient(0, 0, 0, 256);
   for (const [t, c] of env.sky) gr.addColorStop(t, c); sg.fillStyle = gr; sg.fillRect(0, 0, 4, 256);
@@ -190,7 +196,14 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     }
   }
   const NOSHADE = { glass: 1, water: 1, glow: 1, ao: 1, aoBlob: 1, lightpool: 1, ocean: 1, ...(G.noshade || {}) };
-  for (const k in B) { const m = B[k].mesh(MATS[k]); if (k === 'glass' || k === 'water') m.renderOrder = 5; if (k === 'ao' || k === 'aoBlob' || k === 'lightpool') m.renderOrder = 2; else if (!NOSHADE[k]) { m.castShadow = !(G.noCast || ['gravel']).includes(k); m.receiveShadow = true; } root.add(m); }
+  const zones = {}, before = new Set(root.children);
+  const finish = (m, k) => { if (k === 'glass' || k === 'water') m.renderOrder = 5; if (k === 'ao' || k === 'aoBlob' || k === 'lightpool') m.renderOrder = 2; else if (!NOSHADE[k]) { m.castShadow = !(G.noCast || ['gravel']).includes(k); m.receiveShadow = true; } root.add(m); return m; };
+  for (const k in B) { finish(B[k].mesh(MATS[k]), k); for (const z in B[k].sub || {}) (zones[z] = zones[z] || []).push(finish(B[k].sub[z].mesh(MATS[k]), k)); }
+  if (G.zone) {   // pieces the map's scenery added on its own (signs, instanced chandeliers, screens) join the zone their middle is in
+    const bb = new THREE.Box3(), c = new THREE.Vector3();
+    for (const o of before) { if (!o.isMesh && !o.isInstancedMesh && !o.isGroup) continue; if (o === sky || o === hills) continue; bb.setFromObject(o); if (bb.isEmpty()) continue; bb.getCenter(c); const z = G.zone(c.x, c.y, c.z, bb); if (z) (zones[z] = zones[z] || []).push(o); }
+    root.userData.zones = zones;
+  }
 
   // doors: flush slabs with steel levers; a concealed door is clad like the wall around it; a container has two steel leaves and a padlock
   const doors = level.doors.map(d => {

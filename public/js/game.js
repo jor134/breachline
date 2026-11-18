@@ -4,6 +4,7 @@ import { buildWorld, label } from './gfx.js';
 import { Human, Officer, Bomb, Body, RIG, SELF_BACK, GROUND, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
 import { loadCar, loadParkedCars } from './car.js';
 import { setEnvInside } from './mats.js';
+import { CHARS, charReady } from './chars.js';
 import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx } from './audio.js';
 import { makeWeather } from './weather.js';
 import { loadVegetation } from './veg.js';
@@ -17,7 +18,8 @@ import { createVREditor } from './vredit.js';
 import { createGun, pullTrigger, ejectMag, insertMag, release, rack, toggleMode, GUNS } from './core/weapon.js';
 import { RoomHost, TICK } from './core/host.js';
 import { makeStoreUI } from './store/ui.js';
-import { storeLaunch } from './store/launch.js';   // quest-store: straight into VR, start menu inside the headset   // quest-store: PLAYERS (mute / remove) and CREDITS in the VR menu
+import { storeLaunch } from './store/launch.js';
+import { makeNvgFlip } from './store/nvgflip.js';   // quest-store: straight into VR, start menu inside the headset   // quest-store: PLAYERS (mute / remove) and CREDITS in the VR menu
 
 const $ = id => document.getElementById(id), Q = new URLSearchParams(location.search);
 const V = () => new THREE.Vector3(), v1 = V(), v2 = V(), v3 = V(), v4 = V(), q1 = new THREE.Quaternion(), m1 = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
@@ -67,6 +69,15 @@ function trainLine() {
   return { hits: mine[1], shots: mine[2], ns: mine[3], acc: mine[2] ? Math.round(100 * mine[1] / mine[2]) : 0, run: H[0] ? H[1].toFixed(1) + 's' : H[3] ? 'last ' + H[3] + 's' : '-', best: H[2] ? H[2] + 's' : '-', on: !!H[0] };
 }
 let race = null;
+// Compile every material's shader while the map loads instead of the first time each one comes into view: on the headset each
+// first sight costs a hitch, which is what stuttered walking into new parts of a map (the casino's suites after the rappel).
+// Character models that are loaded but not yet in the scene are compiled against the scene's lights too. Already-built shaders
+// come straight from the cache, so calling this again is cheap.
+function prewarm(gen) {
+  if (gen !== mapGen) return;
+  try { const p = renderer.compileAsync ? renderer.compileAsync(scene, camera) : renderer.compile(scene, camera); if (p && p.catch) p.catch(() => { });
+    for (const id of Object.keys(CHARS)) { const t = charReady(id); if (t) renderer.compile(t.scene, camera, scene); } } catch (e) { console.warn('prewarm', e); }
+}
 function loadMap(id, tod, force) {
   const T = MAPS[id] && MAPS[id].tods ? (MAPS[id].tods.includes(tod) ? tod : (world && world.level.id === id ? world.tod : MAPS[id].tods[0])) : 'dusk';
   if (!force && world && world.level.id === id && world.tod === T) return;
@@ -74,7 +85,7 @@ function loadMap(id, tod, force) {
   world = buildWorld(scene, id, T); level = world.level; M = level.map; if (M.race) race = createRace(scene);
   buildTargets();
   if (ready) { S.doorTrap = level.doors.map(() => 0); S.doorOpen = level.doors.map(() => false); S.doorLocked = level.doors.map(() => false); S.deskCam = null; S.deskPick = null; for (const h of hands) h.hold = null; placeMapProps(); applyLook(); }
-  renderer.shadowMap.needsUpdate = true;
+  renderer.shadowMap.needsUpdate = true; prewarm(gen); setTimeout(() => prewarm(gen), 4000); setTimeout(() => prewarm(gen), 12000);   // again once the models have arrived
   if (!Q.get('lite')) {   // ?lite=1 skips the heavy models (used by the automated tests)
     const keep = m => { if (!m || gen !== mapGen) { if (m) scene.remove(m); return; } if (m.isMesh) m.castShadow = m.receiveShadow = true; extras.push(m); renderer.shadowMap.needsUpdate = true; };
     if (M.veg) loadVegetation(scene, M).then(v => keep(v && v.mesh)).catch(e => console.warn('vegetation not loaded', e));
@@ -234,6 +245,7 @@ let hurtT = 0, flashWhite = 0;
 // night vision: the scene is relit in amplified green (see gfx look), and a goggle mask narrows the view
 const nvgMask = (() => { const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'), r = g.createRadialGradient(128, 128, 60, 128, 128, 104); r.addColorStop(0, 'rgba(0,0,0,0)'); r.addColorStop(1, 'rgba(0,0,0,1)'); g.fillStyle = r; g.fillRect(0, 0, 256, 256);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, depthWrite: false, fog: false })); m.position.z = -0.32; m.renderOrder = 996; m.visible = false; camera.add(m); return m; })();
+const nvgFlip = makeNvgFlip(camera, on => { S.nvg = on; applyLook(); });
 const irLamp = new THREE.PointLight(0x58ff68, 0, 34, 1.1); camera.add(irLamp);   // the goggles' own illuminator: nearby surfaces read brighter, which gives depth
 const weather = makeWeather(scene, () => level), WXS = ['random', 'clear', 'rain', 'fog', 'storm'];
 const pickTeam = () => { const t = S.me.team === 'tango' ? 'swat' : 'tango'; S.me.team = t; myBody.setTeam(t); sfx.click(); net.send({ t: 'team', team: t }); showLobbyPanel(); };
@@ -246,7 +258,7 @@ const breaker = (() => { const g = new THREE.Group(); const box = (w, h, d, c, x
   for (let i = 0; i < 6; i++) g.add(box(0.06, 0.035, 0.02, 0x15171a, -0.1, 0.1 - i * 0.06, 0.07)); scene.add(g); return { g, lever, led, cur: 0 }; })();
 const nearBreaker = (p, d) => !!M.breaker && Math.hypot(p.x - M.breaker.x, p.y - M.breaker.y, p.z - M.breaker.z) < d;
 const applyLook = () => { world.look(S.night, S.nvg, S.wx); weather.set(S.wx, S.night, S.nvg); nvgMask.visible = S.nvg; irLamp.intensity = S.nvg ? (S.night ? 3.2 : 1.2) : 0; };
-function toggleNVG() { S.nvg = !S.nvg; sfx.nvg(S.nvg); applyLook(); }
+function toggleNVG() { if (nvgFlip.busy()) return; const on = !S.nvg; sfx.nvg(on); nvgFlip.start(on); }   // the goggles flip down / up (js/store/nvgflip.js)
 function hint(x, y, z, text) { if (S.now - S.hintT < 1.2) return; S.hintT = S.now; sayAt(x, y, z, text, '#ffd060'); sfx.beep(null, 300); }
 // wounds: a leg hit slows you, an arm hit shakes your aim; a body diagram shows where you were hit
 const PARTS = ['head', 'torso', 'armL', 'armR', 'legL', 'legR'], FIG = { head: [14, 0, 12, 12], torso: [10, 13, 20, 26], armL: [2, 13, 7, 26], armR: [31, 13, 7, 26], legL: [10, 40, 9, 34], legR: [21, 40, 9, 34] };
@@ -969,6 +981,7 @@ const arr7 = (p, q) => [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +q.x.
 const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 'mag' ? 3 : 0;
 function frame(t) {
   const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t; S.now += dt;
+  nvgFlip.tick(dt);
   if (ED.on) {   // building in the map editor: only the hands, the editor and the map
     readVR(); headWorld(); for (const h of hands) if (h.active) { (h.xr.src && h.xr.src.gripSpace ? h.xr.grip : h.xr.ray).getWorldPosition(h.pos); h.xr.ray.getWorldQuaternion(h.quat).multiply(tiltQ); }
     ED.tick(dt); setListener(head.pos, head.fwd, false); renderer.render(scene, camera); return;
@@ -1058,7 +1071,7 @@ $('vr').onclick = async () => {
   } catch (e) { status('Could not start VR: ' + (e && e.message || e)); }
 };
 $('desk').onclick = () => { initAudio(); if (!$('solo').checked && voice.on) voice.startMic().then(() => voice.unlock()); connect($('solo').checked); begin('desktop'); };
-if (storeLaunch({ renderer, begin, storeUI, initAudio, status, $ })) { /* store build: js/store/launch.js owns ENTER VR */ }
+if (storeLaunch({ renderer, begin, resume: () => { S.mode = 'vr'; $('ui').style.display = 'none'; camera.position.set(0, 1.66, 0); camera.rotation.set(0, 0, 0); try { voice.unlock(); } catch (e) { } }, storeUI, initAudio, status, $ })) { /* store build: js/store/launch.js owns ENTER VR */ }
 else if (navigator.xr && navigator.xr.isSessionSupported) navigator.xr.isSessionSupported('immersive-vr').then(ok => { $('vr').disabled = !ok; if (!ok) $('vrnote').textContent = 'No VR headset detected on this device. Open this page in the Quest browser.'; }).catch(() => { $('vr').disabled = true; });
 else { $('vr').disabled = true; $('vrnote').textContent = 'This browser has no WebXR. Open this page in the Quest browser.'; }
 // ---------- phone / tablet controls: left thumb moves, right thumb looks, buttons do the rest ----------
@@ -1088,7 +1101,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q3';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q4';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

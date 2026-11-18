@@ -342,8 +342,12 @@ export class Body {
       const h = P[r.hand[S]], f = r.fingers ? P[r.fingers[S][1][0]].clone().sub(h) : P[r.hand[S]].clone().sub(P[r.fore[S]]), t = r.thumb ? P[r.thumb[S][0]].clone().sub(h) : new THREE.Vector3(0, 0, 1);
       const b = S === 'R' ? new THREE.Vector3().crossVectors(f, t) : new THREE.Vector3().crossVectors(t, f); b.normalize(); const palm = f.length(); f.normalize();
       const curlAxis = new THREE.Vector3().crossVectors(b, f).normalize();
-      const fingers = r.fingers ? r.fingers[S].map(ch => ch.map(i => ({ i, ax: curlAxis.clone().applyQuaternion(sk.restQ[i].clone().invert()) }))) : [];
-      const thumb = r.thumb ? r.thumb[S].map(i => ({ i, ax: curlAxis.clone().applyQuaternion(sk.restQ[i].clone().invert()) })) : [];
+      // each joint bends about its own axis: across its segment, in the plane of the back of the hand. One shared axis (taken from
+      // the middle finger) made the splayed index and little fingers and the thumb fold sideways, which looked broken.
+      const jointAxes = ch => ch.map((i, k) => { const nx = ch[k + 1] ?? null, pv = ch[k - 1] ?? null, d = nx !== null ? P[nx].clone().sub(P[i]) : pv !== null ? P[i].clone().sub(P[pv]) : f.clone();
+        const ax = new THREE.Vector3().crossVectors(b, d); if (ax.lengthSq() < 1e-10) ax.copy(curlAxis); ax.normalize(); return { i, ax: ax.applyQuaternion(sk.restQ[i].clone().invert()) }; });
+      const fingers = r.fingers ? r.fingers[S].map(jointAxes) : [];
+      const thumb = r.thumb ? jointAxes(r.thumb[S]) : [];
       const [L1, L2] = sk.len(S), up = P[r.fore[S]].clone().sub(P[r.up[S]]).normalize(), fo = P[r.hand[S]].clone().sub(P[r.fore[S]]).normalize();
       this.H[S] = { f0: f, b0: b, palm, fingers, thumb, L1, L2, up0: up, fo0: fo, pole0: new THREE.Vector3(0, 0, -1), cur: { i: 0.6, g: 0.7, t: 0.5 }, wq: new THREE.Quaternion(), wp: new THREE.Vector3(), el: new THREE.Vector3(), pole: new THREE.Vector3(), on: false };
     }
@@ -391,7 +395,7 @@ export class Body {
         W.set(r.up[S], this.fns['up' + S]); W.set(r.fore[S], this.fns['fo' + S]);
         const want = h.pose || GRIP, c = H.cur, kk = Math.min(1, dt * 22); c.i += (want.i - c.i) * kk; c.g += (want.g - c.g) * kk; c.t += (want.t - c.t) * kk;
         H.fingers.forEach((ch, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; ch.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, v * a[s]))); });
-        H.thumb.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, c.t * [0.3, 0.5, 0.4][s])));
+        H.thumb.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, c.t * [0.35, 0.65, 0.55][s])));   // wraps round a grip
       } else { for (const i of [r.up[S], r.fore[S], r.hand[S]]) W.set(i, sk.rig(i, _q3.identity(), new THREE.Quaternion())); }
       W.set(r.thigh[S], this.fns['th' + S]); W.set(r.shin[S], this.fns['sh' + S]);
     }
@@ -404,22 +408,28 @@ export class Body {
     const Gt = this.G, Hl = this.H.legL, Hr = this.H.legR, hd = this.holder, wd = this.detailed ? SELF_BACK.wide : 1, th = hd.rotation.y, c = Math.cos(th), s = Math.sin(th);
     const lvx = (Gt.vx * c - Gt.vz * s) / wd, lvz = (Gt.vx * s + Gt.vz * c) / wd, spd = Gt.spd, still = o.down || Gt.fall > 0.05;
     const scale = o.stride ?? 1, w = still ? 0 : Math.min(1, spd / 0.9), run = Math.max(0, Math.min(1, (spd - 2.2) / 1.6)), lowK = drop > 0.25 ? 0.75 : 1;
-    let A = still || spd < 0.15 ? 0 : Math.min(0.4, 0.1 + spd * 0.15) * scale * lowK, dx = 0, dz = 1;
-    if (spd > 0.01) { dx = lvx / (spd / wd); dz = lvz / (spd / wd); }
-    if (A > 0) Gt.ph += (spd * dt) / (4 * Math.max(0.08, A / scale)) * 2 * Math.PI;
+    // stride length and walking direction ease in and out, so a bot that stops, starts or sidesteps does not snap its feet
+    const At = still || spd < 0.15 ? 0 : Math.min(0.4, 0.1 + spd * 0.15) * scale * lowK, a0 = Gt.amp || 0; Gt.amp = a0 + (At - a0) * Math.min(1, dt * (At > a0 ? 8 : 5));
+    const A = Gt.amp < 0.004 ? 0 : Gt.amp; let dx = Gt.dx ?? 0, dz = Gt.dz ?? 1;
+    if (spd > 0.05) { const kd = Math.min(1, dt * 8); dx += (lvx / (spd / wd) - dx) * kd; dz += (lvz / (spd / wd) - dz) * kd; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l; Gt.dx = dx; Gt.dz = dz; }
+    // a foot is planted for ST of each cycle and slides back at exactly the ground speed (no skating), then swings forward
+    const ST = 0.62 - 0.17 * run;
+    if (A > 0 && spd > 0.05) Gt.ph += 2 * Math.PI * (spd * ST / (2 * Math.max(0.06, A / scale))) * dt;
     // turning on the spot: the feet stay put while the body turns, then step round to catch up
     if (A > 0 || still) Gt.lag *= Math.exp(-dt * 8);
     else if (Math.abs(Gt.lag) > 0.45 && Gt.step <= 0) Gt.step = 0.42;
     if (Gt.step > 0) { Gt.step -= dt; Gt.lag *= Math.exp(-dt * 9); }
-    const lift = (0.07 + 0.09 * run) * w * lowK * scale, sh = Gt.step > 0 ? Math.sin(Math.PI * (1 - Gt.step / 0.42) * 2) : 0;
+    Gt.w = (Gt.w || 0) + (w - (Gt.w || 0)) * Math.min(1, dt * 6); const lift = (0.06 + 0.09 * run) * Gt.w * lowK * scale, sh = Gt.step > 0 ? Math.sin(Math.PI * (1 - Gt.step / 0.42) * 2) : 0;
     const shift = A > 0 || still ? 0 : Math.sin(Gt.idle * 0.33);   // standing: weight on one leg, then the other
-    Gt.hipX = (A > 0 ? 0.025 * Math.sin(Gt.ph) * w : 0.02 * shift); Gt.lean = (0.1 * run + 0.04 * w) * Math.max(0, dz) - 0.05 * w * Math.max(0, -dz);
+    Gt.hipX = (A > 0 ? 0.025 * Math.sin(Gt.ph) * Gt.w : 0.02 * shift); Gt.lean = (0.1 * run + 0.04 * Gt.w) * Math.max(0, dz) - 0.05 * Gt.w * Math.max(0, -dz);
     const kick = Gt.kick > 0 ? Math.sin(Math.PI * (1 - Gt.kick / 0.5)) : 0; if (Gt.kick > 0) Gt.kick -= dt;
     const cl = Math.cos(Gt.lag), sl = Math.sin(Gt.lag);
     for (let k = 0; k < 2; k++) {
       const Lg = k ? Hr : Hl, sg = k ? -1 : 1, ph = Gt.ph + (k ? Math.PI : 0), f = Lg.ft.copy(Lg.foot);
       const x0 = f.x, z0 = f.z; f.x = x0 * cl - z0 * sl; f.z = x0 * sl + z0 * cl;   // feet left behind by a turn
-      f.x += dx * A * Math.sin(ph); f.z += dz * A * Math.sin(ph); f.y += lift * Math.max(0, Math.cos(ph)) + (Gt.step > 0 ? Math.max(0, k ? -sh : sh) * 0.08 : 0);
+      const u = ((ph / (2 * Math.PI)) % 1 + 1) % 1; let off, up = 0;
+      if (u < ST) off = 1 - 2 * u / ST; else { const t = (u - ST) / (1 - ST); off = -1 + 2 * t * t * (3 - 2 * t); up = Math.sin(Math.PI * t); }
+      f.x += dx * A * off; f.z += dz * A * off; f.y += lift * up + (Gt.step > 0 ? Math.max(0, k ? -sh : sh) * 0.08 : 0);
       if (shift) { const relax = Math.max(0, k ? -shift : shift); f.y += 0.035 * relax; f.z += 0.05 * relax; }
       if (k === 1 && kick) { f.z += 0.55 * kick; f.y += 0.5 * kick; }   // the right boot into the door
       Gt.feet[k].copy(f);
@@ -431,14 +441,14 @@ export class Body {
       for (let k = 0; k < 2; k++) { const f = (k ? Hr : Hl).ft, wpos = a3.copy(f).applyMatrix4(hd.matrixWorld), gy = GROUND.y(wpos.x, wpos.z, feetY + 0.5); d[k] = gy === null || !Number.isFinite(gy) ? 0 : Math.max(-0.45, Math.min(0.45, gy - feetY)); lo = Math.min(lo, d[k]); }
       Hl.ft.y += d[0]; Hr.ft.y += d[1]; Gt.sink += (lo - Gt.sink) * Math.min(1, dt * 10); Gt.hipDrop = -Gt.sink;
     }
-    Gt.hipDrop += A > 0 ? (A * A) / (this.legLen * 2) + Math.abs(Math.sin(Gt.ph)) * 0.015 * w : 0;
+    Gt.hipDrop += A > 0 ? (A * A) / (this.legLen * 2) + Math.abs(Math.sin(Gt.ph)) * 0.015 * Gt.w : 0;
   }
   kick() { this.G.kick = 0.5; }
   // hands: [left, right], each { pos, quat, pose? } or null. o: { down, stride (0..1, your own legs walk smaller) }
   update(headPos, yaw, hands, feetY, headQ, o = {}) {
     const s = Math.sin(yaw), c = Math.cos(yaw), now = performance.now(), dt = Math.min(0.1, (now - this.lastT) / 1000); this.lastT = now;
     const Gt = this.G; if (o.down === undefined) o.down = !Number.isFinite(feetY);   // no feet height given: lying down
-    if (Gt.last) { const vx = (headPos.x - Gt.last.x) / Math.max(dt, 1e-3), vz = (headPos.z - Gt.last.z) / Math.max(dt, 1e-3), k = Math.min(1, dt * 10); if (Math.hypot(vx, vz) < 12) { Gt.vx += (vx - Gt.vx) * k; Gt.vz += (vz - Gt.vz) * k; } } else Gt.last = new THREE.Vector3();
+    if (Gt.last) { const vx = (headPos.x - Gt.last.x) / Math.max(dt, 1e-3), vz = (headPos.z - Gt.last.z) / Math.max(dt, 1e-3), k = Math.min(1, dt * 7); if (Math.hypot(vx, vz) < 12) { Gt.vx += (vx - Gt.vx) * k; Gt.vz += (vz - Gt.vz) * k; } } else Gt.last = new THREE.Vector3();
     Gt.last.copy(headPos); Gt.spd = Math.hypot(Gt.vx, Gt.vz); Gt.idle += dt;
     if (Gt.lastYaw !== null) { let dy = yaw - Gt.lastYaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; Gt.lag = Math.max(-1.2, Math.min(1.2, Gt.lag - dy)); } Gt.lastYaw = yaw;
     Gt.fall = Math.max(0, Math.min(1, Gt.fall + (o.down ? dt / 0.75 : -dt / 0.95)));

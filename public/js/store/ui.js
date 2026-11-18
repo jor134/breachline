@@ -76,8 +76,11 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   }
   function go(solo, tut) {
     S.panel = null; panel.mesh.visible = false;
-    if (!solo && voice.on) voice.startMic().then(() => voice.unlock());   // asked inside VR: if the headset refuses, you can still listen
-    play(solo, call, solo ? 'SOLO' : U.code, tut);
+    play(solo, call, solo ? 'SOLO' : U.code, tut);   // connect first: the microphone prompt below can take the headset out of VR
+    if (!solo && voice.on) voice.permission().then(st => {
+      if (st !== 'granted') status('The headset leaves VR to ask for the microphone. Press ENTER VR to go back to room ' + U.code + '.');
+      return voice.startMic();
+    }).then(() => voice.unlock()).catch(() => { });   // refused: you can still hear the squad
   }
 
   // returns true when it handled the action
@@ -108,6 +111,9 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     if (m.t === 'booted') { status('The room owner removed you from that room.'); return true; }
     return false;
   };
+  U.started = () => S.net === 'online' || S.net === 'solo' || S.net === 'lost';
+  U.room = () => S.net === 'online' || S.net === 'lost' ? S.room : '';
+  U.left = () => { S.mode = null; };
   U.store = store;
   U.back = back;
   return U;
