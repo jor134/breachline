@@ -58,7 +58,10 @@ No store-level conflict found, but a CIPO / USPTO trademark search before launch
       compiled at map load (`prewarm` in game.js), night-vision goggles flip down and up (`js/store/nvgflip.js`).
       These touch shared files (actors.js, chars.js, gfx.js, game.js, casino-gfx.js): worth bringing to main too.
 - [ ] 3. Full-game unlock (Digital Goods API), demo = training + mansion solo, store-app check.
-- [ ] 4. Performance governor: device framebuffer scale, 72 Hz on Quest 2, quality ladder under load.
+- [x] 4. Performance (q6, `js/store/perf.js`): 72 Hz on every headset; dynamic resolution (WebXR viewport scaling, Quest
+      Browser 35+): a second with several dropped frames lowers the render resolution a step (100 / 90 / 80 / 72 %), eight clean
+      seconds raise it again; a Quest 2 on a browser without viewport scaling starts at 85 %. Foveation was already at maximum.
+      The radio MENU shows the current resolution. Plus (q4) shaders compiled at load and the casino zones.
 - [ ] 5. Packaging + submission kit: twa-manifest, `/.well-known/assetlinks.json`, GitHub Action APK build, listing text,
       IARC answers, assets list.
 - [ ] 6. Steam feasibility spike.
