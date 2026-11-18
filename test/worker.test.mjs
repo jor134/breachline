@@ -35,4 +35,9 @@ for (let i = 0; i < 4; i++) await join('/ws/FULL?name=p' + i); const extra = awa
   o.ws.close(); await sleep(150); assert.equal(g.msgs.filter(m => m.t === 'owner').at(-1).id, gid, 'ownership passes on'); g.ws.close(); }
 b.ws.close(); await sleep(200); assert.equal(a.msgs.filter(m => m.t === 's').at(-1).P.filter(p => !(p[9] & 1 << 17)).length, 1); assert.equal(s2.P.filter(p => p[9] & 1 << 17).length, 2, 'two humans: two bots');
 a.ws.close(); await sleep(200); assert.equal(rooms.get('ABCD').timer, null, 'room stops ticking when empty');
+// quest-store: the development unlock checks the creator code on the Worker; wrong or missing codes are refused
+{ const post = (code, env2) => worker.fetch({ url: 'https://x.dev/api/unlock', method: 'POST', headers: { get: () => null }, json: async () => ({ code }) }, env2);
+  assert.equal((await post('s3cret', { ...env, CREATOR_CODE: 's3cret' })).status, 200);
+  assert.equal((await post('guess', { ...env, CREATOR_CODE: 's3cret' })).status, 403);
+  assert.equal((await post('', env)).status, 403, 'no creator code set: nothing unlocks'); }
 console.log('worker tests passed'); process.exit(0);

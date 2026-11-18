@@ -16,6 +16,12 @@ export default {
       return env.ROOMS.get(env.ROOMS.idFromName(m[1].toUpperCase())).fetch(req);
     }
     if (url.pathname === '/api/ice') return json(await iceServers(env));   // voice chat connection servers
+    if (url.pathname === '/api/unlock' && req.method === 'POST') {   // quest-store: unlocks the full game on a development device (?dev=<creator code>)
+      const body = await req.json().catch(() => ({})), want = env.CREATOR_CODE || '', got = typeof body.code === 'string' ? body.code : '';
+      let diff = want.length === got.length && want.length > 0 ? 0 : 1; for (let i = 0; i < Math.min(want.length, got.length); i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
+      await new Promise(r => setTimeout(r, 400));   // slows guessing
+      return json({ ok: !diff }, diff ? 403 : 200);
+    }
     if (url.pathname.startsWith('/api/')) {
       // the creator code travels to the library in a header, set by this Worker from its secret, never from the client
       const fwd = new Request(req); fwd.headers.set('x-creator-code', env.CREATOR_CODE || ''); return library(env).fetch(fwd);

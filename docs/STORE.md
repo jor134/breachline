@@ -57,7 +57,13 @@ No store-level conflict found, but a CIPO / USPTO trademark search before launch
       walk cycle with eased stride and planted feet, casino floor / suites drawn only when they can be seen (gfx `zone`), shaders
       compiled at map load (`prewarm` in game.js), night-vision goggles flip down and up (`js/store/nvgflip.js`).
       These touch shared files (actors.js, chars.js, gfx.js, game.js, casino-gfx.js): worth bringing to main too.
-- [ ] 3. Full-game unlock (Digital Goods API), demo = training + mansion solo, store-app check.
+- [x] 3. Full-game unlock (q7, `js/store/config.js`, `unlock.js`, purchase panel in `ui.js`). App ID 1766163904906396, add-on
+      SKU `full_game` (durable). Demo: training facility + mansion, solo. Full game: the other four missions, PLAY ONLINE, the
+      map editor and custom maps. Locked missions show [FULL GAME] on the board; START, PLAY ONLINE or MAP EDITOR on a locked
+      item opens the purchase panel (Meta's own dialog in the store app; a "get it on the Store" note anywhere else).
+      Ownership is checked every launch with listPurchases (works across headsets; last result kept for offline play).
+      Development devices: open the game once with `?dev=<CREATOR_CODE>`; the Worker checks the code (`/api/unlock`).
+      `gate: 'none'` in config.js unlocks everything (if the game is ever a paid listing instead).
 - [x] 4. Performance (q6, `js/store/perf.js`): 72 Hz on every headset; dynamic resolution (WebXR viewport scaling, Quest
       Browser 35+): a second with several dropped frames lowers the render resolution a step (100 / 90 / 80 / 72 %), eight clean
       seconds raise it again; a Quest 2 on a browser without viewport scaling starts at 85 %. Foveation was already at maximum.
@@ -73,4 +79,6 @@ No store-level conflict found, but a CIPO / USPTO trademark search before launch
 - Platform Services > User Reporting > Add Service > activate (Meta-button reporting, VRC.Content.3). Mark the app as
   having multiplayer / co-op modes, or the Report button will not appear.
 - Data Use Checkup: request "In-app purchases and/or downloadable content"; give the privacy policy URL.
+- Add-ons: create a **durable** add-on with SKU `full_game` and set its price (it shows in the game's purchase panel).
+- Reset the App secret (it was pasted into a chat on 17 Nov 2026). The game never uses it.
 - IARC questionnaire and age-group self-certification at submission.

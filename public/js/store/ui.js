@@ -3,12 +3,13 @@
 // adds the two menu buttons, passes unknown panel actions to act(), and forwards the 'owner' / 'booted' room messages.
 import { CREDITS } from './credits.js';
 import { WORDS, isCallsign, randomCallsign } from './callsigns.js';
+import { makeUnlock } from './unlock.js';
 
 const PER_PAGE = 4, clip = (s, n = 60) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 
 export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoard, play }) {
   const U = { owner: 0, page: 0, code: '', prev: null };
-  const store = !!(window.__boot && window.__boot.store);
+  const store = !!(window.__boot && window.__boot.store), unlock = makeUnlock(); U.unlock = unlock;
   let call = (() => { try { const c = localStorage.getItem('bl_name'); return isCallsign(c) ? c : randomCallsign(); } catch (e) { return randomCallsign(); } })();
   const saveCall = () => { try { localStorage.setItem('bl_name', call); } catch (e) { } };
   saveCall();
@@ -54,9 +55,23 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       'Point at a button and pull the trigger.',
     ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], ['VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE', 'st:online'], ['CREDITS', 'st:credits:0'], ['PLAY SOLO', 'st:solo']]);
   };
+  // ---- the full game: what the demo leaves out, and Meta's purchase dialog ----
+  function showBuy(why, from) {
+    U.buyWhy = why; U.buyFrom = from; S.panel = 'buy'; placeBoard(); panel.mesh.visible = true;
+    if (U.bought) return panel.draw('FULL GAME UNLOCKED', 'Thank you!', ['Every mission, online co-op and PvP, and the map editor', 'are yours on this account, on every headset.'], [['CONTINUE', 'st:nobuy']]);
+    const what = { online: 'Online play is part of the full game.', editor: 'The map editor is part of the full game.', map: 'This mission is part of the full game.' }[why] || '';
+    const lines = [what, '', 'The demo: the training facility and the mansion, solo.', 'The full game adds:', '   the container terminal, Grand Prix, airport and casino tower,', '   online co-op and PvP for up to four players,', '   and the map editor.'];
+    if (U.buyErr) lines.push('', 'The purchase did not go through: ' + clip(U.buyErr, 44));
+    if (!unlock.store) { lines.push('', 'Get You Can\'t Hide on the Meta Horizon Store to unlock it.'); return panel.draw('FULL GAME', 'Meta Horizon Store', lines, [['OK', 'st:nobuy']]); }
+    panel.draw('FULL GAME', unlock.price ? 'One purchase, ' + unlock.price : 'One purchase', lines, [['BUY THE FULL GAME' + (unlock.price ? '  ' + unlock.price : ''), 'st:buy'], ['NOT NOW', 'st:nobuy']]);
+  }
+  const back2 = () => { try { back.lobby(); } catch (e) { } };
+  // called by game.js before it starts a mission or opens the editor: true = blocked (the purchase panel is showing instead)
+  U.gate = what => { if (what === 'editor' ? unlock.full() : unlock.mapOk(what)) return false; showBuy(what === 'editor' ? 'editor' : 'map', 'board'); return true; };
+  U.lockTag = id => unlock.mapOk(id) ? '' : '   [FULL GAME]';
   // the game redraws its own panels twice a second; while the start menu is up it redraws this instead
-  U.redraw = () => { if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); };
-  U.holdsPanel = () => S.panel === 'start' || S.panel === 'keypad' || (S.panel === 'credits' && U.prev);
+  U.redraw = () => { if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); };
+  U.holdsPanel = () => S.panel === 'start' || S.panel === 'keypad' || S.panel === 'buy' || (S.panel === 'credits' && U.prev);
 
   // a 4-digit room code typed on a keypad (no system keyboard inside VR)
   function showKeypad(msg) {
@@ -92,12 +107,15 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'voice') { voice.setOn(!voice.on); U.showStart(); }
     else if (what === 'solo') go(true, false);
     else if (what === 'tut') go(true, true);
+    else if (what === 'online' && !unlock.full()) showBuy('online', 'start');
     else if (what === 'online') { U.msg = ''; try { U.code = (localStorage.getItem('bl_room') || '').replace(/\D/g, '').slice(0, 4); } catch (e) { U.code = ''; } showKeypad(); }
     else if (what === 'key') { if (U.code.length < 4) U.code += arg; showKeypad(''); }
     else if (what === 'del') { U.code = U.code.slice(0, -1); showKeypad(''); }
     else if (what === 'new') { U.code = String(Math.floor(Math.random() * 9000) + 1000); showKeypad('New room: tell your squad the code ' + U.code + '.'); }
     else if (what === 'back') { U.prev = null; U.showStart(); }
     else if (what === 'join') { if (U.code.length === 4) go(false, false); else showKeypad('The room code has four digits.'); }
+    else if (what === 'buy') { unlock.buy().then(ok => { if (ok) { U.bought = true; showBuy(U.buyWhy, U.buyFrom); } }).catch(e => { U.buyErr = String(e && e.message || e); showBuy(U.buyWhy, U.buyFrom); }); }
+    else if (what === 'nobuy') { U.bought = false; U.buyErr = ''; if (U.buyFrom === 'start') U.showStart(); else { S.panel = null; back2(); } }
     else if (what === 'players') showPlayers();
     else if (what === 'credits') showCredits(+arg || 0);
     else if (what === 'mute') { const id = +arg; voice.mutePeer(id, !voice.isPeerMuted(id)); showPlayers(); }

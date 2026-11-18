@@ -381,7 +381,7 @@ class Panel {
   }
 }
 const panel = new Panel();
-const storeUI = makeStoreUI({ panel, S, voice, net, sfx, status, back: () => toggleMenu(true), placeBoard: () => { const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); },
+const storeUI = makeStoreUI({ panel, S, voice, net, sfx, status, back: Object.assign(() => toggleMenu(true), { lobby: () => showLobbyPanel() }), placeBoard: () => { const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); },
   play: (solo, name, room, tut) => { nameIn.value = name; roomIn.value = room; if (tut) TUT = true; initAudio(); return connect(solo); } });
 const coach = new Panel(); coach.mesh.scale.setScalar(0.7); coach.mesh.visible = false;   // the tutorial's own panel (VR)
 const tut = window.__tut = createTutorial({ THREE, scene, S, M: () => M, head, coach, sfx,
@@ -402,7 +402,7 @@ function showLobbyPanel() {
 function showBoard() {   // the mission board in the training lobby: pick where the squad goes next, see how the range went
   S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); const T = trainLine(), cu = S.customList.find(c => c.id === S.nextMap), nx = MAPS[S.nextMap] || (cu ? { name: cu.name + ' (LOADING)', op: cu.name + '  (by ' + cu.creator + ')' } : MAPS[MISSION_IDS[0]]);
   panel.draw('MISSION BOARD', 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo (not connected)' : 'connecting'),
-    [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
+    [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')' + storeUI.lockTag(S.nextMap), 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
       'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', ...(S.mode === 'vr' ? [] : ['Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
       'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'])],
     [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
@@ -438,6 +438,7 @@ function tryPanel(o, d) {
   const ca = coach.probe(o, d, false); if (ca) return tut.act(ca); if (ca === '') return true;
   const act = panel.probe(o, d, false); if (!act) return act === '';
   if (act === 'tut') { sfx.click(); tut.showMenu(); return true; }
+  if ((act === 'edit' || act === 'start') && storeUI.gate(act === 'edit' ? 'editor' : M.training ? S.nextMap : M.id)) { if (S.menu) { S.menu = false; } return true; }   // quest-store: demo limits (js/store/ui.js)
   if (act === 'edit') { if (S.menu) toggleMenu(false); openEditor(); return true; }   // a pull on the panel background is swallowed, not fired
   if (act === 'mic') { toggleMic(); toggleMenu(true); return true; }
   if (storeUI.act(act)) return true;
@@ -1104,7 +1105,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q6';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q7';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
