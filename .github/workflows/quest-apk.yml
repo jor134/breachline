@@ -39,12 +39,15 @@ jobs:
       - name: Restore the signing key
         run: |
           if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then echo "Add the ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD repository secrets first"; exit 1; fi
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/android.keystore
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d '[:space:]' | base64 -d > android/android.keystore
+          # a pasted secret often picks up a stray space or line break: trim the password the same way
+          PW="$(printf '%s' "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" | tr -d '[:space:]')"; echo "::add-mask::$PW"; echo "KSPW=$PW" >> "$GITHUB_ENV"
+          echo "keystore $(wc -c < android/android.keystore) bytes, password ${#PW} characters (expected 2706 and 28)"
       - name: Generate and build
         working-directory: android
         env:
-          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ env.KSPW }}
+          BUBBLEWRAP_KEY_PASSWORD: ${{ env.KSPW }}
         run: |
           bubblewrap update --skipVersionUpgrade
           bubblewrap build --skipPwaValidation
