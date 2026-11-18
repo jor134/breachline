@@ -296,7 +296,7 @@ $('bOpen').onclick = () => {
   });
 };
 $('bUndo').onclick = undo;
-$('bHome').onclick = () => { save(); location.href = './'; };   // the draft is kept on this device: it is here when you come back
+$('bHome').onclick = () => { save(); location.href = 'play.html'; };   // the draft is kept on this device: it is here when you come back
 // take a published map off the mission board for good (needs the creator code); a copy you have open or saved here is kept
 function unpublish(id, name) {
   dialog(`<h3>Delete "${esc(name)}"?</h3><p style="font-size:13px;color:#9fb0c3">It comes off the mission board for everyone. Drafts saved on this device are kept, so you can publish it again later.</p><div class="row"><button id="dYes" class="warn">Delete it</button></div>`, () => {
@@ -309,7 +309,7 @@ function unpublish(id, name) {
 }
 const runCheck = () => check(M, { buildLevel, findPath, registerMap });
 $('bCheck').onclick = () => { const r = runCheck(); msg(r.ok ? 'Ready to play.' + (r.warnings.length ? '\nNotes:\n• ' + r.warnings.join('\n• ') : '') : 'Problems:\n• ' + r.errors.join('\n• ') + (r.warnings.length ? '\nNotes:\n• ' + r.warnings.join('\n• ') : ''), r.ok ? 'ok' : 'err'); };
-$('bTest').onclick = () => { const r = runCheck(); if (!r.ok) return msg('Fix these first:\n• ' + r.errors.join('\n• '), 'err'); localStorage.setItem('bl_draft', JSON.stringify(r.map)); save(); location.href = './?draft=1'; };
+$('bTest').onclick = () => { const r = runCheck(); if (!r.ok) return msg('Fix these first:\n• ' + r.errors.join('\n• '), 'err'); localStorage.setItem('bl_draft', JSON.stringify(r.map)); save(); location.href = 'play.html?draft=1'; };
 $('bPub').onclick = () => {
   const r = runCheck(); if (!r.ok) return msg('Fix these before publishing:\n• ' + r.errors.join('\n• '), 'err');
   dialog(`<h3>Publish "${esc(M.name)}"</h3><p style="font-size:13px;color:#9fb0c3">It goes on the mission board for everyone who plays.${pubId ? ' This map was published before: you can update it or publish a new copy.' : ''}</p><div class="row">${pubId ? '<button id="dUpd">Update the published map</button>' : ''}<button id="dNew">Publish${pubId ? ' as new' : ''}</button></div>${pubId ? '<div class="row"><button id="dUnpub" class="warn">Remove it from the board</button></div>' : ''}`, () => {

@@ -10,7 +10,7 @@ with sync_playwright() as p:
     pg.on('pageerror', lambda e: errs.append(str(e)))
     pg.add_init_script(path='test/xrmock.js')
     pg.add_init_script("window.__t0 = performance.now(); addEventListener('DOMContentLoaded', () => { const b = window.__boot; if (b) b.on(w => { if (w === 'session') window.__tSession = performance.now() - window.__t0; }); });")
-    pg.goto('http://localhost:8765/?lite=1'); pg.wait_for_function('window.__bl && window.__bl.S.panel === "start"', timeout=20000)
+    pg.goto('http://localhost:8765/play.html?lite=1'); pg.wait_for_function('window.__bl && window.__bl.S.panel === "start"', timeout=20000)
     out['sessionMs'] = pg.evaluate('window.__tSession'); out['menuMs'] = round(pg.evaluate('performance.now() - window.__t0'))
     out['start'] = pg.evaluate(JS_STATE)
     pg.wait_for_timeout(1200); out['startStays'] = pg.evaluate('window.__bl.S.panel')   # the game's twice-a-second redraw must not replace it

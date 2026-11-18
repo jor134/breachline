@@ -2,7 +2,7 @@
   "name": "You Can't Hide",
   "short_name": "You Can't Hide",
   "description": "Co-op tactical entry VR game",
-  "start_url": "./",
+  "start_url": "./play.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>You Can't Hide</title>
+<meta name="theme-color" content="#0a1020">
+<link rel="manifest" href="manifest.webmanifest">
+<script src="js/store/boot.js"></script><!-- quest-store: asks for VR at once and shows a loading card until the game is ready -->
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<style>
+html,body{margin:0;height:100%;background:#0a1020;color:#e8eef5;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+canvas{display:block;position:fixed;inset:0}
+/* quest-store: VR only. The 2D page is just a fallback ENTER VR button; ?classic=1 shows the full development screen */
+html.store .card>:not(h1):not(#vr):not(#vrnote):not(#status):not(.storeonly){display:none!important}
+.storeonly{display:none}html.store .storeonly{display:block;color:#b9c6d4;font-size:15px;margin:8px 0 4px}
+#ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(rgba(6,10,18,.55),rgba(6,10,18,.85));z-index:5;overflow:auto}
+.card{width:min(92vw,440px);padding:22px;background:rgba(12,17,24,.92);border:1px solid #2c4a6b;border-radius:10px}
+h1{margin:0;font-size:34px;letter-spacing:.12em}
+.sub{color:#8fb4dc;margin:2px 0 16px;font-size:14px}
+label{display:block;font-size:12px;color:#9fb0c3;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.08em}
+input[type=text]{width:100%;box-sizing:border-box;padding:11px;font-size:17px;background:#0a0f16;color:#fff;border:1px solid #2c4a6b;border-radius:6px}
+#room{text-transform:uppercase;letter-spacing:.3em;font-weight:700}
+button{padding:13px 16px;font-size:16px;font-weight:700;border:0;border-radius:6px;cursor:pointer;margin-top:12px}
+#vr{width:100%;background:#1f7a3d;color:#fff}#vr:disabled{background:#2a3038;color:#6b7684;cursor:default}
+#desk{width:100%;background:#1c2a3b;color:#cfe0f2}
+#install{display:none;background:#3a6ea5;color:#fff;width:100%}
+#tutbtn{background:#c08a1e;color:#111}#tutbtn.on{outline:3px solid #ffe08a}
+#tutoffer{background:#2a2110;border:1px solid #c08a1e;border-radius:8px;padding:10px 12px;margin:6px 0 4px;font-size:14px;color:#f2e2c0;line-height:1.35}#tutgo{background:#c08a1e;color:#111}
+#coach{position:fixed;top:8px;left:50%;transform:translateX(-50%);width:min(560px,52vw);background:rgba(8,16,24,.88);border:2px solid #40ff80;border-radius:10px;padding:8px 12px;color:#e8eef5;font:14px/1.35 sans-serif;z-index:30;pointer-events:auto}
+#coach .ch{display:flex;gap:10px;align-items:baseline}#coach .ch b{color:#7dffa0;font-size:15px}#coach .ch span{color:#8fb4dc;font-size:11px;flex:1}#coach .cmin{flex:0;cursor:pointer;padding:0 6px;font-size:16px;color:#e8eef5}
+#coach .ct{margin:5px 0 6px}#coach .cb{display:flex;gap:8px;flex-wrap:wrap}#coach button{margin:0;padding:7px 12px;font-size:13px;background:#1f7a3d;color:#fff}#coach button[data-a="tut:exit"]{background:#39424e}#coach .ck{font-size:11px;color:#8fb4dc;margin-top:4px}
+#coach.min .ct,#coach.min .cb,#coach.min .ck{display:none}
+body.touching #coach{top:auto;bottom:6px;left:45%;width:min(370px,44vw)}
+@media (max-height:500px){#coach{font-size:12px;padding:5px 9px;width:min(520px,50vw)}body.touching #coach{width:min(370px,44vw)}#coach .ct{margin:3px 0 4px}#coach button{padding:5px 9px;font-size:12px}}
+.row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px;color:#b9c6d4}
+.row input[type=range]{flex:1}
+#status,#vrnote{font-size:13px;color:#ffcf8a;margin-top:10px;min-height:1em}
+details{margin-top:12px;font-size:13px;color:#b9c6d4}summary{cursor:pointer;color:#8fb4dc}
+#touch{display:none;position:fixed;inset:0;z-index:6;pointer-events:none;user-select:none;-webkit-user-select:none;touch-action:none}
+#touch>*{pointer-events:auto}#touch,#touch *{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+body.touching{touch-action:none;overscroll-behavior:none}body.touching canvas{touch-action:none}
+body.touching #hud{top:0;bottom:auto;font-size:10px;padding:3px 8px;text-align:center}
+#tstick{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:22px;width:128px;height:128px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.3)}
+#tknob{position:absolute;left:37px;top:37px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.4)}
+.tb{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(20,30,44,.55);border:2px solid rgba(160,190,225,.55);color:#e8eef5;font:700 11px system-ui,sans-serif;width:56px;height:56px}
+.tb.on{background:rgba(31,122,61,.85)}
+.tr{position:absolute;display:flex;gap:7px}.tr .tb{position:static;width:50px;height:38px;border-radius:9px;font-size:10px}
+#touch{--sr:max(18px,env(safe-area-inset-right));--sb:max(18px,env(safe-area-inset-bottom))}
+/* the right-hand cluster is laid out from one corner, so a phone's notch or rounded corner moves all of it together and nothing overlaps */
+#bFire{right:var(--sr);bottom:calc(var(--sb) + 12px);width:88px;height:88px;font-size:15px;background:rgba(150,30,30,.55);border-color:rgba(255,150,150,.7)}
+#bAim{right:calc(var(--sr) + 102px);bottom:var(--sb)}#bReload{right:calc(var(--sr) + 100px);bottom:calc(var(--sb) + 72px)}#bUse{right:calc(var(--sr) + 12px);bottom:calc(var(--sb) + 116px);width:64px;height:64px;font-size:13px}#bShout{right:calc(var(--sr) + 166px);bottom:calc(var(--sb) + 30px)}
+@media (max-height:380px){#bUse{right:calc(var(--sr) + 172px);bottom:calc(var(--sb) + 96px);width:56px;height:56px}#bShout{right:calc(var(--sr) + 166px);bottom:calc(var(--sb) + 22px)}}
+#ow{display:none;position:fixed;left:50%;top:50%;width:300px;height:300px;margin:-150px 0 0 -150px;z-index:8;pointer-events:none}#ow>*{pointer-events:auto;position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;font:bold 12px sans-serif;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}.owb{width:104px;height:44px;border-radius:10px;background:rgba(12,17,24,.86);border:2px solid #3a6ea5}.owb.on{background:#1f7a3d;border-color:#7dffa0}.owc{left:110px;top:110px;width:80px;height:80px;border-radius:40px;background:#0c1118;color:#7dffa0;border:2px solid #3a6ea5}
+#trTop{top:22px;right:max(10px,env(safe-area-inset-right))}#trLeft{top:22px;left:max(10px,env(safe-area-inset-left))}
+#tstart{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:none;gap:14px}#tstart .tb{position:static;width:150px;height:54px;border-radius:10px;font-size:14px;background:rgba(31,122,61,.85)}#tstart.tr{top:calc(max(10px,env(safe-area-inset-top)) + 76px);transform:translate(-50%,0);gap:8px}#tstart.tr .tb{width:128px;height:38px;font-size:12px}
+#tplay{display:none;width:100%;background:#3a6ea5;color:#fff}
+#hud{display:none;position:fixed;left:0;right:0;bottom:0;padding:8px 12px;font:14px monospace;background:rgba(0,0,0,.55);z-index:4;white-space:pre}
+</style>
+</head>
+<body><pre id="errs" style="display:none;position:fixed;left:6px;bottom:6px;z-index:50;max-width:70vw;white-space:pre-wrap;font:11px monospace;color:#ff9a80;background:rgba(0,0,0,.6);padding:4px 6px;margin:0;pointer-events:none"></pre>
+<div id="ui"><div class="card">
+  <h1>YOU CAN'T HIDE</h1><div class="storeonly">Co-op SWAT for Meta Quest. Put on your headset: the game opens in VR.</div><div class="sub">Co-op tactical entry &middot; Quest, phone, tablet or desktop &middot; up to 4 officers</div>
+  <div id="tutoffer" style="display:none"><b>New to You Can't Hide?</b> A hands-on tutorial teaches the controls in about ten minutes, then takes you on your first mission.<div class="row" style="justify-content:center;gap:14px;margin-top:8px"><button id="tutgo" style="width:auto;padding:10px 18px;margin:0">TAKE THE TUTORIAL</button><a id="tutno" href="#" style="color:#9fb0c3">No thanks</a></div></div>
+  <label for="name">Callsign</label><input id="name" type="text" maxlength="14" placeholder="Officer" autocomplete="off">
+  <label for="room">Room code (share with your squad)</label><input id="room" type="text" maxlength="8" autocomplete="off">
+  <div class="row"><input id="solo" type="checkbox"><span>Solo practice (no server)</span></div>
+  <div class="row"><input id="voiceon" type="checkbox"><span>Voice chat with your squad (microphone)</span></div>
+  <div class="row"><span>Gun tilt</span><input id="tilt" type="range" min="-40" max="40" step="1"><span id="tiltv"></span></div>
+  <div class="row" style="gap:8px"><button id="tutbtn" style="flex:1;margin:4px 0">TUTORIAL</button><a href="howto.html" id="howlink" style="flex:1;display:block;text-align:center;color:#7dd0ff;font-weight:bold;padding:12px 0">HOW TO PLAY</a></div>
+  <button id="vr">ENTER VR</button><div id="vrnote"></div>
+  <button id="tplay">PLAY ON THIS PHONE / TABLET</button>
+  <button id="desk">Desktop preview (mouse + keyboard)</button>
+  <button id="install">Install as app</button>
+  <a id="editlink" href="editor.html" style="display:block;text-align:center;margin:10px 0 4px;color:#7dd0ff;font-weight:bold">LEVEL EDITOR: build and publish your own maps</a>
+  <div id="status"></div>
+  <details><summary>Controls</summary>
+  <p><b>VR:</b> left stick walk (click = jog), right stick snap turn. Grip near chest = rifle, right hip = pistol, left belt = magazine. Grip again to stow. Trigger fires. Gun hand A/X drops the mag, B/Y releases the bolt, stick click = semi/auto. Pull the charging handle / slide back with your other hand to rack. Grab the handguard with your other hand to steady the rifle. Other hand B/Y = shout for compliance; tap A/X = flashlight, hold A/X = tool wheel (lockpick, wire cutters, door camera, med kit, hands, night vision). Flashbangs and smoke are on the front of your vest: grip one, swing, let go to throw; stick click = kick a door. Grip at your helmet = night vision. Grip the radio on your left chest = menu. Hold grip on a kneeling person to cuff. Cut bomb wires with the trigger of an empty hand.</p>
+  <p><b>Phone / tablet:</b> hold the device sideways. Left thumb moves, drag anywhere else to look. USE opens doors, cuffs, picks locks (TOOL set to PICK) and cuts wires (TOOL set to CUTTER).</p>
+  <p><b>Desktop:</b> WASD, mouse, left click fire, right click aim, R reload, F shout, E use / cuff / cut, V semi/auto, 1/2 weapon, 3/4/5/8 hands/lockpick/cutters/door camera, 6 flashbang, 7 smoke, H med kit, N night vision, B mute mic, Q kick, Space climb onto a ledge, M menu, C crouch, T flashlight, O weather choice, Enter start, L end mission. Walking out of the front gate also ends it. E at the main breaker (plant room, basement) cuts the power.</p></details>
+</div></div>
+<div id="hud"></div>
+<div id="touch">
+  <div id="tstick"><div id="tknob"></div></div>
+  <div class="tb" id="bFire">FIRE</div><div class="tb" id="bAim">AIM</div><div class="tb" id="bReload">RELOAD</div><div class="tb" id="bUse">USE</div><div class="tb" id="bShout">SHOUT</div>
+  <div class="tr" id="trTop"><div class="tb" id="bMic" style="display:none">MIC</div><div class="tb" id="bSwap">GUN</div><div class="tb" id="bTool">HANDS</div><div class="tb" id="bMed">MED</div><div class="tb" id="bNvg">NVG</div><div class="tb" id="bLight">LIGHT</div></div>
+  <div class="tr" id="trLeft"><div class="tb" id="bMenu">MENU</div><div class="tb" id="bOrd" style="display:none">SQUAD</div><div class="tb" id="bCrouch">CROUCH</div><div class="tb" id="bKick">KICK</div><div class="tb" id="bFlash">FLASH 2</div><div class="tb" id="bSmoke">SMOKE 1</div></div>
+  <div id="tstart"><div class="tb" id="bMap">MAP: MANSION</div><div class="tb" id="bWx">WEATHER: RANDOM</div><div class="tb" id="bTod" style="display:none">TIME: RANDOM</div><div class="tb" id="bTeam">TEAM: SWAT</div><div class="tb" id="bDusk">START MISSION</div><div class="tb" id="bEnd" style="background:rgba(150,40,30,.85)">END MISSION</div><div class="tb" id="bTutT">TUTORIAL</div><div class="tb" id="bHome">HOME</div></div>
+</div>
+<script type="module" src="js/game.js"></script>
+<div id="ow"></div>
+</body>
+</html>

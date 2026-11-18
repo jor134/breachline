@@ -472,7 +472,7 @@ function showEndPanel() {
 }
 function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z); }
 // back to the start screen (or, testing a draft, to the editor): leave VR first, then reload the page fresh
-function goHome() { const to = DRAFT ? 'editor.html' : './'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
+function goHome() { const to = DRAFT ? 'editor.html' : 'play.html'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
   if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + '   ·   resolution ' + Math.round(perf.scale * 100) + '%', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
@@ -1150,7 +1150,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q19';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q20';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
