@@ -9,7 +9,7 @@ const MARK = { line: [10, 15.7], house: [22.5, 17.2], kick: [29.2, 24.4], pick: 
 // done(c) is checked every frame; c.base holds what things were when the step began. info steps wait for NEXT.
 const CORE = [
   { id: 'hello', title: "WELCOME TO YOU CAN'T HIDE", info: true, text: T3(
-    'You lead a SWAT squad: rescue hostages, arrest suspects, defuse bombs. Shoot only people who threaten you. This coach panel follows you. Point at a button and pull the trigger to press it. Every step waits until you do it; SKIP if you already know it.',
+    'You lead a SWAT squad: rescue hostages, arrest suspects, defuse bombs. Shoot only people who threaten you. This coach panel waits on your left: glance over to read it. Point at a button and pull the trigger to press it. Every step waits until you do it; SKIP if you already know it.',
     'You lead a SWAT squad: rescue hostages, arrest suspects, defuse bombs. Shoot only people who threaten you. Each step waits until you do it; tap SKIP if you already know it.',
     'You lead a SWAT squad: rescue hostages, arrest suspects, defuse bombs. Shoot only people who threaten you. Each step waits until you do it. Press K (or click NEXT / SKIP; Esc frees the mouse).') },
   { id: 'move', title: 'MOVE', mark: 'line', text: T3(
@@ -147,7 +147,7 @@ export function createTutorial(ctx) {
     i = k; const st = steps[i]; if (!st) return finish();
     if (st.vrOnly && plat() !== 'vr') return begin(i + 1);
     if (st.mission && ctx.M().training && !st.end) { /* waits for the mission to load */ }
-    cx.base = snapshot(); turnAcc = 0; lastYaw = null; reloads = 0; coachAt = null; if (st.enter) st.enter(cx); ctx.sfx && ctx.sfx.beep(null, 1100); draw();
+    cx.base = snapshot(); turnAcc = 0; lastYaw = null; reloads = 0; if (st.enter) st.enter(cx); ctx.sfx && ctx.sfx.beep(null, 1100); draw();
   }
   function finish() { if (lesson) { lesson = null; return showMenu(); } stop(); }
   function stop() { active = false; menu = false; steps = null; mk.visible = false; ctx.coach.mesh.visible = false; ctx.coach.cursor.visible = false; dom.style.display = 'none'; lastKey = ''; }
@@ -202,13 +202,18 @@ export function createTutorial(ctx) {
     draw();
     if (plat() === 'vr') placeCoach(dt);
   }
-  // the VR coach floats ahead and a little to the left; it catches up when you turn away from it
+  // the VR coach waits off to your left (about 60 degrees, a little low), out of the way of what you're aiming at: glance left
+  // to read it. It stays put while you look around and only swings round when you turn well away (35 degrees to the right, or
+  // past it to the left), so turning your head to read it doesn't chase it off.
+  const COACH_SIDE = 1.05, COACH_DIST = 1.3, UP = new THREE.Vector3(0, 1, 0);
   function placeCoach(dt) {
     const h = ctx.head, f = new THREE.Vector3(h.fwd.x, 0, h.fwd.z); if (f.lengthSq() < 1e-6) return; f.normalize();
-    const want = f.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.42).multiplyScalar(1.45).add(h.pos); want.y = h.pos.y - 0.15;
     const m = ctx.coach.mesh;
-    if (!coachAt || coachAt.distanceTo(want) > 1.3 || m.position.distanceTo(h.pos) > 2.6) coachAt = want;
-    m.position.lerp(coachAt, coachAt === want && m.position.distanceTo(want) > 1.2 ? 1 : Math.min(1, dt * 3)); m.lookAt(h.pos.x, m.position.y, h.pos.z); m.updateMatrixWorld(true);
+    if (!coachAt) coachAt = f.clone();   // coachAt: the facing the panel is placed from
+    const diff = Math.atan2(coachAt.z * f.x - coachAt.x * f.z, coachAt.dot(f));   // + = you've turned left of it
+    if (diff < -0.6 || diff > COACH_SIDE + 0.6 || m.position.distanceTo(h.pos) > 2.6) coachAt.copy(f);
+    const want = coachAt.clone().applyAxisAngle(UP, COACH_SIDE).multiplyScalar(COACH_DIST).add(h.pos); want.y = h.pos.y - 0.28;
+    m.position.lerp(want, m.position.distanceTo(want) > 2 ? 1 : Math.min(1, dt * 3)); m.lookAt(h.pos.x, h.pos.y - 0.1, h.pos.z); m.updateMatrixWorld(true);
   }
   // what the game reports: messages this player sends and events about them
   function note(t) { if (!active || t === 'cuff') return; if (t in sent) sent[t]++; }   // a cuff counts when it lands (the event)
