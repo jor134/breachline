@@ -130,7 +130,7 @@ export class Room {
       else this.queue = this.queue.then(() => { try { this.host.message(id, m); } catch {} });
     });
     server.addEventListener('close', bye); server.addEventListener('error', bye);
-    if (!this.timer) { let last = Date.now(); this.timer = setInterval(() => { const now = Date.now(), dt = Math.min(0.25, (now - last) / 1000); last = now; this.host.tick(dt); }, TICK * 1000); }
+    if (!this.timer) { let last = Date.now(); this.timer = setInterval(() => { const now = Date.now(), dt = Math.min(0.25, (now - last) / 1000); last = now; try { this.host.tick(dt); } catch (e) { if (!this.tickErr || now - this.tickErr > 10000) { this.tickErr = now; console.error('room tick failed', e && e.stack || e); } } }, TICK * 1000); }   // a bad tick is logged, it does not stop the room
     return new Response(null, { status: 101, webSocket: client });
   }
 }

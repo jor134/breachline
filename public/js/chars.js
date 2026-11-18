@@ -22,6 +22,7 @@ export const CHARS = {
     thigh: side('mixamorigLeftUpLeg_58', 'mixamorigRightUpLeg_63'), shin: side('mixamorigLeftLeg_57', 'mixamorigRightLeg_62'), foot: side('mixamorigLeftFoot_56', 'mixamorigRightFoot_61'),
     up: side('mixamorigLeftArm_25', 'mixamorigRightArm_49'), fore: side('mixamorigLeftForeArm_24', 'mixamorigRightForeArm_48'), hand: side('mixamorigLeftHand_23', 'mixamorigRightHand_47'),
     fingers: { L: [['mixamorigLeftHandIndex1_10', 'mixamorigLeftHandIndex2_9', 'mixamorigLeftHandIndex3_8'], ['mixamorigLeftHandMiddle1_14', 'mixamorigLeftHandMiddle2_13', 'mixamorigLeftHandMiddle3_12']], R: [['mixamorigRightHandIndex1_34', 'mixamorigRightHandIndex2_33', 'mixamorigRightHandIndex3_32'], ['mixamorigRightHandMiddle1_38', 'mixamorigRightHandMiddle2_37', 'mixamorigRightHandMiddle3_36']] },
+    rest: { L: [['mixamorigLeftHandRing1_18', 'mixamorigLeftHandRing2_17', 'mixamorigLeftHandRing3_16'], ['mixamorigLeftHandPinky1_22', 'mixamorigLeftHandPinky2_21', 'mixamorigLeftHandPinky3_20']], R: [['mixamorigRightHandRing1_42', 'mixamorigRightHandRing2_41', 'mixamorigRightHandRing3_40'], ['mixamorigRightHandPinky1_46', 'mixamorigRightHandPinky2_45', 'mixamorigRightHandPinky3_44']] },   // ring and little fingers (they follow the middle finger)
     thumb: { L: ['mixamorigLeftHandThumb1_6', 'mixamorigLeftHandThumb2_5', 'mixamorigLeftHandThumb3_4'], R: ['mixamorigRightHandThumb1_30', 'mixamorigRightHandThumb2_29', 'mixamorigRightHandThumb3_28'] } },
   // "Business Man" by qsardor: the high-value target (Mixamo rig)
   boss: { file: 'boss.glb', h: 1.8, hips: 'mixamorigHips_01', spine: ['mixamorigSpine_02', 'mixamorigSpine1_03', 'mixamorigSpine2_04'], neck: 'mixamorigNeck_05', head: 'mixamorigHead_06',
@@ -158,6 +159,7 @@ export class Skin {
     this.role = {}; for (const k of ['hips', 'neck', 'head']) this.role[k] = B(def[k]); this.role.spine = def.spine.map(B);
     for (const k of ['thigh', 'shin', 'foot', 'up', 'fore', 'hand']) this.role[k] = { L: B(def[k].L), R: B(def[k].R) };
     if (def.fingers) { this.role.fingers = { L: def.fingers.L.map(c => c.map(B)), R: def.fingers.R.map(c => c.map(B)) }; this.role.thumb = { L: def.thumb.L.map(B), R: def.thumb.R.map(B) }; }
+    if (def.rest) this.role.rest = { L: def.rest.L.map(c => c.map(B)), R: def.rest.R.map(c => c.map(B)) };
     this.solve(null);   // rest pose in the holder's frame
     this.restQ = this.gq.map(q => q.clone()); this.restP = this.gp.map(p => p.clone());
     const dirTo = (a, b) => _v.copy(this.restP[b]).sub(this.restP[a]).normalize().clone();

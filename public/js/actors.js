@@ -96,11 +96,11 @@ export function makePistol(holo = false, hq = false) {   // built-in pistol; hq:
   }).catch(e => console.warn('pistol model not loaded', e));
   return g;
 }
-// quest-store: the downloaded magazine was cut out of the receiver mesh, so its top is open: a lid closes it (feed lips and top round)
-export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = r.magMat;
-  const P = r.magLoose.attributes.position, top = new THREE.Box3(), v = new THREE.Vector3(), yMax = r.magLoose.boundingBox.max.y;   // the opening: the vertices within 8 mm of the top
-  for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i); if (v.y > yMax - 0.008) top.expandByPoint(v); }
-  if (!top.isEmpty()) { const lid = new THREE.Mesh(new THREE.BoxGeometry(top.max.x - top.min.x, 0.007, top.max.z - top.min.z), r.magMat); lid.position.set((top.min.x + top.max.x) / 2, yMax - 0.0045, (top.min.z + top.max.z) / 2); m.add(lid); } } }).catch(() => { }); return m; };
+// quest-store: the downloaded magazine was cut out of the receiver mesh, so its top is open. Drawn two-sided, its inside walls fill
+// the opening instead of showing through. (A separate lid box was tried: it was textured with the whole atlas and showed up as a
+// floating plate on other players' and bots' magazines.)
+let magMat2 = null;
+export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = magMat2 || (magMat2 = Object.assign(r.magMat.clone(), { side: THREE.DoubleSide })); } }).catch(() => { }); return m; };
 const makeMag0 = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
 
 export const makeNade = kind => kind === 'flash' ? merge([[CYL(0.022, 0.09), 0x5a6048, 0, 0, 0], [CYL(0.018, 0.02), 0x9aa0a8, 0, 0.055, 0], [BOX(0.008, 0.07, 0.02), 0x9aa0a8, 0.024, 0.02, 0]], 'metal') : merge([[CYL(0.027, 0.1), 0x6a6e72, 0, 0, 0], [CYL(0.027, 0.016), 0xd8d8d8, 0, 0.03, 0], [CYL(0.016, 0.02), 0x30343a, 0, 0.06, 0]], 'metal');
@@ -372,7 +372,7 @@ export class Body {
       const latT = latK.clone().addScaledVector(f, -latK.dot(f)).addScaledVector(bK, -latK.dot(bK)).normalize();
       const jd = i => { const nx = sk.par.indexOf(i); return (nx >= 0 ? P[nx].clone().sub(P[i]) : P[i].clone().sub(P[sk.par[i]])).normalize(); };
       const thumbAbs = r.thumb ? { base: f.clone().multiplyScalar(0.5).addScaledVector(latT, 0.78).addScaledVector(bK, -0.3).normalize(), ax: f.clone(), sgn: S === 'R' ? 1 : -1, joints: r.thumb[S].map(i => ({ i, d: jd(i) })) } : null;
-      const fingersAbs = r.fingers ? r.fingers[S].map(ch => {
+      const fingersAbs = r.fingers ? [...r.fingers[S], ...(r.rest ? r.rest[S] : [])].map(ch => {
         const d0 = P[ch[1]].clone().sub(P[ch[0]]).normalize(), sp = f.clone().multiplyScalar(d0.dot(f)).addScaledVector(lat0, d0.dot(lat0)).normalize();
         return { sp, bK, ax: new THREE.Vector3().crossVectors(bK, sp).normalize(), joints: ch.map(i => { const nx = sk.par.indexOf(i), d = (nx >= 0 ? P[nx].clone().sub(P[i]) : P[i].clone().sub(P[sk.par[i]])).normalize(); return { i, d }; }) };
       }) : [];
@@ -429,9 +429,11 @@ export class Body {
         const Rh = align2(H.f0, H.b0, f1, b1, new THREE.Quaternion()); H.b1.copy(b1); W.set(r.hand[S], Rh.clone().multiply(sk.restQ[r.hand[S]]));
         W.set(r.up[S], this.fns['up' + S]); W.set(r.fore[S], this.fns['fo' + S]);
         const want = h.pose || GRIP, c = H.cur, kk = Math.min(1, dt * 22); c.i += (want.i - c.i) * kk; c.g += (want.g - c.g) * kk; c.t += (want.t - c.t) * kk;
+        // each joint turns only about its finger's own bend axis (ax), so the finger never rolls about its length: keeping the back
+        // of the hand as the roll reference twisted the fingers where the model's rest bend put a bone almost along that direction
         if (H.fingersAbs.length) H.fingersAbs.forEach((F, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; let th = 0;
-          F.joints.forEach((j, s) => { th += v * a[s]; _q3.setFromAxisAngle(F.ax, th); const t = a1.copy(F.sp).applyQuaternion(_q3), bb = a2.copy(F.bK).applyQuaternion(_q3);
-            W.set(j.i, Rh.clone().multiply(align2(j.d, F.bK, t, bb, new THREE.Quaternion())).multiply(sk.restQ[j.i])); }); });
+          F.joints.forEach((j, s) => { th += v * a[s]; _q3.setFromAxisAngle(F.ax, th); const t = a1.copy(F.sp).applyQuaternion(_q3);
+            W.set(j.i, Rh.clone().multiply(align2(j.d, F.ax, t, F.ax, new THREE.Quaternion())).multiply(sk.restQ[j.i])); }); });
         else H.fingers.forEach((ch, fi) => { const a = fi ? CURL[1] : CURL[0], v = fi ? c.g : c.i; ch.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, v * a[s]))); });
         if (H.thumbAbs) { const Tt = H.thumbAbs; let th = 0.15;
           Tt.joints.forEach((j, s) => { th += c.t * [0.5, 0.45, 0.4][s];

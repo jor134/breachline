@@ -111,6 +111,7 @@ const S = { hvtIds: [], rope: null, fly: null, fadeT: 0, ropeHint: '', mode: nul
 S.nextMap = MISSION_IDS[0]; S.todPick = 'random'; S.raceT = 0;
 const head = { pos: V(), quat: new THREE.Quaternion(), fwd: V(), yaw: 0 };
 const status = t => { $('status').textContent = t; };
+const lostHint = n => { if (n % 2 === 0) hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.1, head.pos.z + head.fwd.z * 1.2, 'CONNECTION LOST - REJOINING...'); };
 
 // ---------- networking ----------
 const net = {
@@ -118,13 +119,26 @@ const net = {
   connect(room, name, solo) {
     return new Promise(res => {
       if (solo) { this.local(name); return res('solo'); }
-      let done = false; const fail = () => { if (done) { if (S.net === 'online') { S.net = 'lost'; status('Connection lost. Reload to rejoin.'); } return; } done = true; this.ws = null; this.local(name); res('solo'); };
+      // quest-store: a dropped connection rejoins the same room by itself (a server update restarts every room; a headset can drop
+      // off the network for a moment). Before, the world simply froze: nobody moved and shots went nowhere.
+      let done = false; const fail = (e) => { if (done) { if (S.net === 'online' && this.ws === ws) { const code = e && e.code;
+        if (code === 4001 || code === 4000) { S.net = 'lost'; status(code === 4001 ? 'Removed from the room.' : 'Room full.'); return; }
+        S.net = 'lost'; this.ws = null; status('Connection lost: rejoining room ' + room + '...'); this.rejoin(room, name, 0); } return; } done = true; this.ws = null; this.local(name); res('solo'); };
+      let ws;
       try {
-        const ws = this.ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/' + room + '?name=' + encodeURIComponent(name));
+        ws = this.ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/' + room + '?name=' + encodeURIComponent(name));
         ws.onopen = () => { done = true; res('online'); }; ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } }; ws.onerror = fail; ws.onclose = fail;
         setTimeout(() => { if (!done) { try { ws.close(); } catch { } fail(); } }, 5000);
       } catch { fail(); }
     });
+  },
+  rejoin(room, name, n) {
+    if (S.net !== 'lost') return; lostHint(n);
+    const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/' + room + '?name=' + encodeURIComponent(name)); let ok = false;
+    ws.onopen = () => { ok = true; this.ws = ws; S.net = 'online'; status('Back in room ' + room + '.'); hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.1, head.pos.z + head.fwd.z * 1.2, 'RECONNECTED'); sfx.ok();
+      ws.onclose = ws.onerror = (e) => { if (this.ws !== ws) return; const code = e && e.code; if (code === 4001 || code === 4000) { S.net = 'lost'; return; } S.net = 'lost'; this.ws = null; this.rejoin(room, name, 0); }; };
+    ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+    ws.onerror = ws.onclose = () => { if (ok) return; setTimeout(() => this.rejoin(room, name, n + 1), Math.min(5000, 1000 + n * 500)); };
   },
   local(name) { this.host = new RoomHost((id, o) => onMsg(JSON.parse(JSON.stringify(o)))); this.host.join(1, name); this.timer = setInterval(() => this.host.tick(), TICK * 1000); },
   send(o) { if (o && window.__tut) window.__tut.note(o.t); if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); else if (this.host) this.host.message(1, o); },
@@ -1132,7 +1146,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q12';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q13';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
