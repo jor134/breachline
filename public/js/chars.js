@@ -160,6 +160,7 @@ export class Skin {
     for (const k of ['thigh', 'shin', 'foot', 'up', 'fore', 'hand']) this.role[k] = { L: B(def[k].L), R: B(def[k].R) };
     if (def.fingers) { this.role.fingers = { L: def.fingers.L.map(c => c.map(B)), R: def.fingers.R.map(c => c.map(B)) }; this.role.thumb = { L: def.thumb.L.map(B), R: def.thumb.R.map(B) }; }
     if (def.rest) this.role.rest = { L: def.rest.L.map(c => c.map(B)), R: def.rest.R.map(c => c.map(B)) };
+    this.str = new Float32Array(n).fill(1);   // quest-store: per-bone stretch of its offset from the parent (arms reaching past their length)
     this.solve(null);   // rest pose in the holder's frame
     this.restQ = this.gq.map(q => q.clone()); this.restP = this.gp.map(p => p.clone());
     const dirTo = (a, b) => _v.copy(this.restP[b]).sub(this.restP[a]).normalize().clone();
@@ -182,7 +183,8 @@ export class Skin {
       const p = par[i], b = bones[i];
       let PQ, PP, s; if (p < 0) { const t = this.top[i]; PQ = t.R; PP = t.P; s = t.s; } else { PQ = gq[p]; PP = gp[p]; s = this.sc[p]; }
       this.sc[i] = s * b.scale.x;
-      gp[i].copy(rp[i]).multiplyScalar(s).applyQuaternion(PQ).add(PP);
+      const k = this.str[i]; if (k !== 1 || b.userData.str) { b.position.copy(rp[i]).multiplyScalar(k); b.userData.str = k !== 1; }   // the skin follows the moved joint
+      gp[i].copy(rp[i]).multiplyScalar(s * k).applyQuaternion(PQ).add(PP);
       if (i === this.role.hips && want) { gp[i].add(this.hipsOff); b.position.copy(_v.copy(gp[i]).sub(PP).applyQuaternion(_q.copy(PQ).invert()).multiplyScalar(1 / s)); }
       let w = want ? want.get(i) : undefined; if (typeof w === 'function') w = w(gp[i], PQ);
       if (w) { gq[i].copy(w); b.quaternion.copy(_q.copy(PQ).invert().multiply(w)); }

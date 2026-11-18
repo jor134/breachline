@@ -288,7 +288,7 @@ const gearGeo = () => gearG || (gearG = merge(gearParts.map(p => { const q = p.s
 // ---------- articulated glove: palm plus four fingers of three joints and a thumb, curled by a pose { i: index, g: other fingers, t: thumb } ----------
 // Local frame matches the controller grip: back of the hand up (+y), fingers forward (-z), thumb on the left for a right hand (mirrored for the left).
 const FINGERS = [[-0.027, [0.04, 0.024, 0.02], 0.0085, 0.06], [-0.009, [0.044, 0.027, 0.021], 0.0088, 0.01], [0.009, [0.041, 0.025, 0.02], 0.0082, -0.04], [0.026, [0.032, 0.019, 0.017], 0.0073, -0.11]];
-const CURL = [[1.25, 1.5, 0.95], [1.4, 1.65, 1.05]], TH_SIGN = -1;   // TH_SIGN: with sgn (R +1, L -1), turns the thumb toward the palm
+const CURL = [[1.25, 1.5, 0.95], [1.4, 1.65, 1.05]], TH_SIGN = -1, ARM_STRETCH = 1.75;   // ARM_STRETCH: the most an arm lengthens to reach the hand. TH_SIGN: with sgn (R +1, L -1), turns the thumb toward the palm
 function makeHand(sx) {
   const GL = 0x17191c, mat = sheen({ color: GL }, 'cloth'), g = new THREE.Group(); g.scale.x = sx;   // matte glove fabric
   g.add(new THREE.Mesh(merge([[BOX(0.08, 0.03, 0.086), GL, 0, -0.012, 0.031], [BOX(0.074, 0.04, 0.05), 0x1b2230, 0, -0.012, 0.1], [BOX(0.058, 0.006, 0.05), 0x2a2d33, 0, 0.0045, 0.028], [BOX(0.07, 0.012, 0.014), 0x24272c, 0, -0.002, -0.009]], 'cloth').geometry, vertexSheen('cloth')));
@@ -392,7 +392,15 @@ export class Body {
     const elbowAt = (root, tgt, L1, L2, pole, out) => { const d = tmpA.copy(tgt).sub(root), len = Math.max(0.02, d.length()); d.multiplyScalar(1 / len); const dd = Math.min(len, L1 + L2 - 0.002), along = (L1 * L1 - L2 * L2 + dd * dd) / (2 * dd), h = Math.sqrt(Math.max(0, L1 * L1 - along * along)); tmpB.copy(pole).addScaledVector(d, -pole.dot(d)).normalize(); return out.copy(root).addScaledVector(d, along).addScaledVector(tmpB, h); };
     for (const S of ['L', 'R']) {
       const H = this.H[S], out = S === 'R' ? -1 : 1, Lg = this.H['leg' + S];
-      this.fns['up' + S] = (gp) => { if (!H.on) return null; H.pole.set(out * 0.5, -0.75, -0.45); elbowAt(gp, H.wp, H.L1, H.L2, H.pole, H.el); return align2(H.up0, H.pole0, tmpA.copy(H.el).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.up[S]]).clone(); };
+      // quest-store: when the hand (on a controller, or locked to a gun's grip) is further from the model's shoulder than its arm is
+      // long, the arm stretches to reach it instead of stopping short: upper arm and forearm lengthen together, the hand keeps its size.
+      // Your real arms are rarely the model's length, and a straight arm that ended short left the hands hanging off the guns.
+      this.fns['up' + S] = (gp) => { if (!H.on) return null; H.pole.set(out * 0.5, -0.75, -0.45);
+        // reach: the furthest your hands have got from the shoulders lately (shrinks 2 mm a second), so the arms take your arm length
+        // and keep a natural elbow bend at shorter reaches, rather than only lengthening when a hand gets out of range
+        const d = gp.distanceTo(H.wp), len = H.L1 + H.L2; this.reach = Math.max(d, (this.reach ?? len * 1.25) - (this.dt || 0) * 0.002);
+        const k = Math.min(ARM_STRETCH, Math.max(1, this.reach * 0.97 / len, d / (len - 0.004))); sk.str[r.fore[S]] = sk.str[r.hand[S]] = k;
+        elbowAt(gp, H.wp, H.L1 * k, H.L2 * k, H.pole, H.el); return align2(H.up0, H.pole0, tmpA.copy(H.el).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.up[S]]).clone(); };
       // quest-store: the forearm takes its roll from the hand (the back of the hand at rest -> the back of the hand now), not from the
       // elbow's bend direction. Rolled by the elbow, the right forearm ended up turned against the hand and the wrist looked twisted.
       this.fns['fo' + S] = (gp) => { if (!H.on) return null; return align2(H.fo0, H.b0, tmpA.copy(H.wp).sub(gp), H.b1, IKq).multiply(sk.restQ[r.fore[S]]).clone(); };
@@ -401,6 +409,7 @@ export class Body {
     }
   }
   poseSkin(headPos, yaw, hands, feetY, headQ, dt, o = {}) {
+    this.dt = dt;
     const sk = this.skin, r = sk.role, hd = this.holder, W = this.W, Gt = this.G, fall = Gt.fall, fe = fall * fall * (3 - 2 * fall), down = fall > 0.35;
     if (o.down) Gt.lieY = Number.isFinite(feetY) ? feetY + 0.17 : headPos.y - 0.12; else if (fall <= 0) Gt.lieY = null;
     const lieY = Gt.lieY ?? (Number.isFinite(feetY) ? feetY + 0.17 : headPos.y - 0.12);   // getting up: stay on the floor where he lay, not at the new head height
@@ -440,7 +449,7 @@ export class Body {
             _q3.setFromAxisAngle(Tt.ax, th * Tt.sgn * TH_SIGN); const t = a1.copy(Tt.base).applyQuaternion(_q3), bb = a2.copy(H.bK).applyQuaternion(_q3);
             W.set(j.i, Rh.clone().multiply(align2(j.d, H.bK, t, bb, new THREE.Quaternion())).multiply(sk.restQ[j.i])); }); }
         else H.thumb.forEach((j, s) => sk.bones[j.i].quaternion.copy(sk.rq[j.i]).multiply(_q3.setFromAxisAngle(j.ax, c.t * [0.35, 0.65, 0.55][s])));   // wraps round a grip
-      } else { for (const i of [r.up[S], r.fore[S], r.hand[S]]) W.set(i, sk.rig(i, _q3.identity(), new THREE.Quaternion())); }
+      } else { sk.str[r.fore[S]] = sk.str[r.hand[S]] = 1; for (const i of [r.up[S], r.fore[S], r.hand[S]]) W.set(i, sk.rig(i, _q3.identity(), new THREE.Quaternion())); }
       W.set(r.thigh[S], this.fns['th' + S]); W.set(r.shin[S], this.fns['sh' + S]);
       if (!down && r.foot[S] >= 0) { const Lg = this.H['leg' + S]; W.set(r.foot[S], Lg.fq.setFromAxisAngle(UPY, Lg.out - Lg.yaw0 - Gt.lag).multiply(sk.restQ[r.foot[S]])); }   // feet left behind by a turn keep their old heading too
     }

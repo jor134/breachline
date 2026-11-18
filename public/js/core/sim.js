@@ -15,7 +15,7 @@ const KNEEL = { k: 1, y: 1, u: 1, w: 1, h: 1 }, DONE = { d: 1, u: 1, i: 1, j: 1 
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
 export class Sim {
-  constructor(mapId = 'mansion') { this.setMap(mapId); this.players = new Map(); this.events = []; this.night = false; this.wxPick = 'random'; this.todPick = 'random'; this.raceT = 0; this.weather = 'clear'; this.reset(1); }
+  constructor(mapId = 'mansion') { this.setMap(mapId); this.players = new Map(); this.pfLeft = 3; this.events = []; this.night = false; this.wxPick = 'random'; this.todPick = 'random'; this.raceT = 0; this.weather = 'clear'; this.reset(1); }
   // Put a bomb at the edge of whatever it sits on, on the side an officer can stand at, wires toward him, so it is in arm's reach.
   edgeSpot(x, z, top, floorY) {
     const L = this.level, b = L.boxes.find(o => o.kind === 'furn' && x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1 && Math.abs(o.y1 - top) < 0.25);
@@ -154,9 +154,12 @@ export class Sim {
     this.ev({ e: 'hit', n: n.id, dead });
   }
   hurt(p, dmg, part = 'torso') { if (p.down || !(dmg > 0)) return; if (!Number.isFinite(p.hp)) p.hp = 100; p.hp -= dmg; p.w |= 1 << PARTS.indexOf(part); this.ev({ e: 'hurt', p: p.id, part }); if (p.hp <= 0) { p.hp = 0; p.down = true; this.log.downs++; this.ev({ e: 'down', p: p.id }); } }
-  noise(x, z, radius, src) {
+  // quest-store: heard through floors too, but each storey between muffles it (about 10 m of distance per storey). Measured on the
+  // ground plan alone, the casino's breach windows woke every suspect on the casino floor 60 m below, and all of them pathfinding
+  // up to the suites in the same tick froze the game for a moment just as you came through the glass.
+  noise(x, z, radius, src, y = src && Number.isFinite(src.y) ? src.y : null) {
     radius *= HEAR[this.weather];
-    for (const n of this.npcs) if (n.kind === 's' && n.st === 'g' && Math.hypot(n.x - x, n.z - z) < radius) {
+    for (const n of this.npcs) if (n.kind === 's' && n.st === 'g' && Math.hypot(n.x - x, n.z - z) + (y === null ? 0 : Math.max(0, Math.abs(n.y - y) - 1.5) * 3) < radius) {
       n.st = 'a'; n.tA = 0; n.lk = [src.hx, src.hz, src.y]; n.hold = this.rnd() < 0.45; n.path = null;
       if (n.defend) { n.hold = true; n.ambush = true; }
     }
@@ -195,7 +198,7 @@ export class Sim {
     this.doorOpen[did] = !this.doorOpen[did]; this.ev({ e: 'door', d: did, open: this.doorOpen[did] });
   }
   // A breach window: shot, kicked or pushed in, it bursts and stays open. Loud.
-  shatter(did, p) { if (this.doorOpen[did]) return; const d = this.level.doors[did]; this.doorOpen[did] = true; this.ev({ e: 'shatter', d: did }); if (this.phase === 'active') this.noise(d.cx, d.cz, 20, p); }
+  shatter(did, p) { if (this.doorOpen[did]) return; const d = this.level.doors[did]; this.doorOpen[did] = true; this.ev({ e: 'shatter', d: did }); if (this.phase === 'active') this.noise(d.cx, d.cz, 20, p, d.y); }
   // The service lift (map.lift): one car between two stops. USE on its door inside the car rides to the other stop; outside, it calls the car.
   // Riders are moved when the ride ends (players move themselves on the 'liftmove' event; bots and suspects are moved here).
   liftDoors() { const L = this.lift; if (!L) return; this.level.doors.forEach((d, i) => { if (d.lift !== undefined) this.doorOpen[i] = L.ride <= 0 && d.lift === L.at; }); }
@@ -399,7 +402,11 @@ export class Sim {
     return this.clear(n.x, this.eyeY(n), n.z, p.hx, p.hy, p.hz, d > 8 && !lit);   // a lit room's glass only shows what is close
   }
   face(n, x, z, dt, rate) { const a = Math.atan2(x - n.x, z - n.z), d = angDiff(a, n.yaw), s = rate * dt; n.yaw += Math.abs(d) < s ? d : Math.sign(d) * s; }
-  goto(n, x, z, y) { n.path = findPath(this.level, n.x, n.z, n.y, x, z, y); n.pi = 1; return !!n.path; }
+  // quest-store: a route that could not be found is not searched for again for a few seconds. A failed search walks the whole map
+  // (the costliest kind), and suspects asked for one every tick: in the casino the ones in the suites kept trying to reach a player
+  // up on the roof, where no path goes, and that ate the frame time on the headset in solo play.
+  goto(n, x, z, y) { const key = Math.round(x * 2) + ',' + Math.round(z * 2) + ',' + Math.round(y); if (n.pfBad === key && this.t < n.pfBadT) { n.path = null; return false; }
+    n.path = findPath(this.level, n.x, n.z, n.y, x, z, y); n.pi = 1; if (!n.path) { n.pfBad = key; n.pfBadT = this.t + 3; } return !!n.path; }
   // Follow the path with momentum: speed builds and bleeds off, and the body turns before it commits to a new direction.
   walk(n, dt, speed, keepFacing = false, noDoors = false) {
     if (!n.path || n.pi >= n.path.length) { n.path = null; n.spd = 0; return false; }
@@ -453,7 +460,7 @@ export class Sim {
       }
       else if (n.path) { this.walk(n, dt, 2.4); if (!n.path) n.crouch = !!n.waitLow; }
       else if (n.hold) this.face(n, n.lk[0], n.lk[1], dt, 3);
-      else if (!n.path) { if (Math.hypot(n.lk[0] - n.x, n.lk[1] - n.z) > (n.fix ? 0.6 : 3)) this.goto(n, n.lk[0], n.lk[1], n.lk[2]); else n.hold = true; }
+      else if (!n.path) { if (Math.hypot(n.lk[0] - n.x, n.lk[1] - n.z) > (n.fix ? 0.6 : 3)) { if (this.pfLeft-- > 0 && !this.goto(n, n.lk[0], n.lk[1], n.lk[2])) n.hold = true; } else n.hold = true; }   // no way there: stay and watch that way   // pfLeft: a few new routes a tick, the rest set off next tick
       else this.walk(n, dt, 2.2);
       if (n.tA > (n.fix ? 90 : n.defend ? 60 : 25)) { n.fix = false; n.st = 'g'; n.hold = false; n.crouch = false; this.goto(n, n.post[0], n.post[1], n.post[2]); }
     } else if (n.st === 'c') {
@@ -468,7 +475,7 @@ export class Sim {
       } else {
         n.lost += dt; if (n.strafe) { n.strafe = false; n.path = null; }
         if (n.lost > 1.2 && n.defend) { if (!n.path && Math.hypot(n.post[0] - n.x, n.post[1] - n.z) > 5) this.goto(n, n.post[0], n.post[1], n.post[2]); if (n.path) this.walk(n, dt, 2.2); else { n.crouch = true; this.face(n, n.lk[0], n.lk[1], dt, 3); } }   // a defender falls back to his room and waits
-        else if (n.lost > 1.2) { if (!n.path && Math.hypot(n.lk[0] - n.x, n.lk[1] - n.z) > 1.5) this.goto(n, n.lk[0], n.lk[1], n.lk[2]); this.walk(n, dt, 2.6); }
+        else if (n.lost > 1.2) { if (!n.path && Math.hypot(n.lk[0] - n.x, n.lk[1] - n.z) > 1.5 && this.pfLeft-- > 0) this.goto(n, n.lk[0], n.lk[1], n.lk[2]); this.walk(n, dt, 2.6); }
         if (n.lost > 12) { n.st = 'a'; n.tA = 0; n.hold = true; n.path = null; }
       }
     }
@@ -534,7 +541,7 @@ export class Sim {
       this.hurt(p, part === 'head' ? 26 + this.rnd() * 8 : part === 'torso' ? 18 + this.rnd() * 10 : 12 + this.rnd() * 6, part); }
   }
   tick(dt) {
-    this.t += dt; if (this.M.race) this.raceT += dt;
+    this.t += dt; if (this.M.race) this.raceT += dt; this.pfLeft = 3;
     if (this.phase !== 'active') return;
     if (this.M.training) { if (this.gren.length || this.smokes.length) this.tickGrenades(dt); return this.tickTraining(dt); }
     this.timer -= dt; if (this.gren.length || this.smokes.length) this.tickGrenades(dt);
