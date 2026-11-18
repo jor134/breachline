@@ -14,7 +14,7 @@ export const BREAKER = { x: 33, y: 1.4, z: 15.87 };
 export const SPAWN = [[24, 33], [25.5, 33], [27, 33], [28.5, 33]];
 export const EXIT = { x0: 20, x1: 32, z0: 31.5, z1: 42 };
 const G = [0, 1, 2, 3, 4, 5];
-export const TEAMS = ['#d2342b', '#1e5bc6', '#0f8a6c', '#f08a1c', '#7a2db8', '#e6c229'];   // garage colours (generic, invented teams)
+export const TEAMS = ['#b8234f', '#3846a8', '#16b3b0', '#8cc63f', '#7a2db8', '#e6c229'];   // garage colours (generic, invented teams)
 
 // [floor, name, x0, z0, x1, z1, floor finish]
 export const ROOMS = [

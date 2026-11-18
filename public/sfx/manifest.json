@@ -140,88 +140,88 @@
  ],
  "engine_f1": "engine_f1.mp3",
  "vo_s_surrender": [
-  "vo_s_surrender_1.mp3",
-  "vo_s_surrender_2.mp3",
-  "vo_s_surrender_3.mp3",
-  "vo_s_surrender_4.mp3",
-  "vo_s_surrender_5.mp3"
+  "vo_s_surrender_1.blx",
+  "vo_s_surrender_2.blx",
+  "vo_s_surrender_3.blx",
+  "vo_s_surrender_4.blx",
+  "vo_s_surrender_5.blx"
  ],
  "vo_s_defy": [
-  "vo_s_defy_1.mp3",
-  "vo_s_defy_2.mp3",
-  "vo_s_defy_3.mp3",
-  "vo_s_defy_4.mp3",
-  "vo_s_defy_5.mp3",
-  "vo_s_defy_6.mp3"
+  "vo_s_defy_1.blx",
+  "vo_s_defy_2.blx",
+  "vo_s_defy_3.blx",
+  "vo_s_defy_4.blx",
+  "vo_s_defy_5.blx",
+  "vo_s_defy_6.blx"
  ],
  "vo_s_threat": [
-  "vo_s_threat_1.mp3",
-  "vo_s_threat_2.mp3",
-  "vo_s_threat_3.mp3",
-  "vo_s_threat_4.mp3"
+  "vo_s_threat_1.blx",
+  "vo_s_threat_2.blx",
+  "vo_s_threat_3.blx",
+  "vo_s_threat_4.blx"
  ],
  "vo_s_spot": [
-  "vo_s_spot_1.mp3",
-  "vo_s_spot_2.mp3",
-  "vo_s_spot_3.mp3",
-  "vo_s_spot_4.mp3",
-  "vo_s_spot_5.mp3",
-  "vo_s_spot_6.mp3",
-  "vo_s_spot_7.mp3",
-  "vo_s_spot_8.mp3"
+  "vo_s_spot_1.blx",
+  "vo_s_spot_2.blx",
+  "vo_s_spot_3.blx",
+  "vo_s_spot_4.blx",
+  "vo_s_spot_5.blx",
+  "vo_s_spot_6.blx",
+  "vo_s_spot_7.blx",
+  "vo_s_spot_8.blx"
  ],
  "vo_s_cuffed": [
-  "vo_s_cuffed_1.mp3",
-  "vo_s_cuffed_2.mp3",
-  "vo_s_cuffed_3.mp3",
-  "vo_s_cuffed_4.mp3",
-  "vo_s_cuffed_5.mp3"
+  "vo_s_cuffed_1.blx",
+  "vo_s_cuffed_2.blx",
+  "vo_s_cuffed_3.blx",
+  "vo_s_cuffed_4.blx",
+  "vo_s_cuffed_5.blx"
  ],
  "vo_s_pain": [
-  "vo_s_pain_1.mp3",
-  "vo_s_pain_2.mp3",
-  "vo_s_pain_3.mp3",
-  "vo_s_pain_4.mp3",
-  "vo_s_pain_5.mp3",
-  "vo_s_pain_6.mp3"
+  "vo_s_pain_1.blx",
+  "vo_s_pain_2.blx",
+  "vo_s_pain_3.blx",
+  "vo_s_pain_4.blx",
+  "vo_s_pain_5.blx",
+  "vo_s_pain_6.blx"
  ],
  "vo_s_die": [
-  "vo_s_die_1.mp3",
-  "vo_s_die_2.mp3"
+  "vo_s_die_1.blx",
+  "vo_s_die_2.blx"
  ],
  "vo_o_clear": [
-  "vo_o_clear_1.mp3",
-  "vo_o_clear_2.mp3"
+  "vo_o_clear_1.blx",
+  "vo_o_clear_2.blx"
  ],
  "vo_o_contact": [
-  "vo_o_contact_1.mp3",
-  "vo_o_contact_2.mp3",
-  "vo_o_contact_3.mp3",
-  "vo_o_contact_4.mp3",
-  "vo_o_contact_5.mp3",
-  "vo_o_contact_6.mp3"
+  "vo_o_contact_1.blx",
+  "vo_o_contact_2.blx",
+  "vo_o_contact_3.blx",
+  "vo_o_contact_4.blx",
+  "vo_o_contact_5.blx",
+  "vo_o_contact_6.blx"
  ],
  "vo_o_flash": [
-  "vo_o_flash_1.mp3",
-  "vo_o_flash_2.mp3"
+  "vo_o_flash_1.blx",
+  "vo_o_flash_2.blx"
  ],
  "vo_o_follow": [
-  "vo_o_follow_1.mp3",
-  "vo_o_follow_2.mp3",
-  "vo_o_follow_3.mp3",
-  "vo_o_follow_4.mp3"
+  "vo_o_follow_1.blx",
+  "vo_o_follow_2.blx",
+  "vo_o_follow_3.blx",
+  "vo_o_follow_4.blx"
  ],
  "vo_o_hold": [
-  "vo_o_hold_1.mp3",
-  "vo_o_hold_2.mp3",
-  "vo_o_hold_3.mp3"
+  "vo_o_hold_1.blx",
+  "vo_o_hold_2.blx",
+  "vo_o_hold_3.blx"
  ],
  "vo_o_onit": [
-  "vo_o_onit_1.mp3",
-  "vo_o_onit_2.mp3",
-  "vo_o_onit_3.mp3",
-  "vo_o_onit_4.mp3",
-  "vo_o_onit_5.mp3",
-  "vo_o_onit_6.mp3"
+  "vo_o_onit_1.blx",
+  "vo_o_onit_2.blx",
+  "vo_o_onit_3.blx",
+  "vo_o_onit_4.blx",
+  "vo_o_onit_5.blx",
+  "vo_o_onit_6.blx"
  ]
 }

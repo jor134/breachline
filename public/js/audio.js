@@ -1,3 +1,4 @@
+import { unpackBlx } from './store/obf.js';   // bought voice packs and the theme ship as .blx so they aren't plain downloads
 // Audio: recorded sound effects (public/sfx, see CREDITS.md) played through head-related (HRTF) 3D panning, muffled when a wall is in
 // the way, with a short room reverb indoors. Rain, thunder, smoke hiss, ear ringing and the night-vision whine are still synthesised:
 // no free recordings of those were found in a repository.
@@ -21,11 +22,11 @@ export function initAudio() {
 }
 // quest-store: background music for the main menu and the training room (sfx/music_menu.mp3, the "You Can't Hide" theme supplied by Jordan).
 // The track has its own ending, so it simply repeats from the top. setMusic(true) fades it in.
-const MUSIC = { url: 'sfx/music_menu.mp3', gain: 0.28 };
+const MUSIC = { url: 'sfx/music_menu.blx', gain: 0.28 };   // .blx: obfuscated mp3 (tools/obf_audio.py), like the bought voice packs
 let musicBuf = null, musicLoading = false, musicSrc = null, musicGain = null, musicWant = false;
 export function setMusic(on) {
   musicWant = !!on; if (!ctx) return;
-  if (on && !musicBuf) { if (!musicLoading) { musicLoading = true; fetch(MUSIC.url).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)).then(buf => { musicBuf = buf; if (musicWant) setMusic(true); }).catch(e => console.warn('music not loaded', e)); } return; }
+  if (on && !musicBuf) { if (!musicLoading) { musicLoading = true; fetch(MUSIC.url).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(unpackBlx(b))).then(buf => { musicBuf = buf; if (musicWant) setMusic(true); }).catch(e => console.warn('music not loaded', e)); } return; }
   if (on && !musicSrc) { musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(ctx.destination); musicSrc = ctx.createBufferSource(); musicSrc.buffer = musicBuf; musicSrc.loop = true; musicSrc.connect(musicGain); musicSrc.start(0); musicGain.gain.setTargetAtTime(MUSIC.gain, ctx.currentTime, 0.8); }
   else if (!on && musicSrc) { const s = musicSrc, g = musicGain; musicSrc = musicGain = null; g.gain.setTargetAtTime(0, ctx.currentTime, 0.4); setTimeout(() => { try { s.stop(); } catch (e) { } g.disconnect(); }, 2500); }
 }
@@ -79,7 +80,7 @@ async function loadSamples() {
     const man = await (await fetch('sfx/manifest.json')).json();
     await Promise.all(Object.entries(man).map(async ([name, files]) => {
       const list = [];
-      for (const f of Array.isArray(files) ? files : [files]) { try { list.push(await new Promise((res, rej) => fetch('sfx/' + f).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b, res, rej)).catch(rej))); } catch { } }
+      for (const f of Array.isArray(files) ? files : [files]) { try { list.push(await new Promise((res, rej) => fetch('sfx/' + f).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(f.endsWith('.blx') ? unpackBlx(b) : b, res, rej)).catch(rej))); } catch { } }
       if (list.length) samples[name] = list;
     }));
   } catch { }

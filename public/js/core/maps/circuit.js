@@ -4,7 +4,7 @@
 export const TRACK = { z0: -30, z1: -16, zc: -23 };       // tarmac edges and centre line of the main straight
 export const VIS = { x0: -420, x1: 520 };                  // the straight you can see; cars appear and vanish behind the far grandstands
 const LAP = 2000, N = 10, BASE = 78;                        // metres per lap (the hidden part included), cars, mean speed m/s (~280 km/h)
-export const COLORS = ['#d2342b', '#1e5bc6', '#0f8a6c', '#f08a1c', '#e8e8e8', '#7a2db8', '#2b2b2b', '#e6c229', '#d94f9b', '#3aa7d9'];
+export const COLORS = ['#b8234f', '#3846a8', '#16b3b0', '#8cc63f', '#e8e8e8', '#7a2db8', '#2b2b2b', '#e6c229', '#d94f9b', '#3aa7d9'];   // invented; kept clear of real F1 team colours (no Ferrari red, McLaren papaya, Alpine blue, Aston green)
 const CARS = Array.from({ length: N }, (_, i) => ({ s0: i * 197 + (i % 3) * 31, dv: ((i * 37) % 11 - 5) * 0.35, lane: (i % 2 ? 1.6 : -1.6), color: COLORS[i] }));
 // every car on the visible straight at race time t: [x, z, speed m/s, index]
 export function carsAt(t, out = []) {
