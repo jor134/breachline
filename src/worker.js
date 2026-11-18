@@ -5,6 +5,7 @@ import { buildLevel, findPath, registerMap, MAPS } from '../public/js/core/level
 import { compile, check } from '../public/js/core/maps/custom.js';
 import { cleanCallsign } from '../public/js/store/callsigns.js';
 
+const ASSET_LINKS = [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: 'com.jordanbreccia.youcanthide', sha256_cert_fingerprints: ['5D:F8:23:37:37:DC:A0:A5:13:6E:92:74:2C:AE:D3:BE:C3:79:6A:E2:24:18:6F:93:25:4B:6B:5E:84:11:69:0C'] } }];
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 const library = env => env.LIBRARY.get(env.LIBRARY.idFromName('library'));
 
@@ -15,6 +16,9 @@ export default {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
       return env.ROOMS.get(env.ROOMS.idFromName(m[1].toUpperCase())).fetch(req);
     }
+    // quest-store: Digital Asset Links, so the Quest app (a Trusted Web Activity) may open this site full screen in VR. The
+    // fingerprint is the public SHA-256 of the app's signing certificate (not a secret). An immersive app will not launch without it.
+    if (url.pathname === '/.well-known/assetlinks.json') return new Response(JSON.stringify(ASSET_LINKS), { headers: { 'content-type': 'application/json', 'cache-control': 'max-age=300' } });
     if (url.pathname === '/api/ice') return json(await iceServers(env));   // voice chat connection servers
     if (url.pathname === '/api/unlock' && req.method === 'POST') {   // quest-store: unlocks the full game on a development device (?dev=<creator code>)
       const body = await req.json().catch(() => ({})), want = env.CREATOR_CODE || '', got = typeof body.code === 'string' ? body.code : '';

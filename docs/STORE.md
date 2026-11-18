@@ -82,3 +82,10 @@ No store-level conflict found, but a CIPO / USPTO trademark search before launch
 - Add-ons: create a **durable** add-on with SKU `full_game` and set its price (it shows in the game's purchase panel).
 - Reset the App secret (it was pasted into a chat on 17 Nov 2026). The game never uses it.
 - IARC questionnaire and age-group self-certification at submission.
+
+## Domain and app package (Stage 5)
+- Store domain: https://youcanthidegame.com (Workers custom domain in wrangler.toml; www too). The workers.dev address still works.
+- Package name: com.jordanbreccia.youcanthide (permanent). Meta App ID 1766163904906396. Immersive, Horizon billing on, microphone permission on.
+- Signing key: RSA 2048, alias youcanthide, kept by Jordan (never in the repo). GitHub secrets ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD.
+- /.well-known/assetlinks.json is served by src/worker.js with the key's SHA-256 fingerprint. Without it the immersive app will not launch.
+- APK: GitHub Actions "Quest APK" (.github/workflows/quest-apk.yml), run by hand or when android/twa-manifest.json changes. Bump appVersionCode and appVersion there for each new APK. Download from the run's artifacts, upload to the ALPHA channel.

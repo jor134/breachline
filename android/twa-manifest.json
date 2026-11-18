@@ -1,0 +1,58 @@
+{
+  "packageId": "com.jordanbreccia.youcanthide",
+  "applicationId": "1766163904906396",
+  "host": "youcanthidegame.com",
+  "name": "You Can't Hide",
+  "launcherName": "You Can't Hide",
+  "display": "standalone",
+  "themeColor": "#0A1020",
+  "themeColorDark": "#0A1020",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#0A1020",
+  "enableNotifications": false,
+  "enableMicrophone": true,
+  "startUrl": "/",
+  "iconUrl": "https://youcanthidegame.com/icon-512.png",
+  "maskableIconUrl": "https://youcanthidegame.com/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "youcanthide"
+  },
+  "appVersionCode": 1,
+  "appVersion": "1.0.0",
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://youcanthidegame.com/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "horizonBilling": {
+      "enabled": true,
+      "horizonOSAppMode": "immersive"
+    },
+    "horizonPlatformSDK": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": true
+  },
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "isMetaQuest": true,
+  "horizonOSAppMode": "immersive",
+  "fullScopeUrl": "https://youcanthidegame.com/",
+  "minSdkVersion": 23,
+  "orientation": "landscape",
+  "fingerprints": [
+    {
+      "name": "release",
+      "value": "5D:F8:23:37:37:DC:A0:A5:13:6E:92:74:2C:AE:D3:BE:C3:79:6A:E2:24:18:6F:93:25:4B:6B:5E:84:11:69:0C"
+    }
+  ],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": []
+}

@@ -1,2 +1,10 @@
 node_modules
 .wrangler
+*.keystore
+*.jks
+keystore.base64.txt
+android/app/
+android/build/
+android/gradle*
+android/*.apk
+android/*.aab

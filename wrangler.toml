@@ -2,6 +2,13 @@ name = "you-cant-hide"   # quest-store branch: its own Worker, its own Durable O
 main = "src/worker.js"
 compatibility_date = "2025-09-01"
 
+# The store app loads the game from this domain (bought in Cloudflare, same account). Cloudflare makes the DNS record and
+# certificate when the Worker deploys. you-cant-hide.jor134.workers.dev keeps working too.
+routes = [
+  { pattern = "youcanthidegame.com", custom_domain = true },
+  { pattern = "www.youcanthidegame.com", custom_domain = true },
+]
+
 # The game (index.html, js, icons, manifest, sw.js) is served from /public.
 # Anything that isn't a file there (/ws/<ROOM>) goes to the Worker.
 [assets]

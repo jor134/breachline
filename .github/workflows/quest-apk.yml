@@ -1,0 +1,58 @@
+# Builds the Meta Quest app (APK) for You Can't Hide with Meta's Bubblewrap fork.
+# The app is a thin wrapper that opens https://youcanthidegame.com in immersive VR, so most updates need no new APK:
+# rebuild only when android/twa-manifest.json changes (bump appVersionCode and appVersion there first).
+# Needs two repository secrets (Settings > Secrets and variables > Actions):
+#   ANDROID_KEYSTORE_BASE64   the release keystore, base64
+#   ANDROID_KEYSTORE_PASSWORD its password (also the key password)
+name: Quest APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [quest-store]
+    paths: ['android/twa-manifest.json', '.github/workflows/quest-apk.yml']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@v3
+      - name: Install Bubblewrap (Meta Quest fork)
+        run: npm install --global @meta-quest/bubblewrap-cli@1.24.1
+      - name: Point Bubblewrap at the JDK and Android SDK (skips its interactive installers)
+        run: |
+          mkdir -p ~/.bubblewrap
+          echo "{\"jdkPath\":\"$JAVA_HOME\",\"androidSdkPath\":\"$ANDROID_HOME\"}" > ~/.bubblewrap/config.json
+          yes | sdkmanager --licenses > /dev/null || true
+      - name: Wait for the site (Bubblewrap downloads the icon from it)
+        run: for i in $(seq 1 40); do curl -sfo /dev/null https://youcanthidegame.com/icon-512.png && exit 0; sleep 15; done; echo "youcanthidegame.com is not serving yet"; exit 1
+      - name: Restore the signing key
+        run: |
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then echo "Add the ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD repository secrets first"; exit 1; fi
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/android.keystore
+      - name: Generate and build
+        working-directory: android
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          bubblewrap update --skipVersionUpgrade
+          bubblewrap build --skipPwaValidation
+          ls -la *.apk *.aab || true
+      - name: Check the APK targets Android API 32 or lower (Quest requirement)
+        working-directory: android
+        run: |
+          AAPT=$(ls $ANDROID_HOME/build-tools/*/aapt | tail -1)
+          $AAPT dump badging app-release-signed.apk | grep -E "package:|targetSdkVersion|uses-permission" | head -20
+      - uses: actions/upload-artifact@v4
+        with:
+          name: you-cant-hide-apk
+          path: |
+            android/app-release-signed.apk
+          if-no-files-found: error
+      - name: Remove the signing key
+        if: always()
+        run: rm -f android/android.keystore
