@@ -288,6 +288,7 @@ const gearGeo = () => gearG || (gearG = merge(gearParts.filter(p => !(p[3] === -
 // ---------- articulated glove: palm plus four fingers of three joints and a thumb, curled by a pose { i: index, g: other fingers, t: thumb } ----------
 // Local frame matches the controller grip: back of the hand up (+y), fingers forward (-z), thumb on the left for a right hand (mirrored for the left).
 const FINGERS = [[-0.027, [0.04, 0.024, 0.02], 0.0085, 0.06], [-0.009, [0.044, 0.027, 0.021], 0.0088, 0.01], [0.009, [0.041, 0.025, 0.02], 0.0082, -0.04], [0.026, [0.032, 0.019, 0.017], 0.0073, -0.11]];
+const _q4 = new THREE.Quaternion();
 const CURL = [[1.25, 1.5, 0.95], [1.4, 1.65, 1.05]], TH_SIGN = -1, ARM_STRETCH = 1.75;   // ARM_STRETCH: the most an arm lengthens to reach the hand. TH_SIGN: with sgn (R +1, L -1), turns the thumb toward the palm
 function makeHand(sx) {
   const GL = 0x17191c, mat = sheen({ color: GL }, 'cloth'), g = new THREE.Group(); g.scale.x = sx;   // matte glove fabric
@@ -350,6 +351,13 @@ export class Body {
     const hp = P[r.head]; this.eye = new THREE.Vector3(hp.x, hp.y + 0.1, hp.z + 0.1);
     if (this.detailed) { sk.bones[r.neck].scale.setScalar(0.001); sk.wrap.traverse(o => { if (o.isMesh && /glass/.test(o.material.name)) o.visible = false; }); }   // your own head and goggles would fill the view
     this.W = new Map(); this.H = {};
+    // quest-store: the squad model's rest pose has its torso twisted: the left shoulder sits 9 cm further forward (and 4 cm lower)
+    // than the right. With both hands out in front, the left arm then ran close past your face and the near plane of the headset's
+    // view cut through the sleeve. The collarbones are turned once so both shoulders sit level and side by side.
+    this.clav = [];
+    if (r.up) { const L = P[r.up.L], R = P[r.up.R], ax = (L.x - R.x) / 2, ay = (L.y + R.y) / 2, az = (L.z + R.z) / 2;
+      for (const [S, x] of [['L', ax], ['R', -ax]]) { const c = sk.par[r.up[S]]; if (c < 0) continue;
+        const a = P[r.up[S]].clone().sub(P[c]).normalize(), t = new THREE.Vector3(x, ay, az).sub(P[c]).normalize(); this.clav.push([c, new THREE.Quaternion().setFromUnitVectors(a, t)]); } }
     for (const S of ['L', 'R']) {   // hand frame at rest: knuckle direction and back of the hand
       const h = P[r.hand[S]], f = r.fingers ? P[r.fingers[S][1][0]].clone().sub(h) : P[r.hand[S]].clone().sub(P[r.fore[S]]), t = r.thumb ? P[r.thumb[S][0]].clone().sub(h) : new THREE.Vector3(0, 0, 1);
       const b = S === 'R' ? new THREE.Vector3().crossVectors(f, t) : new THREE.Vector3().crossVectors(t, f); b.normalize(); const palm = f.length(); f.normalize();
@@ -429,6 +437,7 @@ export class Body {
     W.clear(); let n = 0; const Q = this.q;
     const sp = Q[n++].setFromAxisAngle(_ax, pitch * 0.3 + lean); r.spine.forEach((i, k) => W.set(i, sk.rig(i, _q3.identity().slerp(sp, (k + 1) / r.spine.length), Q[3 + Math.min(2, k)])));
     W.set(r.neck, sk.rig(r.neck, _q3.copy(sp).slerp(Dh, 0.5), Q[n++])); W.set(r.head, sk.rig(r.head, Dh, Q[n++]));
+    for (const [c, d] of this.clav) W.set(c, sk.rig(c, _q4.copy(sp).multiply(d), new THREE.Quaternion()));   // level shoulders (see attachSkin), turned with the chest
     for (const [S, k] of [['L', 0], ['R', 1]]) {
       const H = this.H[S], h = hands[k]; H.on = !!h && !down;   // (down = mostly fallen over)
       if (H.on) {
