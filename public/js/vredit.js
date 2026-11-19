@@ -135,7 +135,9 @@ export function createVREditor(c) {
       rows.push([['BACK', 'page:map']]); return rows;
     }
     if (E.page === 'pub') {
-      rows.push(['#Publish "' + M.name + '" to the mission board']); if (E.pubId) rows.push([['UPDATE THE PUBLISHED MAP', 'pub:upd', { on: true }]]); rows.push([[E.pubId ? 'PUBLISH AS A NEW MAP' : 'PUBLISH', 'pub:new', { on: !E.pubId }]]);
+      rows.push(['#Share "' + M.name + '" with friends: you get an 8-digit code']); rows.push([['SHARE WITH FRIENDS', 'pub:share', { on: true }]]);
+      if (E.shareId) rows.push(['#Code ' + E.shareId.slice(0, 4) + ' ' + E.shareId.slice(4) + ": mission board > FRIEND'S MAP"]);
+      rows.push(['#Publish to everyone\'s mission board (needs the creator code)']); if (E.pubId) rows.push([['UPDATE THE PUBLISHED MAP', 'pub:upd', { on: true }]]); rows.push([[E.pubId ? 'PUBLISH AS A NEW MAP' : 'PUBLISH', 'pub:new', { on: !E.pubId }]]);
       if (E.pubId) rows.push([['REMOVE IT FROM THE BOARD', 'pub:del']]); rows.push([['FORGET THE CREATOR CODE', 'pub:forget'], ['BACK', 'page:map']]); return rows;
     }
     // selected: its own options first
@@ -244,6 +246,14 @@ export function createVREditor(c) {
     }
     if (k === 'pub') {
       if (v === 'forget') { sessionStorage.removeItem('bl_code'); return say('The creator code is forgotten on this headset.'); }
+      if (v === 'share') {   // quest-store: anyone may share; the map is only reachable with its code (src/worker.js /api/share)
+        const r = check(M, { buildLevel, findPath, registerMap }); c.rebuild(E.M); if (!r.ok) return say('Fix these before sharing: ' + r.errors.join(' '), true);
+        say('Sharing...'); let by = ''; try { by = localStorage.getItem('bl_name') || ''; } catch (e) { }
+        return fetch('api/share', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ map: r.map, by }) }).then(x => x.json().then(j => ({ ok: x.ok, j }))).then(({ ok, j }) => {
+          if (!ok) return say((j.error || 'Sharing did not work') + (j.errors ? ': ' + j.errors.join(' ') : ''), true);
+          E.shareId = j.id; save(); say('Shared. Give your friends the code ' + j.id.slice(0, 4) + ' ' + j.id.slice(4) + ": they enter it with FRIEND'S MAP on the mission board.");
+        }).catch(() => say('Sharing did not work: no connection.', true));
+      }
       const go = fn => { const cd = sessionStorage.getItem('bl_code'); if (cd) return fn(cd); E.kb = { title: 'Creator code', field: 'code', text: '', max: 64, mask: true, back: 'pub', then: fn }; E.page = 'kb'; };
       const fail = j => { if (/creator code/i.test(j.error || '')) sessionStorage.removeItem('bl_code'); say((j.error || 'That did not work') + (j.errors ? ': ' + j.errors.join(' ') : ''), true); };
       if (v === 'del') return go(cd => fetch('api/maps/' + E.pubId, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: cd }) }).then(x => x.json()).then(j => { if (!j.ok) return fail(j); E.pubId = null; save(); E.page = 'map'; say('Removed from the mission board.'); c.refreshList && c.refreshList(); }).catch(() => say('The map library is not reachable.', true)));

@@ -56,6 +56,10 @@ export class Library {
     this.sql = state.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS maps (id TEXT PRIMARY KEY, name TEXT, creator TEXT, data TEXT, updated INTEGER)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS tex (id TEXT PRIMARY KEY, data BLOB, updated INTEGER)');
+    // quest-store: maps players share with friends. Unlisted: only someone given the 8-digit code can load one. A shared map's
+    // name is replaced by its code and its creator by the sharer's preset callsign (no free text reaches anyone else); a report
+    // hides it at once; maps not touched for 180 days are removed; one network address may share 20 a day.
+    this.sql.exec('CREATE TABLE IF NOT EXISTS shared (id TEXT PRIMARY KEY, data TEXT, created INTEGER, used INTEGER, reports INTEGER DEFAULT 0, ip TEXT)');
   }
   async fetch(req) {
     const url = new URL(req.url), p = url.pathname, code = req.headers.get('x-creator-code') || '';
@@ -74,6 +78,22 @@ export class Library {
         return json({ id, warnings: r.warnings });
       }
       if (mm && req.method === 'DELETE') { const b = await req.json().catch(() => null), err = await authed(b); if (err) return json({ error: err }, 403); this.sql.exec('DELETE FROM maps WHERE id = ?', mm[1]); return json({ ok: true }); }
+      if (p === '/api/share' && req.method === 'POST') {   // share with friends: anyone may, the creator code is not needed
+        const b = await req.json(), ip = req.headers.get('cf-connecting-ip') || '', now = Date.now();
+        this.sql.exec('DELETE FROM shared WHERE used < ?', now - 180 * 864e5);
+        const n = [...this.sql.exec('SELECT COUNT(*) AS n FROM shared WHERE ip = ? AND created > ?', ip, now - 864e5)][0].n; if (n >= 20) return json({ error: 'Too many maps shared today. Try again tomorrow.' }, 429);
+        const r = check(b.map, { buildLevel, findPath, registerMap }); if (!r.ok) return json({ error: 'The map has problems', errors: r.errors, warnings: r.warnings }, 400);
+        let id; do { id = String(10000000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 90000000)); } while ([...this.sql.exec('SELECT 1 FROM shared WHERE id = ?', id)].length);
+        const map = Object.assign({}, r.map, { name: 'FRIEND MAP ' + id.slice(0, 4) + ' ' + id.slice(4), creator: cleanCallsign(b.by) });
+        this.sql.exec('INSERT INTO shared (id, data, created, used, reports, ip) VALUES (?, ?, ?, ?, 0, ?)', id, JSON.stringify(map), now, now, ip);
+        return json({ id, warnings: r.warnings });
+      }
+      let sm = p.match(/^\/api\/share\/(\d{8})$/);
+      if (sm && req.method === 'GET') { const r = [...this.sql.exec('SELECT data, reports FROM shared WHERE id = ?', sm[1])][0];
+        if (!r) return json({ error: 'No map has that code' }, 404); if (r.reports > 0) return json({ error: 'That map was reported and is hidden' }, 410);
+        this.sql.exec('UPDATE shared SET used = ? WHERE id = ?', Date.now(), sm[1]); return new Response(r.data, { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }); }
+      sm = p.match(/^\/api\/share\/(\d{8})\/report$/);
+      if (sm && req.method === 'POST') { this.sql.exec('UPDATE shared SET reports = reports + 1 WHERE id = ?', sm[1]); return json({ ok: true }); }
       if (p === '/api/tex' && req.method === 'POST') {   // a texture: the editor has already shrunk it to a small JPEG
         const b = await req.json(), err = await authed(b); if (err) return json({ error: err }, 403);
         const m2 = typeof b.jpeg === 'string' && b.jpeg.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/); if (!m2) return json({ error: 'Expected a JPEG' }, 400);
@@ -99,8 +119,8 @@ export class Room {
   }
   // a message that names a published map loads it from the library first (once per room)
   async ensureMap(mid) {
-    if (typeof mid !== 'string' || !/^u_[a-z0-9]{6,24}$/.test(mid) || MAPS[mid] || !this.env || !this.env.LIBRARY) return;
-    const r = await library(this.env).fetch(new Request('https://library/api/maps/' + mid.slice(2))); if (!r.ok) return;
+    if (typeof mid !== 'string' || !/^(u_[a-z0-9]{6,24}|s_\d{8})$/.test(mid) || MAPS[mid] || !this.env || !this.env.LIBRARY) return;
+    const r = await library(this.env).fetch(new Request('https://library/api/' + (mid[0] === 's' ? 'share/' : 'maps/') + mid.slice(2))); if (!r.ok) return;
     registerMap(compile(await r.json(), mid));
   }
   // quest-store: the longest-connected player owns the room and may remove others (store policy: players need a way to deal
@@ -126,7 +146,7 @@ export class Room {
       if (m && m.t === 'boot') { this.boot(id, m.p); return; }   // quest-store: the room owner removes a player
       if (m && m.t === 'sig') { const to = this.socks.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
       const mid = m && (m.m || m.map);
-      if (typeof mid === 'string' && mid.startsWith('u_') && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });
+      if (typeof mid === 'string' && (mid.startsWith('u_') || mid.startsWith('s_')) && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });
       else this.queue = this.queue.then(() => { try { this.host.message(id, m); } catch {} });
     });
     server.addEventListener('close', bye); server.addEventListener('error', bye);

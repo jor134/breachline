@@ -74,8 +74,8 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   U.gate = what => { if (what === 'editor' ? unlock.full() : unlock.mapOk(what)) return false; showBuy(what === 'editor' ? 'editor' : 'map', 'board'); return true; };
   U.lockTag = id => unlock.mapOk(id) ? '' : '   [FULL GAME]';
   // the game redraws its own panels twice a second; while the start menu is up it redraws this instead
-  U.redraw = () => { if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); };
-  U.holdsPanel = () => S.panel === 'start' || S.panel === 'keypad' || S.panel === 'buy' || (S.panel === 'credits' && U.prev);
+  U.redraw = () => { if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); };
+  U.holdsPanel = () => S.panel === 'start' || S.panel === 'keypad' || S.panel === 'friend' || S.panel === 'buy' || (S.panel === 'credits' && U.prev);
 
   // a 4-digit room code typed on a keypad (no system keyboard inside VR)
   function showKeypad(msg) {
@@ -92,6 +92,23 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     key('BACK', 'st:back', 60, 676, 300, '#39424e'); key(U.code.length === 4 ? 'JOIN ROOM ' + U.code : 'JOIN', 'st:join', 380, 676, 584, U.code.length === 4 ? '#1f7a3d' : '#2a3038');
     for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold 38px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     panel.btns = B; panel.key = 'keypad' + U.code + (msg || ''); panel.tex.needsUpdate = true;
+  }
+  // quest-store: a friend's shared map, by its 8-digit code (mission board > FRIEND'S MAP). U.friendMap(code) is set by game.js:
+  // it loads the map and resolves true, or false when no map has that code.
+  U.fcode = ''; U.fmsg = '';
+  function showFriendPad(msg) {
+    if (msg !== undefined) U.fmsg = msg; msg = U.fmsg;
+    S.panel = 'friend'; placeBoard(); panel.mesh.visible = true;
+    if (panel.key === 'friend' + U.fcode + msg) return;
+    const g = panel.c.getContext('2d'); g.fillStyle = '#0c1118'; g.fillRect(0, 0, 1024, 768); g.strokeStyle = '#3a6ea5'; g.lineWidth = 6; g.strokeRect(6, 6, 1012, 756);
+    g.textAlign = 'center'; g.fillStyle = '#e8eef5'; g.font = 'bold 56px sans-serif'; g.fillText("FRIEND'S MAP", 512, 80);
+    g.fillStyle = '#8fb4dc'; g.font = '28px sans-serif'; g.fillText(msg || 'Type the 8-digit code your friend got with SHARE in the map editor.', 512, 126);
+    const d = (U.fcode + '________').slice(0, 8); g.fillStyle = '#7dffa0'; g.font = 'bold 72px monospace'; g.fillText(d.slice(0, 4).split('').join(' ') + '   ' + d.slice(4).split('').join(' '), 512, 222);
+    const B = [], key = (text, act, x, y, w, col) => B.push({ x, y, w, h: 74, text, act, col });
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'DEL', '0', 'CLEAR'].forEach((k, i) => key(k, k === 'DEL' ? 'st:fdel' : k === 'CLEAR' ? 'st:fclr' : 'st:fkey:' + k, 222 + (i % 3) * 200, 262 + Math.floor(i / 3) * 86, 180, k.length > 1 ? '#39424e' : '#1f4a8a'));
+    const ok = U.fcode.length === 8; key('BACK', 'st:fback', 60, 676, 300, '#39424e'); key(ok ? 'LOAD THIS MAP' : 'LOAD', 'st:fgo', 380, 676, 584, ok ? '#1f7a3d' : '#2a3038');
+    for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold 38px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
+    panel.btns = B; panel.key = 'friend' + U.fcode + msg; panel.tex.needsUpdate = true;
   }
   function go(solo, tut) {
     S.panel = null; panel.mesh.visible = false;
@@ -128,6 +145,14 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'join') { if (U.code.length === 4) go(false, false); else showKeypad('The room code has four digits.'); }
     else if (what === 'buy') { unlock.buy().then(ok => { if (ok) { U.bought = true; showBuy(U.buyWhy, U.buyFrom); } }).catch(e => { U.buyErr = String(e && e.message || e); showBuy(U.buyWhy, U.buyFrom); }); }
     else if (what === 'nobuy') { U.bought = false; U.buyErr = ''; if (U.buyFrom === 'start') U.showStart(); else { S.panel = null; back2(); } }
+    else if (what === 'friend') { if (!unlock.full()) return showBuy('editor', 'board'), true; U.fcode = ''; showFriendPad(''); }
+    else if (what === 'fkey') { if (U.fcode.length < 8) U.fcode += arg; showFriendPad(''); }
+    else if (what === 'fdel') { U.fcode = U.fcode.slice(0, -1); showFriendPad(''); }
+    else if (what === 'fclr') { U.fcode = ''; showFriendPad(''); }
+    else if (what === 'fback') { S.panel = null; back2(); }
+    else if (what === 'fgo') { if (U.fcode.length !== 8) return showFriendPad('The code has eight digits.'), true; const c = U.fcode; showFriendPad('Loading...');
+      (U.friendMap ? U.friendMap(c) : Promise.resolve(false)).then(ok => { if (ok) { S.panel = null; back2(); } else showFriendPad('No map has that code (or it was reported).'); }); }
+    else if (what === 'freport') { U.reportMap && U.reportMap(); }
     else if (what === 'players') showPlayers();
     else if (what === 'credits') showCredits(+arg || 0);
     else if (what === 'mute') { const id = +arg; voice.mutePeer(id, !voice.isPeerMuted(id)); showPlayers(); }

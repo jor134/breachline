@@ -450,7 +450,7 @@ function showBoard() {   // the mission board in the training lobby: pick where 
     [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')' + storeUI.lockTag(S.nextMap), 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
       'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', ...(S.mode === 'vr' ? [] : ['Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
       'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'])],
-    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : []), S.nextMap.startsWith('s_') ? ['REPORT THIS MAP', 'st:freport'] : ["FRIEND'S MAP", 'st:friend'], ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 // BODY FIT (training board, VR): slide your own body forward/back and up/down under the headset; kept on this device
 const FIT0 = { d: SELF_BACK.d, up: 0, gear: 0, gup: 0 };
@@ -558,13 +558,17 @@ function applyInit(init) {
 // Player-made maps: fetched from the library the first time anything names them, then registered like a built-in map.
 const customLoads = new Map();
 function ensureCustom(mid) {
-  if (typeof mid !== 'string' || !mid.startsWith('u_') || MAPS[mid]) return Promise.resolve(true);
-  if (!customLoads.has(mid)) customLoads.set(mid, fetch('api/maps/' + mid.slice(2), { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject(new Error('map ' + r.status))).then(d => { registerMap(compileCustom(d, mid)); return true; }).catch(e => { customLoads.delete(mid); console.warn('custom map not loaded', e); return false; }));
+  if (typeof mid !== 'string' || !(mid.startsWith('u_') || mid.startsWith('s_')) || MAPS[mid]) return Promise.resolve(true);
+  if (!customLoads.has(mid)) customLoads.set(mid, fetch((mid[0] === 's' ? 'api/share/' : 'api/maps/') + mid.slice(2), { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject(new Error('map ' + r.status))).then(d => { registerMap(compileCustom(d, mid)); return true; }).catch(e => { customLoads.delete(mid); console.warn('custom map not loaded', e); return false; }));
   return customLoads.get(mid);
 }
 S.customList = [];
 function loadCustomList() { return fetch('api/maps', { cache: 'no-store' }).then(r => r.ok ? r.json() : { maps: [] }).then(j => { S.customList = (j.maps || []).map(m => ({ id: 'u_' + m.id, name: String(m.name || '').toUpperCase(), creator: m.creator })); }).catch(() => { }); }
 loadCustomList();
+// quest-store: maps players share with friends (8-digit codes; js/store/ui.js has the keypad, src/worker.js the library)
+storeUI.friendMap = code => ensureCustom('s_' + code).then(ok => { if (!ok) return false; S.nextMap = 's_' + code; net.send({ t: 'choose', m: S.nextMap }); showLobbyPanel(); return true; });
+storeUI.reportMap = () => { const id = S.nextMap; if (!id.startsWith('s_')) return; fetch('api/share/' + id.slice(2) + '/report', { method: 'POST' }).catch(() => { });
+  S.nextMap = MISSION_IDS[0]; net.send({ t: 'choose', m: S.nextMap }); status('Map reported. It is hidden from everyone until it has been looked at.'); showLobbyPanel(); };
 // a message about a map we have not got yet waits (with everything after it) until the map has arrived
 let msgGate = null;
 function onMsg(m) {
@@ -1167,7 +1171,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q27';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q28';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

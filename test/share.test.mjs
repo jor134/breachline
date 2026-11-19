@@ -1,0 +1,25 @@
+// The friends' map sharing in the Library Durable Object (src/worker.js /api/share), on a real SQLite.
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import fs from 'node:fs';
+globalThis.Response = class { constructor(body, init = {}) { this.body = body; Object.assign(this, init); this.status = init.status || 200; } async json() { return JSON.parse(this.body); } };
+const { Library } = await import('../src/worker.js');
+const db = new DatabaseSync(':memory:');
+const sql = { exec: (q, ...a) => { const st = db.prepare(q); return /^\s*(SELECT)/i.test(q) ? st.all(...a) : (st.run(...a), []); } };
+const lib = new Library({ storage: { sql } });
+const call = (method, path, body, ip = '1.2.3.4') => lib.fetch({ method, url: 'https://x' + path, headers: { get: h => h === 'cf-connecting-ip' ? ip : h === 'x-creator-code' ? 'secret' : null }, json: async () => body });
+const parse = r => typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
+const sample = JSON.parse(fs.readFileSync(new URL('../public/maps/sample.json', import.meta.url)));
+sample.name = 'rude words here'; sample.creator = 'also rude';
+let r = await call('POST', '/api/share', { map: sample, by: 'VIPER-27' }); assert.equal(r.status, 200, JSON.stringify(parse(r)));
+const id = parse(r).id; assert.match(id, /^\d{8}$/);
+r = await call('GET', '/api/share/' + id); const m = parse(r); assert.equal(m.name, 'FRIEND MAP ' + id.slice(0, 4) + ' ' + id.slice(4), 'free-text name replaced'); assert.equal(m.creator, 'VIPER-27');
+r = await call('POST', '/api/share', { map: sample, by: 'made up' }); assert.match(parse(await call('GET', '/api/share/' + parse(r).id)).creator, /^OFFICER-\d\d$/, 'creator must be a preset callsign');
+assert.equal(parse(await call('GET', '/api/maps')).maps.length, 0, 'shared maps are not on the public list');
+assert.equal((await call('GET', '/api/share/12345678')).status, 404);
+await call('POST', '/api/share/' + id + '/report'); assert.equal((await call('GET', '/api/share/' + id)).status, 410, 'a report hides it');
+for (let i = 0; i < 18; i++) await call('POST', '/api/share', { map: sample, by: 'VIPER-27' }, '9.9.9.9');
+assert.equal((await call('POST', '/api/share', { map: sample }, '9.9.9.9')).status, 200); assert.equal((await call('POST', '/api/share', { map: sample }, '9.9.9.9')).status, 200);
+assert.equal((await call('POST', '/api/share', { map: sample }, '9.9.9.9')).status, 429, '20 a day per address');
+assert.equal((await call('POST', '/api/share', { map: { v: 1 } })).status, 400, 'broken maps are refused');
+console.log('share tests passed');
