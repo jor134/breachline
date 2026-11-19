@@ -65,7 +65,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     if (U.bought) return panel.draw('FULL GAME UNLOCKED', 'Thank you!', ['Every mission, online co-op and PvP, and the map editor', 'are yours on this account, on every headset.'], [['CONTINUE', 'st:nobuy']]);
     const what = { online: 'Online play is part of the full game.', editor: 'The map editor is part of the full game.', map: 'This mission is part of the full game.' }[why] || '';
     const lines = [what, '', 'The demo: the training facility and the mansion, solo.', 'The full game adds:', '   the container terminal, Grand Prix, airport and casino tower,', '   online co-op and PvP for up to four players,', '   and the map editor.'];
-    if (U.buyErr) lines.push('', 'The purchase did not go through: ' + clip(U.buyErr, 44));
+    if (U.buyErr) lines.push('', /CANCEL/i.test(U.buyErr) ? 'The purchase was cancelled or is not available yet.' : 'The purchase did not go through: ' + clip(U.buyErr, 44));   // Meta answers RESULT_CANCELED both when you back out and when the item can't be sold yet
     if (!unlock.store) { lines.push('', 'Get You Can\'t Hide on the Meta Horizon Store to unlock it.'); return panel.draw('FULL GAME', 'Meta Horizon Store', lines, [['OK', 'st:nobuy']]); }
     panel.draw('FULL GAME', unlock.price ? 'One purchase, ' + unlock.price : 'One purchase', lines, [['BUY THE FULL GAME' + (unlock.price ? '  ' + unlock.price : ''), 'st:buy'], ['NOT NOW', 'st:nobuy']]);
   }
