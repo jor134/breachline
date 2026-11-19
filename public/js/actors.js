@@ -1,6 +1,6 @@
 // Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
-import { loadM4, loadSidearm } from './m4.js';
+import { loadM4, loadSidearm, loadNades } from './m4.js';
 import { CHARS_ON, SUSPECT_MODELS, loadChar, loadCivilian, Skin, mirror, align2 } from './chars.js';
 const HQ = typeof location === 'undefined' || !new URLSearchParams(location.search).get('lite') || !!new URLSearchParams(location.search).get('m4');   // ?lite=1 (tests) keeps the built-in rifle unless &m4=1
 import { sheen, vertexSheen } from './mats.js';
@@ -103,7 +103,9 @@ let magMat2 = null;
 export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = magMat2 || (magMat2 = Object.assign(r.magMat.clone(), { side: THREE.DoubleSide })); } }).catch(() => { }); return m; };
 const makeMag0 = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
 
-export const makeNade = kind => kind === 'flash' ? merge([[CYL(0.022, 0.09), 0x5a6048, 0, 0, 0], [CYL(0.018, 0.02), 0x9aa0a8, 0, 0.055, 0], [BOX(0.008, 0.07, 0.02), 0x9aa0a8, 0.024, 0.02, 0]], 'metal') : merge([[CYL(0.027, 0.1), 0x6a6e72, 0, 0, 0], [CYL(0.027, 0.016), 0xd8d8d8, 0, 0.03, 0], [CYL(0.016, 0.02), 0x30343a, 0, 0.06, 0]], 'metal');
+// quest-store: the built-in grenade until the downloaded M84 / M18 models arrive, then their geometry and material
+export const makeNade = kind => { const m = makeNade0(kind); if (HQ) loadNades().then(N => { const d = N[kind === 'flash' ? 'flash' : 'smoke']; if (d) { m.geometry = d.geo; m.material = d.mat; } }).catch(e => console.warn('grenade models not loaded', e)); return m; };
+const makeNade0 = kind => kind === 'flash' ? merge([[CYL(0.022, 0.09), 0x5a6048, 0, 0, 0], [CYL(0.018, 0.02), 0x9aa0a8, 0, 0.055, 0], [BOX(0.008, 0.07, 0.02), 0x9aa0a8, 0.024, 0.02, 0]], 'metal') : merge([[CYL(0.027, 0.1), 0x6a6e72, 0, 0, 0], [CYL(0.027, 0.016), 0xd8d8d8, 0, 0.03, 0], [CYL(0.016, 0.02), 0x30343a, 0, 0.06, 0]], 'metal');
 export function makeTool(kind) {
   const ST = 0xb8bcc2, K = 0x17181a, R = 0xb02a2a;
   if (kind === 'cam') return merge([[BOX(0.03, 0.03, 0.1), K, 0, 0, 0.03], [BOX(0.05, 0.035, 0.006), 0x2a4a5a, 0, 0.03, 0.03, -0.5], [CYL(0.004, 0.22), K, 0, -0.01, -0.12, HP], [BOX(0.014, 0.014, 0.02), ST, 0, -0.012, -0.235]], 'plastic');

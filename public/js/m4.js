@@ -74,3 +74,15 @@ export function loadSidearm() {
   }, undefined, rej)));
 }
 
+
+// Grenades: "Game ready grenades set" by Riskyerick (Sketchfab Standard licence, see models/nades/LICENSE.md). tools/nades_glb.py
+// keeps the M84 stun grenade (the flashbang) and the M18 smoke grenade, each centred on its middle at its real height.
+let nadePromise = null;
+export function loadNades() {
+  return nadePromise || (nadePromise = new Promise((res, rej) => new ObfLoader().load('models/nades/nades.glb', g => {
+    const out = {}; g.scene.updateMatrixWorld(true);
+    g.scene.traverse(o => { if (!o.isMesh) return; const m = o.material; m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.5; if (!pbrMats.includes(m)) pbrMats.push(m);
+      out[o.name] = { geo: o.geometry.clone().applyMatrix4(o.matrixWorld), mat: m }; });
+    res(out);
+  }, undefined, rej)));
+}

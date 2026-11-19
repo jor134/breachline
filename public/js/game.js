@@ -169,7 +169,7 @@ const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(ki
 const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol(true, true)) };
 // quest-store: the sidearm drawn 1.6x its modelled size (it read as a toy in the hand). Its points (muzzle, sight, magwell) are in the
 // mesh's own frame, so they scale with it; the grip stays at the hand because the gun frame's origin is the top of the grip.
-const PISTOL_SCALE = 1.07;   // 1.6 asked for with the old .22; the 9 mm model a third smaller again (18 Nov) guns.pistol.mesh.scale.setScalar(PISTOL_SCALE); for (const h of hands) h.mags.pistol.scale.setScalar(PISTOL_SCALE);
+const PISTOL_SCALE = 1.34;   // 1.6 asked for with the old .22; the 9 mm model a third smaller, then a quarter larger (18 Nov) guns.pistol.mesh.scale.setScalar(PISTOL_SCALE); for (const h of hands) h.mags.pistol.scale.setScalar(PISTOL_SCALE);
 // quest-store: hands lock onto the gun. A held gun follows the controller (or, two-handed, the line to the support hand), and the
 // hand drawn on it takes its pose from the gun: the gun hand round the pistol grip, the support hand round the foregrip, wherever
 // the controllers really are. GRIP_AT: where the controller origin would be for a proper grip, in the gun's frame.
@@ -1167,7 +1167,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q26';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q27';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
