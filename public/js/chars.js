@@ -5,6 +5,7 @@
 // Bones are driven by rotation only (their lengths stay the model's own); rotations are composed in the character's frame.
 import * as THREE from '../vendor/three.module.min.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
+import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
 import { envMap, pbrMats } from './mats.js';
 
 const side = (L, R) => ({ L, R });
@@ -44,6 +45,7 @@ export function loadChar(id) {
     // and sleeves) and some faces wound the wrong way, which showed as see-through holes. Blended parts (eyes) become cut-outs so
     // they never sort wrongly against the rest.
     sc.traverse(o => { if (o.isMesh) { const m = o.material; m.side = THREE.DoubleSide; if (m.transparent) { m.transparent = false; m.alphaTest = 0.5; m.depthWrite = true; } m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.35; if (!pbrMats.includes(m)) pbrMats.push(m); o.castShadow = false; o.receiveShadow = true; } });
+    packRig(sc);
     ready[id] = { id, scene: sc, k, y0: -bb.min.y * k }; res(ready[id]);
   }, undefined, rej)));
 }
@@ -132,12 +134,34 @@ function rigCivilian(parts, i, name) {
   return { id: 'civ' + i, def: 'psx', scene: root, k: 1, y0: 0, name };
 }
 
-// Clone a rigged scene: every skinned mesh gets its own skeleton bound to the cloned bones.
+// Fewer pieces per character, same look (quest-store, VRC.Quest.Performance.1). The officer model arrives as 35 skinned pieces,
+// 17 of them the same uniform cloth, and every piece costs a draw call per eye per frame. Pieces that share a material, a parent,
+// a placement and a skeleton are stitched into one. Each material keeps its own piece, so anything found by material (your own
+// goggles, hidden in first person) still is.
+const rigKey = sk => sk.bones.map(b => b.uuid).join();
+function packRig(sc) {
+  sc.updateMatrixWorld(true);
+  const groups = new Map(); sc.traverse(o => { if (!o.isSkinnedMesh || Array.isArray(o.material) || o.geometry.morphAttributes.position) return;
+    const k = [o.parent.uuid, o.material.uuid, rigKey(o.skeleton), o.matrix.elements.map(v => v.toFixed(5)).join(), o.bindMatrix.elements.map(v => v.toFixed(5)).join(), !!o.geometry.index, Object.keys(o.geometry.attributes).sort().join()].join('|');
+    (groups.get(k) || groups.set(k, []).get(k)).push(o); });
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const geo = mergeGeometries(list.map(o => o.geometry)); if (!geo) continue;
+    const a = list[0], m = new THREE.SkinnedMesh(geo, a.material); m.name = a.name; m.matrix.copy(a.matrix); m.matrix.decompose(m.position, m.quaternion, m.scale);
+    m.castShadow = a.castShadow; m.receiveShadow = a.receiveShadow; a.parent.add(m); m.bind(a.skeleton, a.bindMatrix);
+    for (const o of list) o.parent.remove(o);
+  }
+}
+
+// Clone a rigged scene. Pieces that shared a skeleton in the original share one in the copy: each skeleton works out its bone
+// matrices and sends them to the GPU every frame, so one per character instead of one per piece.
 function cloneSkinned(src) {
-  const out = src.clone(true), sMap = new Map(), list = [];
+  const out = src.clone(true), sMap = new Map(), list = [], skels = new Map();
   (function walk(a, b) { sMap.set(a, b); for (let i = 0; i < a.children.length; i++) walk(a.children[i], b.children[i]); })(src, out);
   src.traverse(o => { if (o.isSkinnedMesh) list.push(o); });
-  for (const o of list) { const c = sMap.get(o); c.bind(new THREE.Skeleton(o.skeleton.bones.map(b => sMap.get(b)), o.skeleton.boneInverses), o.bindMatrix); c.frustumCulled = false; }
+  for (const o of list) { const c = sMap.get(o), k = rigKey(o.skeleton) + '|' + o.skeleton.boneInverses.length;
+    let sk = skels.get(k); if (!sk || sk.src.boneInverses.some((m, i) => !m.equals(o.skeleton.boneInverses[i]))) { sk = { s: new THREE.Skeleton(o.skeleton.bones.map(b => sMap.get(b)), o.skeleton.boneInverses), src: o.skeleton }; skels.set(k, sk); }
+    c.bind(sk.s, o.bindMatrix); c.frustumCulled = false; }
   return out;
 }
 

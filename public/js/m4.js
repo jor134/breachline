@@ -4,8 +4,22 @@
 // the game draws its own reticle that sits on the point of aim (actors.js).
 import * as THREE from '../vendor/three.module.min.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
+import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
 import { ObfLoader } from './store/obf.js';   // quest-store: the pistol ships obfuscated (Sketchfab Standard licence)
 import { envMap, pbrMats } from './mats.js';
+
+// One piece per material inside a rigid group (quest-store, VRC.Quest.Performance.1): the rifle arrives as ~30 pieces and every
+// officer carries one, each piece a draw call per eye per frame. The pieces never move against each other (the magazine is kept
+// apart), so stitching same-material pieces looks identical.
+export function packGroup(g) {
+  const by = new Map(); for (const o of [...g.children]) { if (!o.isMesh || o.isSkinnedMesh || Array.isArray(o.material) || o.children.length) continue;
+    const k = o.material.uuid + '|' + !!o.geometry.index + '|' + Object.keys(o.geometry.attributes).sort().join() + '|' + o.castShadow + '|' + o.renderOrder; (by.get(k) || by.set(k, []).get(k)).push(o); }
+  for (const list of by.values()) { if (list.length < 2) continue;
+    const geo = mergeGeometries(list.map(o => { o.updateMatrix(); return o.geometry.clone().applyMatrix4(o.matrix); })); if (!geo) continue;
+    const m = new THREE.Mesh(geo, list[0].material); m.castShadow = list[0].castShadow; m.receiveShadow = list[0].receiveShadow; m.renderOrder = list[0].renderOrder;
+    for (const o of list) g.remove(o); g.add(m); }
+  return g;
+}
 
 export const M4 = { s: 0.01, oy: 0, oz: -0.143 };   // gun = (-x, y, -z) * s + (0, oy, oz)
 let promise = null;
@@ -36,6 +50,7 @@ export function loadM4() {
       }
       mesh.castShadow = true; root.add(mesh);
     }
+    packGroup(root);
     let magGeo = null, magMat = meshes.find(o => o.material.name === 'lambert1').material;
     if (magParts.length) { magGeo = magParts.length === 1 ? magParts[0] : mergeIdx(magParts); magGeo.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(0, M4.oy, M4.oz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), new THREE.Vector3(M4.s, M4.s, M4.s))); }
     let magLoose = null; if (magGeo) { magLoose = magGeo.clone(); magLoose.computeBoundingBox(); const b = magLoose.boundingBox; magLoose.translate(-(b.min.x + b.max.x) / 2, 0.065 - b.max.y, -(b.min.z + b.max.z) / 2); }
@@ -68,6 +83,7 @@ export function loadSidearm() {
       if (m.transparent) m.depthWrite = false;   // the red dot's glass
       const geo = o.geometry.clone().applyMatrix4(o.matrixWorld).applyMatrix4(T);
       if (o.name.startsWith('mag')) plate = { geo, mat: m }; else (o.name.startsWith('slide') ? slide : frame).add(new THREE.Mesh(geo, m)); });
+    packGroup(frame); packGroup(slide);
     const pts = { muzzle: at(0, boreY, slB.min.z), light: at(0, (lightB.min.y + lightB.max.y) / 2, lightB.min.z), magwell: at(0, all.min.y, gz), rack: at(0, boreY, slB.max.z),
       sightY: at(0, (dot.min.y + dot.max.y) / 2, 0).y, sightZ: at(0, 0, (dot.min.z + dot.max.z) / 2).z, sightW: (dot.max.x - dot.min.x) * k * 0.5, sightH: (dot.max.y - dot.min.y) * k * 0.4 };
     res({ frame, slide, plate, pts });
