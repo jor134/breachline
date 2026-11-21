@@ -148,7 +148,7 @@ const net = {
     ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
     ws.onerror = ws.onclose = () => { if (ok) return; setTimeout(() => this.rejoin(room, name, n + 1), Math.min(5000, 1000 + n * 500)); };
   },
-  local(name) { this.host = new RoomHost((id, o) => onMsg(JSON.parse(JSON.stringify(o)))); this.host.join(1, name); this.timer = setInterval(() => this.host.tick(), TICK * 1000); },
+  local(name) { this.host = new RoomHost((id, o) => onMsg(JSON.parse(JSON.stringify(o)))); this.host.join(1, name); this.timer = setInterval(() => { const t = performance.now(); this.host.tick(); perf.simNote(performance.now() - t); }, TICK * 1000); },
   leave() { if (this.ws) { const w = this.ws; this.ws = null; w.onclose = w.onerror = w.onmessage = null; try { w.close(1000); } catch (e) { } } if (this.timer) { clearInterval(this.timer); this.timer = null; } this.host = null; },
   send(o) { if (o && window.__tut) window.__tut.note(o.t); if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); else if (this.host) this.host.message(1, o); },
 };
@@ -494,7 +494,7 @@ function backToStart() {
 function goHome() { if (renderer.xr.isPresenting && !DRAFT) return backToStart(); const to = DRAFT ? 'editor.html' : 'play.html'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + '   ·   resolution ' + Math.round(perf.scale * 100) + '%' + (perf.vs ? '' : ' (fixed)'), ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + '   ·   ' + perf.report(), ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
@@ -1056,6 +1056,7 @@ let last = performance.now(), poseT = 0, lobbyT = 0;
 const arr7 = (p, q) => [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4), +q.w.toFixed(4)];
 const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 'mag' ? 3 : 0;
 function frame(t) {
+  const c0 = performance.now();
   perf.tick((t - last) / 1000, renderer.xr.isPresenting);
   { const want = !!S.mode && (!!M.training || !storeUI.started()) && S.music !== false; if (want !== S.musicOn) { S.musicOn = want; setMusic(want); } }   // quest-store: theme music on the main menu and in the training room (MUSIC toggle on the start menu)
   const dt = Math.min(0.05, Math.max(0.001, (t - last) / 1000)); last = t; S.now += dt;
@@ -1121,7 +1122,7 @@ function frame(t) {
   { const ins = level.inside(head.pos.x, head.pos.z, head.pos.y); setListener(head.pos, head.fwd, ins); setEnvInside(ins); }   // the reflections show pot lights indoors, the sky outside
   footsteps(dt); exitPrompt(dt);
   if (S.mode && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(fo(head.pos), head.quat), l: hands[0].active ? (lh => arr7(fo(lh.pos), lh.quat))(handOnGun(hands[0])) : null, r: hands[1].active ? (rh => arr7(fo(rh.pos), rh.quat))(handOnGun(hands[1])) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.intensity > 0 ? 1 : 0 }); }
-  renderer.render(scene, camera);
+  const c1 = performance.now(); renderer.render(scene, camera); perf.cpuNote(c1 - c0, performance.now() - c1, renderer.info.render.calls);
 }
 renderer.setAnimationLoop(frame);
 
@@ -1180,7 +1181,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q30';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q31';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

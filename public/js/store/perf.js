@@ -17,16 +17,11 @@ export function makePerf(renderer) {
   // dynamic viewport scaling: three.js asks the layer for each eye's viewport once a frame; ask for the scaled one first
   if (typeof XRWebGLLayer !== 'undefined' && XRWebGLLayer.prototype && !XRWebGLLayer.prototype.__blScaled) {
     const orig = XRWebGLLayer.prototype.getViewport;
-    XRWebGLLayer.prototype.getViewport = function (view) { if (view && view.requestViewportScale) { try { view.requestViewportScale(P.scale); } catch (e) { } } return orig.call(this, view); };
+    XRWebGLLayer.prototype.getViewport = function (view) { P.hooked = true; if (view && view.requestViewportScale) { try { view.requestViewportScale(P.scale); } catch (e) { } } return orig.call(this, view); };
     XRWebGLLayer.prototype.__blScaled = true;
   }
-  // Quest Browser supports WebXR layers, so three.js draws into a projection layer and asks the binding (not the layer) for each
-  // eye's viewport: the same request has to go there too, or the resolution steps never reach the headset.
-  if (typeof XRWebGLBinding !== 'undefined' && XRWebGLBinding.prototype && XRWebGLBinding.prototype.getViewSubImage && !XRWebGLBinding.prototype.__blScaled) {
-    const orig = XRWebGLBinding.prototype.getViewSubImage;
-    XRWebGLBinding.prototype.getViewSubImage = function (layer, view, ...rest) { if (view && view.requestViewportScale) { try { view.requestViewportScale(P.scale); } catch (e) { } } return orig.call(this, layer, view, ...rest); };
-    XRWebGLBinding.prototype.__blScaled = true;
-  }
+  // (q30 also sent the request through the WebXR layers binding; in the headset that shrank the eye buffer to 66% with no frame
+  // rate gained, because the frames were late on the CPU side, so it is off again: resolution stays at full.)
 
   P.beforeSession = () => { try { renderer.xr.setFramebufferScaleFactor(P.vs ? 1 : P.device === 'quest2' ? 0.8 : 0.88); } catch (e) { } };
   P.onSession = s => {
@@ -49,5 +44,11 @@ export function makePerf(renderer) {
     else P.clean = 0;
     P.winT = 0; P.drops = 0; P.frames = 0;
   };
+  // CPU side of each frame, averaged: game update, handing the scene to the GPU (draw calls), and the AI tick (solo host)
+  P.cpu = { up: 0, draw: 0, calls: 0, sim: 0, peak: 0 };
+  const ease = (a, b) => a + (b - a) * 0.05;
+  P.cpuNote = (up, draw, calls) => { const c = P.cpu; c.up = ease(c.up, up); c.draw = ease(c.draw, draw); c.calls = ease(c.calls, calls); c.peak = Math.max(c.peak * 0.995, up + draw); };
+  P.simNote = ms => { P.cpu.sim = ease(P.cpu.sim, ms); };
+  P.report = () => { const c = P.cpu, f = v => v.toFixed(1); return (P.hooked ? 'res ' + Math.round(P.scale * 100) + '%   ' : '') + 'cpu ' + f(c.up) + '+' + f(c.draw) + ' ms (' + Math.round(c.calls) + ' draws)   ai ' + f(c.sim) + ' ms'; };
   return P;
 }
