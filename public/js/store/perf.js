@@ -5,7 +5,7 @@
 // - When VR starts: ask for 72 Hz (both headsets support it; Quest 3 could do 90, but 72 leaves headroom for the busy maps).
 // - Every frame: watch for dropped frames. A second with several drops lowers the render resolution a step (dynamic viewport
 //   scaling: the browser renders a smaller part of the same target and stretches it, no shader or texture changes, so the step
-//   itself costs nothing); eight clean seconds raise it a step again. Foveated rendering is already at its maximum (game.js).
+//   itself costs nothing); eight clean seconds raise it a step again. Foveated rendering is set to its maximum as the session starts.
 //   Steps: 100%, 90%, 80%, 72%, 66% of the headset's normal resolution.
 export const SCALES = [1, 0.9, 0.8, 0.72, 0.66];
 
@@ -20,9 +20,19 @@ export function makePerf(renderer) {
     XRWebGLLayer.prototype.getViewport = function (view) { if (view && view.requestViewportScale) { try { view.requestViewportScale(P.scale); } catch (e) { } } return orig.call(this, view); };
     XRWebGLLayer.prototype.__blScaled = true;
   }
+  // Quest Browser supports WebXR layers, so three.js draws into a projection layer and asks the binding (not the layer) for each
+  // eye's viewport: the same request has to go there too, or the resolution steps never reach the headset.
+  if (typeof XRWebGLBinding !== 'undefined' && XRWebGLBinding.prototype && XRWebGLBinding.prototype.getViewSubImage && !XRWebGLBinding.prototype.__blScaled) {
+    const orig = XRWebGLBinding.prototype.getViewSubImage;
+    XRWebGLBinding.prototype.getViewSubImage = function (layer, view, ...rest) { if (view && view.requestViewportScale) { try { view.requestViewportScale(P.scale); } catch (e) { } } return orig.call(this, layer, view, ...rest); };
+    XRWebGLBinding.prototype.__blScaled = true;
+  }
 
   P.beforeSession = () => { try { renderer.xr.setFramebufferScaleFactor(P.vs ? 1 : P.device === 'quest2' ? 0.8 : 0.88); } catch (e) { } };
   P.onSession = s => {
+    // fixed foveated rendering: three.js only hands its foveation setting to a layer that already exists, and the layer is made
+    // when the session starts, so it has to be set again now (OVR Metrics showed FOV 0 until this)
+    try { renderer.xr.setFoveation(1); } catch (e) { }
     P.level = 0; P.scale = 1; P.winT = 0; P.drops = 0; P.frames = 0; P.clean = 0; P.cool = 5;   // the first seconds in VR are loading hitches, not a slow scene
     try { const rates = s.supportedFrameRates ? [...s.supportedFrameRates] : []; if (s.updateTargetFrameRate && rates.includes(72)) s.updateTargetFrameRate(72).catch(() => { }); } catch (e) { }
   };
