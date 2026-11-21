@@ -234,12 +234,29 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   const [tx, tz] = env.sunAt, [dx, dy, dz] = env.sunFrom, S = env.shadow;
   sun.target.position.set(tx, 0, tz); sun.position.set(tx + dx, dy, tz + dz); root.add(sun.target); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 5, far: Math.hypot(dx, dy, dz) + S * 1.5 }); sun.shadow.camera.updateProjectionMatrix(); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.07;
-  const lamps = env.lamps.map(([x, y, z, i = 10, r = 11]) => { const l = new THREE.PointLight(0xffd9a8, i, r, 1.8); l.position.set(x, y, z); l.userData.i = i; root.add(l); return l; });
+  // Lamps: every point light in the scene is paid for by every lit pixel, every frame, whether it reaches that pixel or not.
+  // So the scene holds at most LAMP_POOL real lights, and each frame they are lent to the lamps that matter most where you
+  // stand (strongest light reaching you, by range and brightness); a lamp that loses its light fades out before the light moves.
+  const LAMP_POOL = 4, lampDefs = env.lamps.map(([x, y, z, i = 10, r = 11]) => ({ p: new THREE.Vector3(x, y, z), i, r, k: 1 }));
+  const lamps = lampDefs.slice(0, LAMP_POOL).map((d, n) => { const l = new THREE.PointLight(0xffd9a8, d.i, d.r, 1.8); l.position.copy(d.p); l.userData.i = d.i; l.userData.d = d; l.userData.f = 1; l.userData.want = d; root.add(l); return l; });
+  let lampK = 1;
+  const lampTick = (pos, dt) => {
+    if (lampDefs.length <= LAMP_POOL) return;
+    const score = d => { const e = d.p.distanceTo(pos) / d.r; return e >= 1.6 ? -e : d.i * (1.6 - e); };
+    const best = [...lampDefs].sort((a, b) => score(b) - score(a)).slice(0, LAMP_POOL), free = best.filter(d => !lamps.some(l => l.userData.want === d));
+    for (const l of lamps) { if (!best.includes(l.userData.want)) l.userData.want = free.shift() || l.userData.want; }
+    for (const l of lamps) {
+      const u = l.userData, step = dt * 3;
+      if (u.want !== u.d) { u.f = Math.max(0, u.f - step); if (u.f === 0) { u.d = u.want; l.position.copy(u.d.p); l.distance = u.d.r; u.i = u.d.i; } }
+      else u.f = Math.min(1, u.f + step);
+      l.intensity = u.i * u.f * lampK;
+    }
+  };
   const FOGD = { clear: env.fogD, rain: [env.fogD[0] * 2, 0.016], storm: [env.fogD[0] * 2.6, 0.02], fog: [0.07, 0.075] };
   const look = (night, nvg, wx = 'clear') => {
     const k = nvg ? 0.16 : 1, cast = wx !== 'clear', wet = wx === 'rain' || wx === 'storm', dim = cast ? 0.8 : 1;
     hemi.intensity = (night ? 0.2 : 1.25 * (env.hemi || 1)) * k * dim; hemi.color.set(night ? 0x6f83a8 : cast ? 0xa9afba : env.hemiSky || 0xb9c4dc); hemi.groundColor.set(night ? 0x20242c : env.hemiGround || 0x7a6a58);
-    sun.intensity = (night ? 0.18 : 0.75 * (env.sunK || 1)) * k * (cast ? 0.35 : 1); sun.color.set(night ? 0xa9bcff : env.sunCol || 0xffc9a0); for (const l of lamps) l.intensity = night ? 0 : l.userData.i * k;
+    sun.intensity = (night ? 0.18 : 0.75 * (env.sunK || 1)) * k * (cast ? 0.35 : 1); sun.color.set(night ? 0xa9bcff : env.sunCol || 0xffc9a0); lampK = night ? 0 : k; for (const l of lamps) l.intensity = l.userData.i * (l.userData.f ?? 1) * lampK;
     amp.intensity = nvg ? (night ? 0.8 : 0.5) : 0; setGlossLevel((nvg ? 0.2 : night ? 0.12 : 1) * (wet ? 1.35 : 1));   // wet surfaces shine more
     MATS.glow.color.set(nvg ? (night ? 0x0b3410 : 0x9cff9c) : night ? 0x14120e : 0xffe6bd); MATS.lightpool.opacity = night ? 0 : nvg ? 0.07 : 0.2; MATS.lightpool.color.set(nvg ? 0x60ff70 : 0xffd9a0);
     MATS.ao.opacity = night && !nvg ? 0.3 : 0.55; MATS.aoBlob.opacity = night && !nvg ? 0.4 : 0.75;
@@ -251,7 +268,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     if (G.look) G.look(night, nvg, wx);
   };
   const dispose = () => { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skyT.dispose(); };
-  return { root, level, map, doors, look, dispose, sun, tod, gfx: G };
+  return { root, level, map, doors, look, dispose, sun, tod, gfx: G, lampTick };
 }
 
 // A text tag that always faces you. With no size given it is as wide as its text needs (so nothing is cut off) and `tall` metres high.

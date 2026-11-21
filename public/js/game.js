@@ -24,6 +24,14 @@ import { makePerf } from './store/perf.js';   // quest-store: 72 Hz and dynamic 
 
 const $ = id => document.getElementById(id), Q = new URLSearchParams(location.search);
 const V = () => new THREE.Vector3(), v1 = V(), v2 = V(), v3 = V(), v4 = V(), q1 = new THREE.Quaternion(), m1 = new THREE.Matrix4(), UP = new THREE.Vector3(0, 1, 0);
+// Soft sun shadows from 5 shadow-map reads per pixel instead of three.js's 17 (same blur width; every lit pixel pays for this)
+{ const C = THREE.ShaderChunk, s = C.shadowmap_pars_fragment, a = s.indexOf('#if defined( SHADOWMAP_TYPE_PCF )'), e = s.indexOf('( 1.0 / 17.0 );', a);
+  if (a >= 0 && e > a) C.shadowmap_pars_fragment = s.slice(0, a) + `#if defined( SHADOWMAP_TYPE_PCF )
+			vec2 texelSize = vec2( 1.0 ) / shadowMapSize;
+			vec2 o = texelSize * shadowRadius * 0.75; vec2 p = vec2( o.x, - o.y );
+			shadow = ( texture2DCompare( shadowMap, shadowCoord.xy, shadowCoord.z ) * 2.0 +
+				texture2DCompare( shadowMap, shadowCoord.xy + o, shadowCoord.z ) + texture2DCompare( shadowMap, shadowCoord.xy - o, shadowCoord.z ) +
+				texture2DCompare( shadowMap, shadowCoord.xy + p, shadowCoord.z ) + texture2DCompare( shadowMap, shadowCoord.xy - p, shadowCoord.z ) ) * ( 1.0 / 6.0 );` + s.slice(e + '( 1.0 / 17.0 );'.length); }
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 // problems worth reporting (a model that failed to load, a shader the headset rejected, a lost GPU context) show on the HUD and the wrist display
 const ERRS = []; const noteErr = m => { m = String(m).replace(/\s+/g, ' ').slice(0, 90); if (!ERRS.includes(m)) { ERRS.push(m); if (ERRS.length > 4) ERRS.shift(); const el = document.getElementById('errs'); if (el) { el.textContent = ERRS.join('\n'); el.style.display = 'block'; } } };
@@ -486,7 +494,7 @@ function backToStart() {
 function goHome() { if (renderer.xr.isPresenting && !DRAFT) return backToStart(); const to = DRAFT ? 'editor.html' : 'play.html'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + '   ·   resolution ' + Math.round(perf.scale * 100) + '%', ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + '   ·   resolution ' + Math.round(perf.scale * 100) + '%' + (perf.vs ? '' : ' (fixed)'), ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
@@ -1084,6 +1092,7 @@ function frame(t) {
   if ((S.phase === 'lobby' || M.training && S.phase === 'active') && !S.menu && (lobbyT -= dt) < 0) { lobbyT = 0.5; showLobbyPanel(); }
   updateTargets(dt); tut.tick(dt); for (const o of S.officers.values()) o.tick(dt); tickShards(dt);
   for (const o of S.officers.values()) { const p = o.head.position; if (S.fly && M.fly.aboard(p.x, p.z, p.y)) o.g.position.copy(S.fly.off); else o.g.position.set(0, 0, 0); }   // others aboard the helicopter ride in with it
+  if (world && world.lampTick) world.lampTick(head.pos, dt);
   if (world && world.gfx.tick) world.gfx.tick(dt, { S, head, officers: S.officers, level, M, renderer, scene });
   { const rt = S.mode && S.phase !== 'ended' ? (S.ropeHint || ropes.prompt() || liftHint()) : ''; if (rt !== S.ropeSaid && !rt) S.ropeSaid = ''; if (rt && (rt !== S.ropeSaid || (S.rope && S.now - (S.ropeHintT || 0) > 7))) { S.ropeSaid = rt; S.ropeHintT = S.now;   /* once as it comes up; repeated now and then only while you hang on the rope */ sayAt(head.pos.x + head.fwd.x * 1.1, head.pos.y - 0.25, head.pos.z + head.fwd.z * 1.1, rt, '#9fffb0'); } }
   spectate(dt);
@@ -1171,7 +1180,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q28';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q29';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

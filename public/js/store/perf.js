@@ -1,13 +1,13 @@
 // Store build: keeps the frame rate up on every headset (VRC.Quest.Performance.1 wants at least 60 fps; we aim for 72).
 //
-// - Before VR starts: which headset is it? Quest 2 gets a slightly smaller render target only if this browser cannot scale the
-//   viewport per frame (Quest Browser 35+ can), so the dynamic step below has nothing to work with.
+// - Before VR starts: if this browser cannot scale the viewport per frame (Quest Browser 35+ can), the dynamic step below has
+//   nothing to work with, so the render target starts a little smaller instead (Quest 2 more than Quest 3).
 // - When VR starts: ask for 72 Hz (both headsets support it; Quest 3 could do 90, but 72 leaves headroom for the busy maps).
 // - Every frame: watch for dropped frames. A second with several drops lowers the render resolution a step (dynamic viewport
 //   scaling: the browser renders a smaller part of the same target and stretches it, no shader or texture changes, so the step
 //   itself costs nothing); eight clean seconds raise it a step again. Foveated rendering is already at its maximum (game.js).
-//   Steps: 100%, 90%, 80%, 72% of the headset's normal resolution.
-export const SCALES = [1, 0.9, 0.8, 0.72];
+//   Steps: 100%, 90%, 80%, 72%, 66% of the headset's normal resolution.
+export const SCALES = [1, 0.9, 0.8, 0.72, 0.66];
 
 export function makePerf(renderer) {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -21,7 +21,7 @@ export function makePerf(renderer) {
     XRWebGLLayer.prototype.__blScaled = true;
   }
 
-  P.beforeSession = () => { try { renderer.xr.setFramebufferScaleFactor(P.device === 'quest2' && !P.vs ? 0.85 : 1); } catch (e) { } };
+  P.beforeSession = () => { try { renderer.xr.setFramebufferScaleFactor(P.vs ? 1 : P.device === 'quest2' ? 0.8 : 0.88); } catch (e) { } };
   P.onSession = s => {
     P.level = 0; P.scale = 1; P.winT = 0; P.drops = 0; P.frames = 0; P.clean = 0; P.cool = 5;   // the first seconds in VR are loading hitches, not a slow scene
     try { const rates = s.supportedFrameRates ? [...s.supportedFrameRates] : []; if (s.updateTargetFrameRate && rates.includes(72)) s.updateTargetFrameRate(72).catch(() => { }); } catch (e) { }
