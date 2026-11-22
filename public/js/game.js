@@ -4,6 +4,7 @@ import { buildWorld, label } from './gfx.js';
 import { Human, Officer, Bomb, Body, RIG, SELF_BACK, GROUND, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
 import { loadCar, loadParkedCars } from './car.js';
 import { setEnvInside } from './mats.js';
+import { gfxMode, gfxLabel, toggleGfx, applyGfx } from './store/gfxmode.js';
 import { CHARS, charReady } from './chars.js';
 import { voiceState, initAudio, setListener, setAmbience, setOccluder, sfx, setMusic } from './audio.js';
 import { makeWeather } from './weather.js';
@@ -42,7 +43,7 @@ renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.setSize(inn
 renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.08;   // rolls off hot spots (flashlight, glass glare) without washing out colour
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // static sun shadows, drawn once
 try { renderer.xr.setFoveation(1); } catch { }
-const perf = makePerf(renderer);
+const perf = makePerf(renderer); perf.fov = gfxMode() === 'quality' ? 0.35 : 1;
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.04, 640), rig = new THREE.Group();
 camera.rotation.order = 'YXZ'; rig.add(camera); scene.add(rig);
@@ -95,6 +96,7 @@ function loadMap(id, tod, force) {
   world = buildWorld(scene, id, T); level = world.level; M = level.map; if (M.race) race = createRace(scene);
   buildTargets();
   if (ready) { S.doorTrap = level.doors.map(() => 0); S.doorOpen = level.doors.map(() => false); S.doorLocked = level.doors.map(() => false); S.deskCam = null; S.deskPick = null; for (const h of hands) h.hold = null; placeMapProps(); applyLook(); }
+  applyGfx(world, renderer); for (const t of [2000, 4000, 12000]) setTimeout(() => { if (gen === mapGen) applyGfx(world, renderer); }, t);   // glass that arrives with the map's models
   renderer.shadowMap.needsUpdate = true; prewarm(gen); setTimeout(() => prewarm(gen), 4000); setTimeout(() => prewarm(gen), 12000);   // again once the models have arrived
   if (!Q.get('lite')) {   // ?lite=1 skips the heavy models (used by the automated tests)
     const keep = m => { if (!m || gen !== mapGen) { if (m) scene.remove(m); return; } if (m.isMesh) m.castShadow = m.receiveShadow = true; extras.push(m); renderer.shadowMap.needsUpdate = true; };
@@ -420,7 +422,7 @@ class Panel {
     // up to three buttons stack full width; more than that, the settings go two to a row and the last (START) runs full width
     if (btns.length <= 3) this.btns = btns.map(([text, act], i) => ({ x: 232, y: 676 - (btns.length - 1 - i) * 86, w: 560, h: 74, text, act }));
     else { const n = btns.length - 1, rows = Math.ceil(n / 2); this.btns = btns.slice(0, n).map(([text, act], i) => ({ x: i % 2 ? 517 : 60, y: 676 - 86 * (rows - Math.floor(i / 2)), w: 447, h: 74, text, act })); const [t, a] = btns[n]; this.btns.push({ x: 60, y: 676, w: 904, h: 74, text: t, act: a }); }
-    for (const b of this.btns) { g.fillStyle = b.act === 'close' || b.act === 'wx' || b.act === 'tod' ? '#39424e' : b.act === 'team' ? (S.me.team === 'tango' ? '#8a2a1f' : '#1f4a8a') : '#1f7a3d'; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; let f = 38; g.font = 'bold ' + f + 'px sans-serif'; while (f > 18 && g.measureText(b.text).width > b.w - 24) { f -= 2; g.font = 'bold ' + f + 'px sans-serif'; } g.textAlign = 'center'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
+    for (const b of this.btns) { g.fillStyle = b.act === 'close' || b.act === 'wx' || b.act === 'gfx' || b.act === 'tod' ? '#39424e' : b.act === 'team' ? (S.me.team === 'tango' ? '#8a2a1f' : '#1f4a8a') : '#1f7a3d'; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; let f = 38; g.font = 'bold ' + f + 'px sans-serif'; while (f > 18 && g.measureText(b.text).width > b.w - 24) { f -= 2; g.font = 'bold ' + f + 'px sans-serif'; } g.textAlign = 'center'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     this.tex.needsUpdate = true;
   }
   place(x, y, z, tx, tz) { this.mesh.position.set(x, y, z); this.mesh.lookAt(tx, y, tz); this.mesh.updateMatrixWorld(true); }
@@ -495,7 +497,7 @@ function backToStart() {
 function goHome() { if (renderer.xr.isPresenting && !DRAFT) return backToStart(); const to = DRAFT ? 'editor.html' : 'play.html'; sfx.click(); try { voice.stop(); } catch (e) { } const s = renderer.xr.getSession && renderer.xr.getSession(); if (s) s.end().catch(() => { }).finally(() => { location.href = to; }); else location.href = to; }
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + '   ·   ' + perf.report(), ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + '   ·   ' + perf.report(), ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'], [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(S.net === 'online' && voice.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], [gfxLabel(), 'gfx'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']]); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
@@ -507,6 +509,7 @@ function tryPanel(o, d) {
   if (act === 'mic') { toggleMic(); toggleMenu(true); return true; }
   if (storeUI.act(act)) return true;
   if (act === 'home') { goHome(); return true; }
+  if (act === 'gfx') { toggleGfx(); perf.fov = gfxMode() === 'quality' ? 0.35 : 1; applyGfx(world, renderer); toggleMenu(true); return true; }
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
   if (act === 'tod') { cycleTod(); showLobbyPanel(); return true; }
   if (act.startsWith('fit:')) { const k = act.slice(4); if (k === 'done') { sfx.click(); S.panel = 'lobby'; showLobbyPanel(); } else { if (k !== 'open') fitStep(k); showFit(k === 'open'); } return true; }
@@ -1205,7 +1208,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q33';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q34';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

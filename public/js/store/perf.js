@@ -27,7 +27,7 @@ export function makePerf(renderer) {
   P.onSession = s => {
     // fixed foveated rendering: three.js only hands its foveation setting to a layer that already exists, and the layer is made
     // when the session starts, so it has to be set again now (OVR Metrics showed FOV 0 until this)
-    try { renderer.xr.setFoveation(1); } catch (e) { }
+    try { renderer.xr.setFoveation(P.fov ?? 1); } catch (e) { }
     P.level = 0; P.scale = 1; P.winT = 0; P.drops = 0; P.frames = 0; P.clean = 0; P.cool = 5;   // the first seconds in VR are loading hitches, not a slow scene
     try { const rates = s.supportedFrameRates ? [...s.supportedFrameRates] : []; if (s.updateTargetFrameRate && rates.includes(72)) s.updateTargetFrameRate(72).catch(() => { }); } catch (e) { }
   };

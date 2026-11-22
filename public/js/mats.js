@@ -60,6 +60,7 @@ function useEnv() {
   const t = ENV.inside ? envIn : envMap; if (t.userData.key !== envKey()) drawEnv();
   for (const m of all) if (m.envMap === envMap || m.envMap === envIn) m.envMap = t;
   for (const m of pbrMats) if (m.envMap === envMap || m.envMap === envIn) m.envMap = t;
+  syncCheap();
 }
 // Redrawing the sky cube re-uploads six faces and makes three.js rebuild the blurred reflection maps of every shiny model, a
 // heavy GPU job: only do it when the sky actually changed.
@@ -69,12 +70,21 @@ export function setEnvSky(sunDir, tod, cast, dark) { const l = Math.hypot(...sun
 export function setEnvInside(inside) { if (!!inside === ENV.inside) return; ENV.inside = !!inside; useEnv(); }
 export function sheen(params, gloss = 'satin') {
   const m = new THREE.MeshPhongMaterial(Object.assign({ combine: THREE.AddOperation }, params)), [shin, spec, refl] = GLOSS[gloss] || GLOSS.satin;
-  m.shininess = shin; m.specular.setScalar(spec); if (refl > 0) { m.envMap = envMap; m.reflectivity = refl; } m.userData.spec = spec; m.userData.refl = refl; all.push(m); return m;
+  m.shininess = shin; m.specular.setScalar(spec); if (refl > 0) { m.envMap = envMap; m.reflectivity = refl; } m.userData.spec = spec; m.userData.refl = refl; m.userData.gloss = gloss; all.push(m); return m;
 }
+// Performance-mode glass (store/gfxmode.js): the same tint, opacity and sky reflection, without the per-light shading. Glass walls
+// fill whole views in the terminal and the casino, and each lit pane cost the full lighting sum per pixel.
+const cheap = new Map();
+export function cheapGlass(m) {
+  let c = cheap.get(m); if (c) return c;
+  c = new THREE.MeshBasicMaterial({ color: m.color, map: m.map, transparent: m.transparent, opacity: m.opacity, side: m.side, depthWrite: m.depthWrite, envMap: m.envMap, combine: THREE.AddOperation, reflectivity: m.reflectivity, fog: m.fog });
+  c.color = m.color; c.userData.src = m; c.name = m.name; cheap.set(m, c); return c;
+}
+const syncCheap = () => { for (const [m, c] of cheap) { c.envMap = m.envMap; c.reflectivity = m.reflectivity; c.opacity = m.opacity; } };
 const all = [];
 // Reflections picture a lit dusk scene, so they are turned down when the lights go out.
 export const pbrMats = [];   // downloaded models keep their PBR materials; their reflections dim with the lights too
-export function setGlossLevel(k) { for (const m of pbrMats) m.envMapIntensity = m.userData.env * k; for (const m of all) { m.reflectivity = m.userData.refl * k; m.specular.setScalar(m.userData.spec * (0.35 + 0.65 * k)); } }
+export function setGlossLevel(k) { for (const m of pbrMats) m.envMapIntensity = m.userData.env * k; for (const m of all) { m.reflectivity = m.userData.refl * k; m.specular.setScalar(m.userData.spec * (0.35 + 0.65 * k)); } syncCheap(); }
 const vc = new Map();
 export const vertexSheen = gloss => vc.get(gloss) || vc.set(gloss, sheen({ vertexColors: true }, gloss)).get(gloss);
 let seed = 7; export const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };

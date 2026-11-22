@@ -234,12 +234,18 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   const [tx, tz] = env.sunAt, [dx, dy, dz] = env.sunFrom, S = env.shadow;
   sun.target.position.set(tx, 0, tz); sun.position.set(tx + dx, dy, tz + dz); root.add(sun.target); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 5, far: Math.hypot(dx, dy, dz) + S * 1.5 }); sun.shadow.camera.updateProjectionMatrix(); sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.07;
+  let lampK = 1;
   // Lamps: every point light in the scene is paid for by every lit pixel, every frame, whether it reaches that pixel or not.
   // So the scene holds at most LAMP_POOL real lights, and each frame they are lent to the lamps that matter most where you
   // stand (strongest light reaching you, by range and brightness); a lamp that loses its light fades out before the light moves.
-  const LAMP_POOL = 4, lampDefs = env.lamps.map(([x, y, z, i = 10, r = 11]) => ({ p: new THREE.Vector3(x, y, z), i, r, k: 1 }));
-  const lamps = lampDefs.slice(0, LAMP_POOL).map((d, n) => { const l = new THREE.PointLight(0xffd9a8, d.i, d.r, 1.8); l.position.copy(d.p); l.userData.i = d.i; l.userData.d = d; l.userData.f = 1; l.userData.want = d; root.add(l); return l; });
-  let lampK = 1;
+  // Performance mode (default) lends 4 lights; quality mode gives every lamp its own (store/gfxmode.js decides, game.js calls setLampPool).
+  let LAMP_POOL = 4; const lampDefs = env.lamps.map(([x, y, z, i = 10, r = 11]) => ({ p: new THREE.Vector3(x, y, z), i, r, k: 1 }));
+  const mkLamp = d => { const l = new THREE.PointLight(0xffd9a8, d.i, d.r, 1.8); l.position.copy(d.p); l.userData.i = d.i; l.userData.d = d; l.userData.f = 1; l.userData.want = d; root.add(l); return l; };
+  const lamps = lampDefs.slice(0, LAMP_POOL).map(mkLamp);
+  const setLampPool = n => { n = Math.min(lampDefs.length, n); if (n === LAMP_POOL && lamps.length === n) return; LAMP_POOL = n;
+    while (lamps.length > n) root.remove(lamps.pop());
+    for (const l of lamps) { const u = l.userData; u.want = u.d; u.f = 1; u.i = u.d.i; l.position.copy(u.d.p); l.distance = u.d.r; l.intensity = u.i * lampK; }
+    for (const d of lampDefs) { if (lamps.length >= n) break; if (!lamps.some(l => l.userData.d === d)) { const l = mkLamp(d); l.intensity = d.i * lampK; lamps.push(l); } } };
   const lampTick = (pos, dt) => {
     if (lampDefs.length <= LAMP_POOL) return;
     const score = d => { const e = d.p.distanceTo(pos) / d.r; return e >= 1.6 ? -e : d.i * (1.6 - e); };
@@ -268,7 +274,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     if (G.look) G.look(night, nvg, wx);
   };
   const dispose = () => { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skyT.dispose(); };
-  return { root, level, map, doors, look, dispose, sun, tod, gfx: G, lampTick };
+  return { root, level, map, doors, look, dispose, sun, tod, gfx: G, lampTick, setLampPool };
 }
 
 // A text tag that always faces you. With no size given it is as wide as its text needs (so nothing is cut off) and `tall` metres high.
