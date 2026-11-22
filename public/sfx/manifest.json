@@ -223,5 +223,8 @@
   "vo_o_onit_4.blx",
   "vo_o_onit_5.blx",
   "vo_o_onit_6.blx"
+ ],
+ "vo_p_shout": [
+  "vo_p_shout_1.blx"
  ]
 }
