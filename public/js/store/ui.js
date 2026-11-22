@@ -2,6 +2,7 @@
 // CREDITS (the attributions the licences ask for). Kept out of game.js so merges from main stay small: game.js only
 // adds the two menu buttons, passes unknown panel actions to act(), and forwards the 'owner' / 'booted' room messages.
 import { CREDITS } from './credits.js';
+import { DBG, toggleDebug } from './debug.js';
 import { WORDS, isCallsign, randomCallsign } from './callsigns.js';
 import { makeUnlock } from './unlock.js';
 
@@ -41,7 +42,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     }
     lines.push('', 'Full list with links: breachline credits page.');
     U.prev = S.panel === 'start' || (S.panel === 'credits' && U.prev) ? 'start' : null; if (U.prev) { S.panel = 'credits'; placeBoard(); }
-    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages, lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
+    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages + (DBG.on ? '   ·   build ' + DBG.build : ''), lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['DEBUG: ' + (DBG.on ? 'ON' : 'OFF'), 'st:debug'], U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
   }
 
   // which edition this headset is running, on the start menu, so a developer unlock is never mistaken for the demo
@@ -155,6 +156,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'freport') { U.reportMap && U.reportMap(); }
     else if (what === 'players') showPlayers();
     else if (what === 'credits') showCredits(+arg || 0);
+    else if (what === 'debug') { toggleDebug(); showCredits(U.page || 0); }
     else if (what === 'mute') { const id = +arg; voice.mutePeer(id, !voice.isPeerMuted(id)); showPlayers(); }
     else if (what === 'boot') { if (U.owner === S.me.id) net.send({ t: 'boot', p: +arg }); setTimeout(showPlayers, 400); }
     return true;
