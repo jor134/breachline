@@ -219,7 +219,7 @@ const CAMS = [['CAM 01 CASINO', [58.5, 6.0, 9.5], [32, 0, 36]], ['CAM 02 CAGE', 
 function buildCCTV(root) {
   const rts = [], cams = [], mats = [];
   CAMS.forEach(([name, p, t], i) => {
-    const rt = new THREE.WebGLRenderTarget(256, 144), cam = new THREE.PerspectiveCamera(78, 16 / 9, 0.1, 120); cam.position.set(...p); cam.lookAt(...t); rts.push(rt); cams.push(cam);
+    const rt = new THREE.WebGLRenderTarget(256, 144), cam = new THREE.PerspectiveCamera(78, 16 / 9, 0.1, 120); cam.layers.enable(5); cam.position.set(...p); cam.lookAt(...t); rts.push(rt); cams.push(cam);
     const m = new THREE.MeshBasicMaterial({ map: rt.texture, color: 0xb8c8e0, toneMapped: false }); mats.push(m);
     const col = i % 3, row = i / 3 | 0, z = 22.6 + col * 2.75, y = 3.1 - row * 0.8, s = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 0.7), m); s.position.set(71.83, y, z); s.rotation.y = -Math.PI / 2; root.add(s);
     plane(root, name, 1.0, 0.09, 71.82, y + 0.28, z + 0.62, -Math.PI / 2, { bg: '#0a0c10', fg: '#9fd8ff', pw: 384, ph: 32 });

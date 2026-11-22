@@ -308,7 +308,8 @@ const breaker = (() => { const g = new THREE.Group(); const box = (w, h, d, c, x
   g.add(box(0.42, 0.62, 0.12, 0x555a60, 0, 0, 0), box(0.36, 0.5, 0.01, 0x3a3e44, 0, -0.03, 0.062), box(0.2, 0.05, 0.012, 0xe8d040, -0.02, 0.26, 0.062, true), lever, led);
   for (let i = 0; i < 6; i++) g.add(box(0.06, 0.035, 0.02, 0x15171a, -0.1, 0.1 - i * 0.06, 0.07)); scene.add(g); return { g, lever, led, cur: 0 }; })();
 const nearBreaker = (p, d) => !!M.breaker && Math.hypot(p.x - M.breaker.x, p.y - M.breaker.y, p.z - M.breaker.z) < d;
-const applyLook = () => { world.look(S.night, S.nvg, S.wx); weather.set(S.wx, S.night, S.nvg); nvgMask.visible = S.nvg; irLamp.intensity = S.nvg ? (S.night ? 3.2 : 1.2) : 0; };
+const lookFog = { c: new THREE.Color(), bg: new THREE.Color(), d: 0, on: false };   // the scene's own fog, for smoke to thicken without re-running the whole look
+const applyLook = () => { world.look(S.night, S.nvg, S.wx); weather.set(S.wx, S.night, S.nvg); nvgMask.visible = S.nvg; irLamp.intensity = S.nvg ? (S.night ? 3.2 : 1.2) : 0; lookFog.on = false; };
 function toggleNVG() { if (nvgFlip.busy()) return; const on = !S.nvg; sfx.nvg(on); nvgFlip.start(on); }   // the goggles flip down / up (js/store/nvgflip.js)
 function hint(x, y, z, text) { if (S.now - S.hintT < 1.2) return; S.hintT = S.now; sayAt(x, y, z, text, '#ffd060'); sfx.beep(null, 300); }
 // wounds: a leg hit slows you, an arm hit shakes your aim; a body diagram shows where you were hit
@@ -988,6 +989,7 @@ function smokeDraw() {
 }
 // ---------- under-door camera: a second small view rendered to a hand-held screen ----------
 const dcam = { cam: new THREE.PerspectiveCamera(105, 4 / 3, 0.03, 40), rt: new THREE.WebGLRenderTarget(256, 192), door: -1, hand: null, n: 0 };
+dcam.cam.layers.enable(5);   // it sees people the headset view has culled behind walls (layer 5, see occlude below)
 dcam.screen = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.15), new THREE.MeshBasicMaterial({ map: dcam.rt.texture, fog: false, toneMapped: false, depthTest: false })); dcam.screen.renderOrder = 992; dcam.screen.visible = false; scene.add(dcam.screen);
 function doorCam(dt) {
   if (S.deskCam) { if ((S.deskCam.t -= dt) <= 0 || S.doorOpen[S.deskCam.id] || S.tool !== 'cam') S.deskCam = null; else { dcam.door = S.deskCam.id; dcam.hand = null; } }
@@ -1055,6 +1057,26 @@ function exitPrompt(dt) {
 let last = performance.now(), poseT = 0, lobbyT = 0;
 const arr7 = (p, q) => [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +q.x.toFixed(4), +q.y.toFixed(4), +q.z.toFixed(4), +q.w.toFixed(4)];
 const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 'mag' ? 3 : 0;
+// People behind walls are not drawn (quest-store, VRC.Quest.Performance.1): every person is several draw calls per eye, and on
+// the big maps most of them are in other rooms. A few people are checked each frame with sight lines from either side of your
+// head to their head and chest (glass lets sight through, as it does for the AI). Someone seen is drawn at once; someone unseen
+// for half a second moves to layer 5 (1 and 2 are three.js's per-eye layers), which the headset view skips and the door and security cameras still draw. Only the
+// drawing changes: they keep moving, talking and making footsteps.
+const occ = { i: 0, eye: V(), dir: V(), side: V() };
+function occlude(dt) {
+  const list = [...S.actors.values()], n = list.length; if (!n) return;
+  occ.side.set(-head.fwd.z, 0, head.fwd.x).normalize().multiplyScalar(0.35);
+  for (let k = 0; k < Math.min(n, 8); k++) {
+    const a = list[occ.i++ % n], p = a.g.position; a.occT = (a.occT || 0) + dt * n / Math.min(n, 8);
+    let seen = !a.g.visible || Math.hypot(p.x - head.pos.x, p.z - head.pos.z) < 6;
+    for (let e = -1; e <= 1 && !seen; e += 2) for (const h of [1.55, 0.95]) {
+      occ.eye.copy(head.pos).addScaledVector(occ.side, e); occ.dir.set(p.x - occ.eye.x, p.y + h - occ.eye.y, p.z - occ.eye.z); const d = occ.dir.length(); occ.dir.multiplyScalar(1 / d);
+      if (rayStatic(level, S.doorOpen, occ.eye.x, occ.eye.y, occ.eye.z, occ.dir.x, occ.dir.y, occ.dir.z, d) >= d - 0.35) { seen = true; break; }
+    }
+    if (seen) a.occT = 0;
+    const hide = a.occT > 0.5; if (hide !== !!a.occHid || hide) { a.occHid = hide; a.g.traverse(o => { if (o.isMesh || o.isPoints || o.isSprite || o.isLine) { o.layers.set(hide ? 5 : 0); } }); }
+  }
+}
 function frame(t) {
   const c0 = performance.now();
   perf.tick((t - last) / 1000, renderer.xr.isPresenting);
@@ -1081,7 +1103,8 @@ function frame(t) {
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
   if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (S.doorOpen[P.id] && (P.lock || P.trap) || !(P.lock ? !S.doorLocked[P.id] : P.trap ? !S.doorTrap[P.id] : P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.lock ? 'lockdoor' : P.trap ? 'trapdoor' : P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
   vestHints(); doorCam(dt); smokeDraw();
-  if (smokeFog > 0.01 || smokeFogCur > 0.01) { smokeFogCur += (smokeFog - smokeFogCur) * Math.min(1, dt * 4); applyLook(); if (smokeFogCur > 0.01) { scene.fog.density += smokeFogCur * 0.6; scene.fog.color.lerp(smokeCol.setRGB(S.nvg ? 0.2 : 0.5, S.nvg ? 0.5 : 0.51, S.nvg ? 0.25 : 0.53), smokeFogCur * 0.8); scene.background.copy(scene.fog.color); } }
+  if (smokeFog > 0.01 || smokeFogCur > 0.01) { if (!lookFog.on) { lookFog.on = true; lookFog.c.copy(scene.fog.color); lookFog.d = scene.fog.density; if (scene.background && scene.background.isColor) lookFog.bg.copy(scene.background); }
+    smokeFogCur += (smokeFog - smokeFogCur) * Math.min(1, dt * 4); scene.fog.color.copy(lookFog.c); scene.fog.density = lookFog.d; if (scene.background && scene.background.isColor) scene.background.copy(lookFog.bg); if (smokeFogCur > 0.01) { scene.fog.density += smokeFogCur * 0.6; scene.fog.color.lerp(smokeCol.setRGB(S.nvg ? 0.2 : 0.5, S.nvg ? 0.5 : 0.51, S.nvg ? 0.25 : 0.53), smokeFogCur * 0.8); scene.background.copy(scene.fog.color); } else lookFog.on = false; }
   // a door lever lights up when an empty hand can work it
   for (const d of world.doors) d.hot = false;
   if (S.mode === 'vr') for (const h of hands) if (h.active && !h.item) { const i = nearestDoor(h.pos, 0.95); if (i >= 0) world.doors[i].hot = true; }
@@ -1100,6 +1123,7 @@ function frame(t) {
   if (race) { S.raceT += dt; race.update(S.raceT, head.pos, level.inside(head.pos.x, head.pos.z, head.pos.y)); }
   // world animation
   for (const a of S.actors.values()) a.update(dt);
+  occlude(dt);
   breaker.cur += ((S.night ? 1 : 0) - breaker.cur) * Math.min(1, dt * 14); breaker.lever.rotation.x = breaker.cur * 2.2; breaker.led.material.color.setHex(S.night ? 0x401010 : 0x30ff60);
   world.doors.forEach((d, i) => { d.cur += ((S.doorOpen[i] ? 1.65 : 0) - d.cur) * Math.min(1, dt * 7); const D = level.doors[i];
     if (D.win) { d.g.visible = !S.doorOpen[i]; return; }   // a breach window: there, or burst
@@ -1181,7 +1205,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q32';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q33';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

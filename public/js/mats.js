@@ -46,12 +46,27 @@ function drawEnv() {
   if (!inside && !cast) {   // the sun or the moon, where the scene's own light comes from
     if (tod === 'night') skyLight(ENV.sun, 0.05, [215, 225, 250]); else skyLight(ENV.sun, tod === 'day' ? 0.1 : 0.085, tod === 'day' ? [255, 248, 230] : [255, 205, 150]);
   }
-  envMap.needsUpdate = true;
+  const t = ENV.inside ? envIn : envMap;   // copy into the cube for this side of the door
+  t.image.forEach((cv, k) => { const c = cv.getContext('2d'); c.clearRect(0, 0, 64, 64); c.drawImage(faces[k], 0, 0); });
+  t.needsUpdate = true; t.userData.key = envKey();
 }
-export const envMap = (() => { const t = new THREE.CubeTexture(faces); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+// Two reflection cubes, outdoors and indoors, each drawn once per sky: walking through a door swaps which one the materials use
+// instead of redrawing, because a redraw makes three.js rebuild the blurred reflections of every shiny model (a GPU hitch).
+const cube = () => { const t = new THREE.CubeTexture([0, 1, 2, 3, 4, 5].map(() => { const c = document.createElement('canvas'); c.width = c.height = 64; return c; })); t.colorSpace = THREE.SRGBColorSpace; return t; };
+const envKey = () => [ENV.sun.join(), ENV.tod, ENV.cast, ENV.dark].join('|');
+export const envMap = cube(), envIn = cube();
 drawEnv();
-export function setEnvSky(sunDir, tod, cast, dark) { const l = Math.hypot(...sunDir) || 1; ENV.sun = sunDir.map(v => v / l); ENV.tod = tod; ENV.cast = !!cast; ENV.dark = !!dark; drawEnv(); }
-export function setEnvInside(inside) { if (!!inside === ENV.inside) return; ENV.inside = !!inside; drawEnv(); }
+function useEnv() {
+  const t = ENV.inside ? envIn : envMap; if (t.userData.key !== envKey()) drawEnv();
+  for (const m of all) if (m.envMap === envMap || m.envMap === envIn) m.envMap = t;
+  for (const m of pbrMats) if (m.envMap === envMap || m.envMap === envIn) m.envMap = t;
+}
+// Redrawing the sky cube re-uploads six faces and makes three.js rebuild the blurred reflection maps of every shiny model, a
+// heavy GPU job: only do it when the sky actually changed.
+export function setEnvSky(sunDir, tod, cast, dark) { const l = Math.hypot(...sunDir) || 1, sun = sunDir.map(v => v / l);
+  if (ENV.sun && sun.every((v, i) => v === ENV.sun[i]) && ENV.tod === tod && ENV.cast === !!cast && ENV.dark === !!dark) return;
+  ENV.sun = sun; ENV.tod = tod; ENV.cast = !!cast; ENV.dark = !!dark; useEnv(); }
+export function setEnvInside(inside) { if (!!inside === ENV.inside) return; ENV.inside = !!inside; useEnv(); }
 export function sheen(params, gloss = 'satin') {
   const m = new THREE.MeshPhongMaterial(Object.assign({ combine: THREE.AddOperation }, params)), [shin, spec, refl] = GLOSS[gloss] || GLOSS.satin;
   m.shininess = shin; m.specular.setScalar(spec); if (refl > 0) { m.envMap = envMap; m.reflectivity = refl; } m.userData.spec = spec; m.userData.refl = refl; all.push(m); return m;
