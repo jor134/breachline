@@ -17,7 +17,12 @@ export const CHARS = {
   // "Terrorist 4" by Upgrade titan camera man
   gunman: { file: 'gunman.glb', h: 1.78, hips: 'root_hips_03', spine: ['spine_lower_010', 'spine_upper_011', 'spine_upper_1_012'], neck: 'head_neck_lower_013', head: 'head_neck_upper_014',
     thigh: side('leg_left_thigh_02', 'leg_right_thigh_01'), shin: side('leg_left_knee_04', 'leg_right_knee_07'), foot: side('leg_left_ankle_05', 'leg_right_ankle_08'),
-    up: side('arm_left_shoulder_2_017', 'arm_right_shoulder_2_015'), fore: side('arm_left_elbow_018', 'arm_right_elbow_032'), hand: side('arm_left_wrist_019', 'arm_right_wrist_033') },
+    up: side('arm_left_shoulder_2_017', 'arm_right_shoulder_2_015'), fore: side('arm_left_elbow_018', 'arm_right_elbow_032'), hand: side('arm_left_wrist_019', 'arm_right_wrist_033'),
+    // quest-store: its hand bones (three per finger: 1 = thumb, 2 = index, 3 = the other three fingers as one), so a terrorist
+    // player's hands close round the gun like the squad's. Without them the hand frame fell back to the forearm, and the palm
+    // length came out as the whole forearm: the hands sat a forearm's length short of the grips.
+    fingers: { L: [['arm_left_finger_2a_023', 'arm_left_finger_2b_024', 'arm_left_finger_2c_025'], ['arm_left_finger_3a_020', 'arm_left_finger_3b_021', 'arm_left_finger_3c_022']], R: [['arm_right_finger_2a_037', 'arm_right_finger_2b_038', 'arm_right_finger_2c_039'], ['arm_right_finger_3a_034', 'arm_right_finger_3b_035', 'arm_right_finger_3c_036']] },
+    thumb: { L: ['arm_left_finger_1a_026', 'arm_left_finger_1b_027', 'arm_left_finger_1c_028'], R: ['arm_right_finger_1a_040', 'arm_right_finger_1b_041', 'arm_right_finger_1c_042'] } },
   // "S.W.A.T. Operator" by Mateusz Wolinski (CC BY 4.0, Mixamo rig): the squad
   swat: { file: 'swat.glb', h: 1.84, hips: 'mixamorigHips_64', spine: ['mixamorigSpine_53', 'mixamorigSpine1_52', 'mixamorigSpine2_51'], neck: 'mixamorigNeck_2', head: 'mixamorigHead_1',
     thigh: side('mixamorigLeftUpLeg_58', 'mixamorigRightUpLeg_63'), shin: side('mixamorigLeftLeg_57', 'mixamorigRightLeg_62'), foot: side('mixamorigLeftFoot_56', 'mixamorigRightFoot_61'),

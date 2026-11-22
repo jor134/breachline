@@ -83,9 +83,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     S.panel = 'start'; placeBoard(); panel.mesh.visible = true;
     panel.draw("YOU CAN'T HIDE", 'Callsign ' + call + '   ·   ' + U.edition(), [
       'Clear buildings, save hostages, disarm bombs.',
-      'PLAY SOLO: you lead three AI officers.',
-      'PLAY ONLINE: up to four players: friends, a room code,',
-      '   or QUICK MATCH as a terrorist. AI fills empty places.',
+      'SOLO: lead three AI officers.   ONLINE: up to four players.',
       'Voice chat with your squad: ' + (voice.on ? 'ON' : 'OFF') + (voice.on && voice.err ? '  (' + voice.err.split(':')[0] + ')' : ''),
       'Point at a button and pull the trigger.',
     ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE' + (social.requests.length ? '  (' + social.requests.length + ' FRIEND REQUEST' + (social.requests.length > 1 ? 'S' : '') + ')' : ''), 'st:online'], ['CREDITS', 'st:credits:0'], ['MUSIC: ' + (S.music === false ? 'OFF' : 'ON'), 'st:music'], ['PLAY SOLO', 'st:solo']]);

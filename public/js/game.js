@@ -181,7 +181,8 @@ const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(ki
 const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol(true, true)) };
 // quest-store: the sidearm drawn 1.6x its modelled size (it read as a toy in the hand). Its points (muzzle, sight, magwell) are in the
 // mesh's own frame, so they scale with it; the grip stays at the hand because the gun frame's origin is the top of the grip.
-const PISTOL_SCALE = 1.675;   // 1.6 asked for with the old .22; the 9 mm model a third smaller, then a quarter larger (18 Nov) guns.pistol.mesh.scale.setScalar(PISTOL_SCALE); for (const h of hands) h.mags.pistol.scale.setScalar(PISTOL_SCALE);
+const PISTOL_SCALE = 1.675;   // 1.6 asked for with the old .22; the 9 mm model a third smaller, then a quarter larger (18 Nov)
+guns.pistol.mesh.scale.setScalar(PISTOL_SCALE); for (const h of hands) h.mags.pistol.scale.setScalar(PISTOL_SCALE);
 // quest-store: hands lock onto the gun. A held gun follows the controller (or, two-handed, the line to the support hand), and the
 // hand drawn on it takes its pose from the gun: the gun hand round the pistol grip, the support hand round the foregrip, wherever
 // the controllers really are. GRIP_AT: where the controller origin would be for a proper grip, in the gun's frame.
@@ -423,6 +424,7 @@ function botSay(e) { const o = S.officers.get(e.p), L = BSAY[e.k]; if (!o || !L)
 botSay.t = {};
 
 // ---------- panels ----------
+const BOARD_K = 1.3;   // quest-store: the start menu and mission board on the wall are drawn 30% larger (easier to read in the headset)
 class Panel {
   constructor() {
     this.c = document.createElement('canvas'); this.c.width = 1024; this.c.height = 768; this.tex = new THREE.CanvasTexture(this.c); this.tex.colorSpace = THREE.SRGBColorSpace;
@@ -435,15 +437,17 @@ class Panel {
     const key = title + sub + lines.join('|') + btns.join('|'); if (key === this.key) return; this.key = key;
     const g = this.c.getContext('2d'); g.fillStyle = '#0c1118'; g.fillRect(0, 0, 1024, 768); g.strokeStyle = '#3a6ea5'; g.lineWidth = 6; g.strokeRect(6, 6, 1012, 756);
     g.fillStyle = '#e8eef5'; let tf = 64; g.font = 'bold 64px sans-serif'; while (tf > 30 && g.measureText(title).width > 960) { tf -= 2; g.font = 'bold ' + tf + 'px sans-serif'; } g.textAlign = 'center'; g.fillText(title, 512, 86); g.font = '30px sans-serif'; g.fillStyle = '#8fb4dc'; g.fillText(sub, 512, 134);
-    g.textAlign = 'left'; g.font = '28px sans-serif';
-    lines.forEach((l, i) => { const [a, b] = Array.isArray(l) ? l : [l, null]; g.fillStyle = b != null && b < 0 ? '#ff8a8a' : '#d5dde6'; g.fillText(a, 60, 190 + i * 39); if (b != null) { g.textAlign = 'right'; g.fillText((b > 0 ? '+' : '') + b, 964, 190 + i * 39); g.textAlign = 'left'; } });
+    // quest-store: the text lines squeeze (closer, then smaller) to fit above the buttons instead of running under them
+    const nb = btns.length, rowsB = nb <= 3 ? nb : Math.ceil((nb - 1) / (nb - 1 > 8 ? 3 : 2)) + 1, topB = 676 - (rowsB - 1) * 86, room = topB - 18 - 190, step = lines.length > 1 ? Math.min(39, room / (lines.length - 1)) : 39, fs = Math.max(17, Math.min(28, Math.round(step * 0.74)));
+    g.textAlign = 'left'; g.font = fs + 'px sans-serif';
+    lines.forEach((l, i) => { const [a, b] = Array.isArray(l) ? l : [l, null]; g.fillStyle = b != null && b < 0 ? '#ff8a8a' : '#d5dde6'; g.fillText(a, 60, 190 + i * step); if (b != null) { g.textAlign = 'right'; g.fillText((b > 0 ? '+' : '') + b, 964, 190 + i * step); g.textAlign = 'left'; } });
     // up to three buttons stack full width; more than that, the settings go two to a row and the last (START) runs full width
     if (btns.length <= 3) this.btns = btns.map(([text, act], i) => ({ x: 232, y: 676 - (btns.length - 1 - i) * 86, w: 560, h: 74, text, act }));
-    else { const n = btns.length - 1, rows = Math.ceil(n / 2); this.btns = btns.slice(0, n).map(([text, act], i) => ({ x: i % 2 ? 517 : 60, y: 676 - 86 * (rows - Math.floor(i / 2)), w: 447, h: 74, text, act })); const [t, a] = btns[n]; this.btns.push({ x: 60, y: 676, w: 904, h: 74, text: t, act: a }); }
-    for (const b of this.btns) { g.fillStyle = b.act === 'close' || b.act === 'wx' || b.act === 'gfx' || b.act === 'tod' ? '#39424e' : b.act === 'team' ? (S.me.team === 'tango' ? '#8a2a1f' : '#1f4a8a') : '#1f7a3d'; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; let f = 38; g.font = 'bold ' + f + 'px sans-serif'; while (f > 18 && g.measureText(b.text).width > b.w - 24) { f -= 2; g.font = 'bold ' + f + 'px sans-serif'; } g.textAlign = 'center'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
+    else { const n = btns.length - 1, cols = n > 8 ? 3 : 2, rows = Math.ceil(n / cols), bw = cols === 3 ? 292 : 447; this.btns = btns.slice(0, n).map(([text, act], i) => ({ x: 60 + (i % cols) * (bw + (cols === 3 ? 14 : 10)), y: 676 - 86 * (rows - Math.floor(i / cols)), w: bw, h: 74, text, act })); const [t, a] = btns[n]; this.btns.push({ x: 60, y: 676, w: 904, h: 74, text: t, act: a }); }   // more than 8 settings: three to a row
+    for (const b of this.btns) { g.fillStyle = b.act === 'close' || b.act === 'wx' || b.act === 'gfx' || b.act === 'tod' || b.act === 'home' ? '#39424e' : b.act === 'team' ? (S.me.team === 'tango' ? '#8a2a1f' : '#1f4a8a') : '#1f7a3d'; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; let f = 38; g.font = 'bold ' + f + 'px sans-serif'; while (f > 18 && g.measureText(b.text).width > b.w - 24) { f -= 2; g.font = 'bold ' + f + 'px sans-serif'; } g.textAlign = 'center'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     this.tex.needsUpdate = true;
   }
-  place(x, y, z, tx, tz) { this.mesh.position.set(x, y, z); this.mesh.lookAt(tx, y, tz); this.mesh.updateMatrixWorld(true); }
+  place(x, y, z, tx, tz, k) { if (k) this.mesh.scale.setScalar(k); this.mesh.position.set(x, y, z); this.mesh.lookAt(tx, y, tz); this.mesh.updateMatrixWorld(true); }
   // returns null = miss, '' = on the panel, or the action of the button under the ray; moves the cursor
   probe(o, d, show) {
     if (!this.mesh.visible) return null;
@@ -455,7 +459,7 @@ class Panel {
   }
 }
 const panel = new Panel();
-const storeUI = makeStoreUI({ panel, S, voice, net, sfx, status, notify: t => hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.1, head.pos.z + head.fwd.z * 1.2, t), back: Object.assign(() => toggleMenu(true), { lobby: () => showLobbyPanel() }), placeBoard: () => { const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); },
+const storeUI = makeStoreUI({ panel, S, voice, net, sfx, status, notify: t => hint(head.pos.x + head.fwd.x * 1.2, head.pos.y - 0.1, head.pos.z + head.fwd.z * 1.2, t), back: Object.assign(() => toggleMenu(true), { lobby: () => showLobbyPanel() }), placeBoard: () => { const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz, BOARD_K); },
   play: (solo, name, room, tut) => { nameIn.value = name; roomIn.value = room; if (tut) TUT = true; initAudio(); return connect(solo); } });
 const coach = new Panel(); coach.mesh.scale.setScalar(0.7); coach.mesh.visible = false;   // the tutorial's own panel (VR)
 const tut = window.__tut = createTutorial({ THREE, scene, S, M: () => M, head, coach, sfx,
@@ -468,18 +472,18 @@ const pvpOn = () => (S.squadT || []).some(t => t === 'tango');
 const teamBtn = () => ['TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT'), 'team'];
 const squadLine = () => (pvpOn() ? 'PvP  -  ' : 'Squad: ') + ((S.squad || []).map((n, i) => n + ((S.squadT || [])[i] === 'tango' ? ' (T)' : pvpOn() ? ' (SWAT)' : '')).join(', ') || '-');
 function showLobbyPanel() {
-  if (S.menu) return; if (storeUI.holdsPanel()) return storeUI.redraw(); if (S.panel === 'fit' && M.training) return showFit(false); if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz);
+  if (S.menu) return; if (storeUI.holdsPanel()) return storeUI.redraw(); if (S.panel === 'fit' && M.training) return showFit(false); if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz, BOARD_K);
   panel.draw("YOU CAN'T HIDE", M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
     [squadLine(), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, tap B/Y = SHOUT, hold = SQUAD. Helmet = NVG.',
-      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.hint ? M.hint : M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+      'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.hint ? M.hint : M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ...(storeUI.store ? [['MAIN MENU', 'home']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 function showBoard() {   // the mission board in the training lobby: pick where the squad goes next, see how the range went
-  S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz); const T = trainLine(), cu = S.customList.find(c => c.id === S.nextMap), nx = MAPS[S.nextMap] || (cu ? { name: cu.name + ' (LOADING)', op: cu.name + '  (by ' + cu.creator + ')' } : MAPS[MISSION_IDS[0]]);
+  S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz, BOARD_K); const T = trainLine(), cu = S.customList.find(c => c.id === S.nextMap), nx = MAPS[S.nextMap] || (cu ? { name: cu.name + ' (LOADING)', op: cu.name + '  (by ' + cu.creator + ')' } : MAPS[MISSION_IDS[0]]);
   panel.draw('MISSION BOARD', 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo (not connected)' : 'connecting'),
     [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')' + storeUI.lockTag(S.nextMap), 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
       'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', ...(S.mode === 'vr' ? [] : ['Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
       'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'])],
-    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : []), S.nextMap.startsWith('s_') ? ['REPORT THIS MAP', 'st:freport'] : ["FRIEND'S MAP", 'st:friend'], ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name, 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : []), S.nextMap.startsWith('s_') ? ['REPORT THIS MAP', 'st:freport'] : ["FRIEND'S MAP", 'st:friend'], ...(storeUI.store ? [['MAIN MENU', 'home']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 // BODY FIT (training board, VR): slide your own body forward/back and up/down under the headset; kept on this device
 const FIT0 = { d: SELF_BACK.d, up: 0, gear: 0, gup: 0 };
@@ -500,7 +504,7 @@ function showEndPanel() {
   const tm = Math.floor(R.time / 60) + ':' + String(R.time % 60).padStart(2, '0');
   panel.draw(R.result, R.pvp ? (R.winner === S.me.team ? 'YOUR SIDE WON' : 'YOUR SIDE LOST') + '   Time ' + tm : 'Grade ' + R.grade + '   Score ' + R.total + '/100   Time ' + tm, R.lines, [...(S.edTest ? [['BACK TO THE EDITOR', 'edit']] : []), ['RESTART', 'start'], ['TRAINING', 'train']]);
 }
-function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z); }
+function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel.place(head.pos.x + f.x * d, Math.max(head.pos.y, S.feetY + 1.2), head.pos.z + f.z * d, head.pos.x, head.pos.z, 1); }
 // back to the start screen (or, testing a draft, to the editor): leave VR first, then reload the page fresh
 // quest-store: MAIN MENU inside VR goes back to the start menu (SOLO / ONLINE / TUTORIAL) without leaving VR. It used to end the
 // VR session and reload the page, which drops you out of the headset view. The room is left, the world goes back to the
@@ -517,7 +521,7 @@ function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
   if (open) { panel.mesh.visible = true; frontOfHead(1.3); const mb = [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['SUPPRESSOR: ' + (SUPP.on ? 'ON' : 'OFF'), 'supp'], ...(S.net === 'online' && voice.on && DBG.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], [gfxLabel(), 'gfx'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']];
     const ml = ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'];
-    panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + (DBG.on ? '   ·   ' + perf.report() : ''), mb.length > 9 ? ml.slice(2, 3) : mb.length > 7 ? ml.slice(0, 3) : ml, mb); }   // a long button list leaves room for less text
+    panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + (DBG.on ? '   ·   ' + perf.report() : ''), ml, mb); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
@@ -1235,7 +1239,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q43';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q44';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
