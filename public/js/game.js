@@ -1094,19 +1094,21 @@ const arr7 = (p, q) => [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3), +q.x.
 const code = h => h.item === 'rifle' ? 1 : h.item === 'pistol' ? 2 : h.item === 'mag' ? 3 : 0;
 // People behind walls are not drawn (quest-store, VRC.Quest.Performance.1): every person is several draw calls per eye, and on
 // the big maps most of them are in other rooms. A few people are checked each frame with sight lines from either side of your
-// head to their head and chest (glass lets sight through, as it does for the AI). Someone seen is drawn at once; someone unseen
+// head to their head and chest (glass, breach windows included, lets sight through; anyone within 10 m is always drawn). Someone seen is drawn at once; someone unseen
 // for half a second moves to layer 5 (1 and 2 are three.js's per-eye layers), which the headset view skips and the door and security cameras still draw. Only the
 // drawing changes: they keep moving, talking and making footsteps.
 const occ = { i: 0, eye: V(), dir: V(), side: V() };
 function occlude(dt) {
   const list = [...S.actors.values()], n = list.length; if (!n) return;
   occ.side.set(-head.fwd.z, 0, head.fwd.x).normalize().multiplyScalar(0.35);
+  // breach windows are doors in the game logic, but glass to the eye: sight passes them shut or broken
+  const seeOpen = occ.open || (occ.open = []); for (let i = 0; i < level.doors.length; i++) seeOpen[i] = S.doorOpen[i] || !!level.doors[i].win; seeOpen.length = level.doors.length;
   for (let k = 0; k < Math.min(n, 8); k++) {
     const a = list[occ.i++ % n], p = a.g.position; a.occT = (a.occT || 0) + dt * n / Math.min(n, 8);
-    let seen = !a.g.visible || Math.hypot(p.x - head.pos.x, p.z - head.pos.z) < 6;
+    let seen = !a.g.visible || Math.hypot(p.x - head.pos.x, p.z - head.pos.z) < 10;
     for (let e = -1; e <= 1 && !seen; e += 2) for (const h of [1.55, 0.95]) {
       occ.eye.copy(head.pos).addScaledVector(occ.side, e); occ.dir.set(p.x - occ.eye.x, p.y + h - occ.eye.y, p.z - occ.eye.z); const d = occ.dir.length(); occ.dir.multiplyScalar(1 / d);
-      if (rayStatic(level, S.doorOpen, occ.eye.x, occ.eye.y, occ.eye.z, occ.dir.x, occ.dir.y, occ.dir.z, d) >= d - 0.35) { seen = true; break; }
+      if (rayStatic(level, seeOpen, occ.eye.x, occ.eye.y, occ.eye.z, occ.dir.x, occ.dir.y, occ.dir.z, d) >= d - 0.35) { seen = true; break; }
     }
     if (seen) a.occT = 0;
     const hide = a.occT > 0.5; if (hide !== !!a.occHid || hide) { a.occHid = hide; a.g.traverse(o => { if (o.isMesh || o.isPoints || o.isSprite || o.isLine) { o.layers.set(hide ? 5 : 0); } }); }
@@ -1240,7 +1242,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q40';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q41';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
