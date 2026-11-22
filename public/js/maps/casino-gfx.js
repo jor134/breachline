@@ -289,6 +289,15 @@ export default {
     if (w.f === 0 && w.x0 < 13.9 && w.x1 <= 14.3 && w.z0 >= 7.7 && w.z1 <= 32.3) return 'goldwall';
     return 'cwall';
   },
+  // the finish of a wall face by the room in front of it (x, z just off the face): back of house and the cage concrete-panelled, the
+  // high-limit room gold, the lift car steel, the suites plaster, the casino itself its own panels
+  innerAt: (f, x, z) => {
+    if (x >= CAR.x0 - 0.3 && x <= CAR.x1 + 0.3 && z <= CAR.z1 + 0.2) return 'steelwall';
+    if (f >= 3) return 'plaster'; if (f === 2) return 'bohwall';
+    if (z < 8 || (x > 60 && z >= 8 && z <= 20.3)) return 'bohwall';
+    if (f === 0 && x < 14 && z >= 8 && z <= 32) return 'goldwall';
+    return 'cwall';
+  },
   door: d => d.win ? 'winpane' : d.lift !== undefined ? 'steel' : d.exterior ? 'glassdoor' : 'door',
   furn,
   // Two zones that are drawn only when they can be seen (gfx.js puts every piece lying wholly inside one into its own meshes):
@@ -372,7 +381,7 @@ export default {
         for (let i = 0; i < N; i++) { const top = k * H + (i + 1) * H / N, za = west ? SHAFT.s - (i + 1) * RUN / N : SHAFT.n + i * RUN / N, zb = za + RUN / N; B('concrete', x0, x1, top - 0.04, top, za, zb, 'xXYzZ', 1); B('padY', x0, x1, top - 0.002, top + 0.001, west ? zb - 0.05 : za, west ? zb : za + 0.05, 'Y', 1); }
         const zl = west ? SHAFT.s : SHAFT.n, zh = west ? SHAFT.n : SHAFT.s, y0 = k * H - 0.2, y1 = k * H + H - 0.2; b('concrete').quad([x0, y0, zl], [x1, y0, zl], [x1, y1, zh], [x0, y1, zh], [0, -0.857, west ? -0.514 : 0.514], 0.5); }
       for (const [y, z0, z1] of [[H, SHAFT.z0, SHAFT.n], [2 * H, SHAFT.s, SHAFT.z1]]) B('concrete', SHAFT.x0, SHAFT.x1, y - 0.2, y, z0, z1, 'Yy' + (z0 > 0 ? 'z' : 'Z'), 0.5);
-      plane(root, 'ROOF ACCESS', 1.6, 0.3, 29, POD + 2.55, WING.z1 + 0.13, 0, { bg: '#c22a24' }); plane(root, 'CASINO \u25BC', 1.4, 0.3, 26.13, POD + 2.3, 10, Math.PI / 2, { bg: '#c22a24' }); plane(root, 'CASINO 1', 1.2, 0.3, SHAFT.x0 + 0.06, 2.2, 7.3, Math.PI / 2, { bg: '#c22a24' }); }
+      plane(root, 'ROOF ACCESS', 1.6, 0.3, 29, POD + 2.55, WING.z1 + 0.13, 0, { bg: '#c22a24' }); plane(root, 'CASINO \u25BC', 1.4, 0.3, 26.13, POD + 2.3, 10, Math.PI / 2, { bg: '#c22a24' }); plane(root, 'CASINO 1', 1.0, 0.26, SHAFT.x0 + 0.13, 2.5, 7.35, Math.PI / 2, { bg: '#c22a24' });   /* on the shaft's face of the wall (half a wall is 0.1 m), over the door */ }
     // ---- the service lift: call panels and a hatch light in each car ----
     for (const y of [0, F3]) { B('steelwall', CAR.x1 - 0.06, CAR.x1 - 0.04, y + 1.0, y + 1.5, CAR.z1 - 0.7, CAR.z1 - 0.4, 'x', 1); b('cglow').box(CAR.x1 - 0.07, CAR.x1 - 0.06, y + 1.2, y + 1.3, CAR.z1 - 0.6, CAR.z1 - 0.5, 'x', 1); b('cglow').box(CAR.x0 + 0.5, CAR.x1 - 0.5, y + H - 0.03, y + H - 0.02, CAR.z0 + 0.6, CAR.z1 - 0.6, 'y', 1);
       plane(root, y ? 'SERVICE  1  ▼' : 'SERVICE  3  ▲', 1.6, 0.22, (CAR.x0 + CAR.x1) / 2, y + 3.3, CAR.z1 + 0.12, 0, { bg: '#0d0f12', fg: '#ff9a3a' }); }
@@ -426,7 +435,7 @@ export default {
         b('podclad').quad([xa, y1, FOOT.z1], [xb, y1, FOOT.z1], [xb, y1, zb], [xa, y1, za], [0, 1, 0], 0.3); b('podclad').quad([xa, y0, FOOT.z1], [xb, y0, FOOT.z1], [xb, y0, zb], [xa, y0, za], [0, -1, 0], 0.3);
         const nz = [-(zb - za), 0, step], l = Math.hypot(nz[0], nz[2]); b('podclad').quad([xa, y0 - 0.5, za], [xb, y0 - 0.5, zb], [xb, y1 + 0.15, zb], [xa, y1 + 0.15, za], [nz[0] / l, 0, nz[2] / l], 0.5);
         b('podclad').quad([xa, y0 - 0.5, za - 0.12], [xb, y0 - 0.5, zb - 0.12], [xb, y0 - 0.5, zb], [xa, y0 - 0.5, za], [0, -1, 0], 0.5);
-        B('podclad', xa + 0.44, xa + 0.56, y0 - 0.45, y0, FOOT.z1 + 0.6, za - 0.15, 'xXz', 1); b('cglow').quad([xa + 0.97, y0 - 0.01, FOOT.z1 + 0.8], [xa + 1.03, y0 - 0.01, FOOT.z1 + 0.8], [xa + 1.03, y0 - 0.01, Math.min(za, zb) - 0.3], [xa + 0.97, y0 - 0.01, Math.min(za, zb) - 0.3], [0, -1, 0]); }
+        B('podclad', xa + 0.44, xa + 0.56, y0 - 0.45, y0, FOOT.z1 + 0.12, za - 0.15, 'xXz', 1); b('cglow').quad([xa + 0.97, y0 - 0.01, FOOT.z1 + 0.2], [xa + 1.03, y0 - 0.01, FOOT.z1 + 0.2], [xa + 1.03, y0 - 0.01, Math.min(za, zb) - 0.3], [xa + 0.97, y0 - 0.01, Math.min(za, zb) - 0.3], [0, -1, 0]); }
       for (const x of [Cn.x0, Cn.x1]) b('podclad').box(x - 0.05, x + 0.05, y0 - 0.5, y1 + 0.15, FOOT.z1, zf(x), x < 36 ? 'x' : 'X', 0.5);
       plane(root, 'THE ASTERION', 10, 0.9, 36, y0 + 0.2, zf(36) + 0.03, 0, { bg: null, fg: '#c9a457', pw: 1024, ph: 96 });
       plane(root, 'THE ASTERION', 16, 1.6, 36, 5.4, FOOT.z1 + 0.57, 0, { bg: null, fg: '#d8b468', pw: 1024, ph: 104 });

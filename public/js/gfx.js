@@ -172,7 +172,19 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
       const wall = w.kind === 'wall', hz = wall ? w.horiz : (w.z1 - w.z0 < 0.3 && w.x1 - w.x0 > 0.3), out = w.out || '';
       // Only faces that can be seen are drawn: an end buried in a crossing wall has no end face, so no two surfaces share a plane (that was the flicker).
       const faces = hz ? 'zZ' + (wall && w.capA ? 'x' : '') + (wall && w.capB ? 'X' : '') : 'xX' + (wall && w.capA ? 'z' : '') + (wall && w.capB ? 'Z' : '');
-      b(G.inner ? G.inner(w) : 'plaster').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, faces.replace(out, '') + (wall ? '' : 'y'));
+      // a map can give each face its own finish by what room it faces (G.innerAt), split where the rooms on that side change:
+      // a wall between a back corridor and the casino floor was one finish on both sides
+      const fs = faces.replace(out, '') + (wall ? '' : 'y');
+      if (G.innerAt && wall) {
+        const cuts = (lo, hi) => [lo, ...[...new Set(map.rooms.filter(r => r[0] === w.f).flatMap(r => hz ? [r[2], r[4]] : [r[3], r[5]]))].filter(v => v > lo + 0.05 && v < hi - 0.05).sort((a, c) => a - c), hi];
+        for (const f of fs) {
+          if ('xX'.includes(f) === !hz || f === 'y') {   // a long face: split along the wall
+            const lo = hz ? w.x0 : w.z0, hi = hz ? w.x1 : w.z1, C = cuts(lo, hi), d = 'xz'.includes(f) ? -0.15 : 0.15;
+            for (let i = 0; i < C.length - 1; i++) { const m = (C[i] + C[i + 1]) / 2, mat = hz ? G.innerAt(w.f, m, (d < 0 ? w.z0 : w.z1) + d) : G.innerAt(w.f, (d < 0 ? w.x0 : w.x1) + d, m);
+              if (hz) b(mat).box(C[i], C[i + 1], w.y0, w.y1, w.z0, w.z1, f); else b(mat).box(w.x0, w.x1, w.y0, w.y1, C[i], C[i + 1], f); }
+          } else b(G.inner(w)).box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, f);   // an end face
+        }
+      } else b(G.inner ? G.inner(w) : 'plaster').box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, fs);
       if (out) b(G.outer(w)).box(w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, out, 1);
       if (wall) for (const f of (hz ? 'zZ' : 'xX')) {   // contact shading along the foot and head of every inside wall face, and on the floor beside it
         if (f === out) continue; const s = f === 'z' || f === 'x' ? -1 : 1, e = 0.006, y0 = w.y0, y1 = w.y1;

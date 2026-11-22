@@ -9,7 +9,7 @@ R = '/tmp/cine/frames/'
 EDL = [   # ('i', image, len) | ('r', render name, len) | (video, start, len)
   ('i', '/tmp/tr4/intro.png', 3.6),
   (2, 37.4, 2.4), (2, 5.0, 2.4), (2, 60.6, 3.6),                                  # mansion: front in the rain, at the door, flashbang
-  ('r', 'r1', 3.6), ('r', 'r2', 2.4), ('N', 343.0, 2.4), ('r', 'r3', 2.4), ('N', 311.4, 1.2), ('N', 376.0, 1.2),   # casino (drop at 12.16 s)
+  ('r', 'r1', 3.6), ('r', 'r2', 2.4), ('N', 306.5, 2.4), ('r', 'r3', 2.4), ('N', 311.4, 1.2), ('N', 376.0, 1.2),   # casino (drop at 12.16 s)
   ('N', 246.0, 3.6), ('N', 181.0, 2.4), ('N', 66.6, 3.6),                          # airport: to the jet, a surrender, gearing up
   ('N', 76.6, 3.6), ('N', 20.0, 2.4), ('N', 84.0, 3.6),                            # Grand Prix: cars flat out, garage arrest, tool wheel
   (3, 21.0, 2.4), (3, 129.0, 2.4), (3, 201.0, 2.4), (3, 180.0, 2.4),               # editor
