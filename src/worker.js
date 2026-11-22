@@ -4,17 +4,26 @@ import { RoomHost, TICK } from '../public/js/core/host.js';
 import { buildLevel, findPath, registerMap, MAPS } from '../public/js/core/level.js';
 import { compile, check } from '../public/js/core/maps/custom.js';
 import { cleanCallsign } from '../public/js/store/callsigns.js';
+import { Social, makeTicket, readTicket, ROOM_RE } from './social.js';
+export { Social };
 
 const ASSET_LINKS = [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: 'com.jordanbreccia.youcanthide', sha256_cert_fingerprints: ['5D:F8:23:37:37:DC:A0:A5:13:6E:92:74:2C:AE:D3:BE:C3:79:6A:E2:24:18:6F:93:25:4B:6B:5E:84:11:69:0C'] } }];
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 const library = env => env.LIBRARY.get(env.LIBRARY.idFromName('library'));
+const social = env => env.SOCIAL && env.SOCIAL.get(env.SOCIAL.idFromName('social'));
+const SOCIAL_API = ['hello', 'accept', 'decline', 'remove', 'block', 'join', 'match', 'forget'];
 
 export default {
   async fetch(req, env) {
-    const url = new URL(req.url), m = url.pathname.match(/^\/ws\/([A-Za-z0-9]{3,8})$/);
+    const url = new URL(req.url), m = url.pathname.match(/^\/ws\/([A-Za-z0-9]{1,12})$/);
     if (m) {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
-      return env.ROOMS.get(env.ROOMS.idFromName(m[1].toUpperCase())).fetch(req);
+      // quest-store: 6-character room codes from an alphabet without look-alikes (no I, O, 0, 1): about a billion rooms, so a code
+      // cannot be guessed. The old 4-digit codes are refused.
+      const code = m[1].toUpperCase(); if (!ROOM_RE.test(code)) return new Response('Room codes have 6 characters', { status: 400 });
+      // the player's account (from their signed ticket) goes to the room as ?acct=; anything the client put there is dropped
+      const acct = await readTicket(env, url.searchParams.get('t')); url.searchParams.delete('t'); url.searchParams.delete('acct'); if (acct) url.searchParams.set('acct', acct);
+      return env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(new Request(url.toString(), req));
     }
     // quest-store: Digital Asset Links, so the Quest app (a Trusted Web Activity) may open this site full screen in VR. The
     // fingerprint is the public SHA-256 of the app's signing certificate (not a secret). An immersive app will not launch without it.
@@ -26,6 +35,18 @@ export default {
       await new Promise(r => setTimeout(r, 400));   // slows guessing
       return json({ ok: !diff }, diff ? 403 : 200);
     }
+    // quest-store: accounts and friends (src/social.js). /api/me turns the full-game purchase token into a signed ticket.
+    if (url.pathname === '/api/me' && req.method === 'POST') {
+      const b = await req.json().catch(() => ({})), t = await makeTicket(env, b.token);
+      return t ? json({ ticket: t.ticket, acct: t.acct.slice(0, 6) }) : json({ error: 'Friends are switched off' }, 503);
+    }
+    const sm = url.pathname.match(/^\/api\/social\/([a-z]+)$/);
+    if (sm) {
+      if (req.method !== 'POST' || !SOCIAL_API.includes(sm[1]) || !social(env)) return json({ error: 'Not found' }, 404);
+      const acct = await readTicket(env, (req.headers.get('authorization') || '').replace(/^Bearer /, '')); if (!acct) return json({ error: 'Not signed in' }, 401);
+      return social(env).fetch(new Request('https://social/' + sm[1], { method: 'POST', headers: { 'content-type': 'application/json', 'x-acct': acct }, body: await req.text() }));
+    }
+    if (url.pathname.startsWith('/api/admin/')) await new Promise(r => setTimeout(r, 400));   // slows guessing the creator code
     if (url.pathname.startsWith('/api/')) {
       // the creator code travels to the library in a header, set by this Worker from its secret, never from the client
       const fwd = new Request(req); fwd.headers.set('x-creator-code', env.CREATOR_CODE || ''); return library(env).fetch(fwd);
@@ -94,6 +115,16 @@ export class Library {
         this.sql.exec('UPDATE shared SET used = ? WHERE id = ?', Date.now(), sm[1]); return new Response(r.data, { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }); }
       sm = p.match(/^\/api\/share\/(\d{8})\/report$/);
       if (sm && req.method === 'POST') { this.sql.exec('UPDATE shared SET reports = reports + 1 WHERE id = ?', sm[1]); return json({ ok: true }); }
+      // quest-store: the admin page (/admin.html): reported friend maps, behind the creator code
+      if (p.startsWith('/api/admin/') && req.method === 'POST') {
+        const b = await req.json().catch(() => null), err = await authed(b); if (err) return json({ error: err }, 403);
+        const id = typeof b.id === 'string' && /^\d{8}$/.test(b.id) ? b.id : '';
+        if (p === '/api/admin/reported') return json({ maps: [...this.sql.exec('SELECT id, data, created, used, reports FROM shared WHERE reports > 0 ORDER BY used DESC LIMIT 100')].map(r => ({ id: r.id, created: r.created, used: r.used, reports: r.reports, map: JSON.parse(r.data) })), total: [...this.sql.exec('SELECT COUNT(*) AS n FROM shared')][0].n });
+        if (!id) return json({ error: 'Which map?' }, 400);
+        if (p === '/api/admin/restore') { this.sql.exec('UPDATE shared SET reports = 0 WHERE id = ?', id); return json({ ok: true }); }
+        if (p === '/api/admin/delete') { this.sql.exec('DELETE FROM shared WHERE id = ?', id); return json({ ok: true }); }
+        return json({ error: 'Not found' }, 404);
+      }
       if (p === '/api/tex' && req.method === 'POST') {   // a texture: the editor has already shrunk it to a small JPEG
         const b = await req.json(), err = await authed(b); if (err) return json({ error: err }, 403);
         const m2 = typeof b.jpeg === 'string' && b.jpeg.match(/^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/); if (!m2) return json({ error: 'Expected a JPEG' }, 400);
@@ -111,11 +142,17 @@ export class Library {
 export class Room {
   constructor(state, env) {
     this.env = env; this.socks = new Map(); this.next = 1; this.timer = null; this.queue = Promise.resolve();
+    // quest-store: who each player is (account, from the ticket the Worker checked) and who came in through QUICK MATCH
+    this.acct = new Map(); this.mm = new Set(); this.open = false; this.code = ''; this.reportT = 0; this.lastRep = '';
     this.host = new RoomHost((id, obj) => {
       const s = JSON.stringify(obj);
       if (id == null) { for (const ws of this.socks.values()) try { ws.send(s); } catch {} }
       else { try { this.socks.get(id)?.send(s); } catch {} }
     });
+  }
+  social(path, body) {
+    const S = this.env && this.env.SOCIAL; if (!S) return Promise.resolve(null);
+    return S.get(S.idFromName('social')).fetch(new Request('https://social' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).then(r => r.json()).catch(() => null);
   }
   // a message that names a published map loads it from the library first (once per room)
   async ensureMap(mid) {
@@ -126,31 +163,59 @@ export class Room {
   // quest-store: the longest-connected player owns the room and may remove others (store policy: players need a way to deal
   // with someone abusive in a lobby). Everyone is told who the owner is whenever it can change.
   owner() { for (const id of this.socks.keys()) return id; return 0; }
-  announceOwner() { const s = JSON.stringify({ t: 'owner', id: this.owner() }); for (const ws of this.socks.values()) try { ws.send(s); } catch {} }
+  bcast(o) { const s = JSON.stringify(o); for (const ws of this.socks.values()) try { ws.send(s); } catch {} }
+  announceOwner() { this.bcast({ t: 'owner', id: this.owner(), open: this.open, mm: [...this.mm] }); }
   boot(from, target) {
     if (from !== this.owner() || target === from) return; const ws = this.socks.get(target); if (!ws) return;
     try { ws.send(JSON.stringify({ t: 'booted' })); } catch {}
     try { ws.close(4001, 'Removed by the room owner'); } catch {}
-    if (this.socks.delete(target)) { this.host.leave(target); this.announceOwner(); }
+    this.gone(target);
+  }
+  gone(id) { if (!this.socks.delete(id)) return; this.acct.delete(id); this.mm.delete(id); this.host.leave(id); this.announceOwner(); this.refresh(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } }
+  // QUICK MATCH may put a stranger in only while the owner has the room open and the squad is in the lobby
+  lobby() { const s = this.host.sim; return s.phase !== 'active' || !!s.M.training; }
+  teams() { let swat = 0, tango = 0; for (const p of this.host.sim.players.values()) if (!p.bot) { if (p.team === 'tango') tango++; else swat++; } return { swat, tango }; }
+  // tell each player what the others are to them (friend, request sent or received, blocked) and the matchmaker how the room stands
+  refresh() {
+    const players = [...this.socks.keys()].map(id => [id, this.acct.get(id) || '']);
+    if (players.filter(p => p[1]).length > 1) this.social('/internal/rels', { players }).then(r => { if (!r || !r.rels) return; for (const [id] of players) try { this.socks.get(id)?.send(JSON.stringify({ t: 'rel', m: r.rels[id] || {} })); } catch {} });
+    this.report(true);
+  }
+  report(force) {
+    if (!this.code) return; const { swat, tango } = this.teams(), rep = { code: this.code, open: this.open, swat, tango, n: this.socks.size, lobby: this.lobby(), accts: [...this.acct.values()] }, k = JSON.stringify(rep);
+    if (!force && k === this.lastRep && Date.now() - this.reportT < 15000) return; this.lastRep = k; this.reportT = Date.now(); this.social('/internal/room', rep);
   }
   async fetch(req) {
-    const name = cleanCallsign(new URL(req.url).searchParams.get('name'));   // quest-store: preset callsigns only, no free text
+    const url = new URL(req.url), q = url.searchParams, name = cleanCallsign(q.get('name'));   // quest-store: preset callsigns only, no free text
+    this.code = (url.pathname.split('/').pop() || '').toUpperCase();
+    const acct = /^[0-9a-f]{24}$/.test(q.get('acct') || '') ? q.get('acct') : '', mm = q.get('mm') === '1', mmBack = q.get('mm') === '2';   // 2: a matchmade player rejoining after a drop
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
+    if (mm && (!this.open || !this.lobby() || this.teams().swat < 1)) { try { server.send(JSON.stringify({ t: 'mmgone' })); } catch {} server.close(4002, 'That game is no longer open'); return new Response(null, { status: 101, webSocket: client }); }
+    if (!this.socks.size) this.open = q.get('open') === '1';   // the first one in decides whether strangers may come
     const id = this.next++; this.socks.set(id, server);
     if (!this.host.join(id, name)) { this.socks.delete(id); server.close(4000, 'Room full'); return new Response(null, { status: 101, webSocket: client }); }
-    const bye = () => { if (!this.socks.delete(id)) return; this.host.leave(id); this.announceOwner(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } };
-    this.announceOwner();
+    if (acct) this.acct.set(id, acct);
+    if (mm || mmBack) { this.mm.add(id); this.host.sim.setTeam(id, 'tango'); }   // strangers play the terrorists
+    const bye = () => this.gone(id);
+    this.announceOwner(); this.refresh();
     server.addEventListener('message', e => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
       if (m && m.t === 'boot') { this.boot(id, m.p); return; }   // quest-store: the room owner removes a player
+      if (m && m.t === 'open') { if (id === this.owner()) { this.open = !!m.v; this.announceOwner(); this.report(true); } return; }   // the owner opens the room to strangers or closes it
+      if (m && m.t === 'friend') { const a = this.acct.get(id), b = this.acct.get(m.p); if (!a || !b) { try { server.send(JSON.stringify({ t: 'friendres', p: m.p, res: 'noacct' })); } catch {} return; }
+        this.social('/internal/request', { from: a, to: b }).then(r => { try { server.send(JSON.stringify({ t: 'friendres', p: m.p, res: r && r.res || 'error' })); } catch {} if (r && (r.res === 'sent' || r.res === 'friend')) { try { this.socks.get(m.p)?.send(JSON.stringify({ t: 'friendreq', p: id, res: r.res })); } catch {} } this.refresh(); }); return; }
+      if (m && m.t === 'block') { const a = this.acct.get(id), b = this.acct.get(m.p); if (a && b) this.social('/internal/block', { from: a, to: b }).then(() => this.refresh()); return; }
+      if (m && m.t === 'rels') { this.refresh(); return; }
+      if (m && m.t === 'team' && this.mm.has(id)) return;   // a matchmade stranger stays a terrorist
       if (m && m.t === 'sig') { const to = this.socks.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
       const mid = m && (m.m || m.map);
       if (typeof mid === 'string' && (mid.startsWith('u_') || mid.startsWith('s_')) && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });
       else this.queue = this.queue.then(() => { try { this.host.message(id, m); } catch {} });
+      if (m && (m.t === 'team' || m.t === 'start' || m.t === 'restart')) setTimeout(() => this.report(false), 100);
     });
     server.addEventListener('close', bye); server.addEventListener('error', bye);
-    if (!this.timer) { let last = Date.now(); this.timer = setInterval(() => { const now = Date.now(), dt = Math.min(0.25, (now - last) / 1000); last = now; try { this.host.tick(dt); } catch (e) { if (!this.tickErr || now - this.tickErr > 10000) { this.tickErr = now; console.error('room tick failed', e && e.stack || e); } } }, TICK * 1000); }   // a bad tick is logged, it does not stop the room
+    if (!this.timer) { let last = Date.now(); this.timer = setInterval(() => { const now = Date.now(), dt = Math.min(0.25, (now - last) / 1000); last = now; try { this.host.tick(dt); } catch (e) { if (!this.tickErr || now - this.tickErr > 10000) { this.tickErr = now; console.error('room tick failed', e && e.stack || e); } } if (now - this.reportT > 5000) this.report(false); }, TICK * 1000); }   // a bad tick is logged, it does not stop the room
     return new Response(null, { status: 101, webSocket: client });
   }
 }

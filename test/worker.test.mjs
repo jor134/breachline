@@ -5,13 +5,15 @@ globalThis.WebSocketPair = class { constructor() { const a = new Sock(), b = new
 globalThis.Response = class { constructor(body, init = {}) { this.body = body; Object.assign(this, init); this.status = init.status || 200; } };
 const { default: worker, Room } = await import('../src/worker.js');
 const rooms = new Map(), env = { ROOMS: { idFromName: n => n, get: id => rooms.get(id) || rooms.set(id, new Room()).get(id) } };
-const req = (path, ws = true) => ({ url: 'https://x.dev' + path, headers: { get: h => (ws && h === 'Upgrade' ? 'websocket' : null) } });
+const req = (path, ws = true) => new Request('https://x.dev' + path, { headers: ws ? { Upgrade: 'websocket' } : {} });
 const join = async (path) => { const r = await worker.fetch(req(path), env); assert.equal(r.status, 101); const msgs = []; r.webSocket.addEventListener('message', e => msgs.push(JSON.parse(e.data))); return { ws: r.webSocket, msgs }; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 assert.equal((await worker.fetch(req('/nope'), env)).status, 404);
-assert.equal((await worker.fetch(req('/ws/ABCD', false), env)).status, 426);
-const a = await join('/ws/abcd?name=VIPER-27'), b = await join('/ws/ABCD?name=bad%20words'), c = await join('/ws/ZZZ9?name=Other');
+assert.equal((await worker.fetch(req('/ws/ABCDEF', false), env)).status, 426);
+assert.equal((await worker.fetch(req('/ws/1234'), env)).status, 400, 'quest-store: old 4-digit codes are refused');
+assert.equal((await worker.fetch(req('/ws/ABCDE0'), env)).status, 400, 'no look-alike characters');
+const a = await join('/ws/abcdef?name=VIPER-27'), b = await join('/ws/ABCDEF?name=bad%20words'), c = await join('/ws/ZZZ999?name=Other');
 await sleep(200);
 assert.equal(a.msgs[0].t, 'welcome'); assert.equal(b.msgs[0].slot, 1); assert.equal(rooms.size, 2, 'room codes are case-insensitive and isolated');
 const snapA = a.msgs.filter(m => m.t === 's').at(-1); assert.equal(snapA.P[0][1], 'VIPER-27'); assert.match(snapA.P[1][1], /^OFFICER-\d\d$/, 'quest-store: free-text names are replaced');
@@ -24,9 +26,9 @@ const n1 = a.msgs.filter(m => m.t === 's').length; await sleep(400); const rate 
 // voice chat set-up passes from one player to the other untouched, tagged with the sender, and never reaches the game
 const idA = a.msgs[0].id, idB = b.msgs[0].id; a.ws.send(JSON.stringify({ t: 'sig', to: idB, data: { desc: { type: 'offer', sdp: 'v=0' } } })); await sleep(100);
 const sig = b.msgs.find(m => m.t === 'sig'); assert.ok(sig && sig.from === idA && sig.data.desc.type === 'offer', 'signal relayed'); assert.ok(!c.msgs.some(m => m.t === 'sig'), 'only to the addressee');
-for (let i = 0; i < 4; i++) await join('/ws/FULL?name=p' + i); const extra = await join('/ws/FULL?name=late'); await sleep(100); assert.equal(extra.msgs[0].t, 'full');
+for (let i = 0; i < 4; i++) await join('/ws/FULLRM?name=p' + i); const extra = await join('/ws/FULLRM?name=late'); await sleep(100); assert.equal(extra.msgs[0].t, 'full');
 // quest-store: the first player in owns the room; only they can remove someone, and the owner passes on when they leave
-{ const o = await join('/ws/OWNR?name=Owner'), g = await join('/ws/OWNR?name=Guest'), h = await join('/ws/OWNR?name=Third'); await sleep(100);
+{ const o = await join('/ws/PWNRRR?name=Owner'), g = await join('/ws/PWNRRR?name=Guest'), h = await join('/ws/PWNRRR?name=Third'); await sleep(100);
   const oid = o.msgs[0].id, gid = g.msgs[0].id, hid = h.msgs[0].id;
   assert.equal(g.msgs.filter(m => m.t === 'owner').at(-1).id, oid, 'everyone is told the owner');
   g.ws.send(JSON.stringify({ t: 'boot', p: oid })); await sleep(100); assert.ok(!o.msgs.some(m => m.t === 'booted'), 'a guest cannot remove anyone');
@@ -34,7 +36,7 @@ for (let i = 0; i < 4; i++) await join('/ws/FULL?name=p' + i); const extra = awa
   assert.equal(o.msgs.filter(m => m.t === 's').at(-1).P.filter(p => !(p[9] & 1 << 17)).length, 2, 'removed player leaves the mission');
   o.ws.close(); await sleep(150); assert.equal(g.msgs.filter(m => m.t === 'owner').at(-1).id, gid, 'ownership passes on'); g.ws.close(); }
 b.ws.close(); await sleep(200); assert.equal(a.msgs.filter(m => m.t === 's').at(-1).P.filter(p => !(p[9] & 1 << 17)).length, 1); assert.equal(s2.P.filter(p => p[9] & 1 << 17).length, 2, 'two humans: two bots');
-a.ws.close(); await sleep(200); assert.equal(rooms.get('ABCD').timer, null, 'room stops ticking when empty');
+a.ws.close(); await sleep(200); assert.equal(rooms.get('ABCDEF').timer, null, 'room stops ticking when empty');
 // quest-store: the development unlock checks the creator code on the Worker; wrong or missing codes are refused
 { const post = (code, env2) => worker.fetch({ url: 'https://x.dev/api/unlock', method: 'POST', headers: { get: () => null }, json: async () => ({ code }) }, env2);
   assert.equal((await post('s3cret', { ...env, CREATOR_CODE: 's3cret' })).status, 200);

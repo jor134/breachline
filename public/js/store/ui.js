@@ -5,13 +5,20 @@ import { CREDITS } from './credits.js';
 import { DBG, toggleDebug } from './debug.js';
 import { WORDS, isCallsign, randomCallsign } from './callsigns.js';
 import { makeUnlock } from './unlock.js';
+import { makeSocial } from './social.js';
+import { CODE_CHARS, isRoomCode, randomRoomCode } from './roomcode.js';
 
 const PER_PAGE = 4, clip = (s, n = 60) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 
-export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoard, play }) {
+export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoard, play, notify = status }) {
   try { S.music = localStorage.getItem('bl_music') !== '0'; } catch (e) { }
   const U = { owner: 0, page: 0, code: '', prev: null };
   const store = !!(window.__boot && window.__boot.store), unlock = makeUnlock(); U.unlock = unlock;
+  // quest-store: friends and strangers. rel: what each player in the room is to me (friend / sent / got / blocked), from the room.
+  // mmIds: players who came in through QUICK MATCH. Strangers start muted (both ways) unless they are friends; blocked players always.
+  const social = makeSocial(unlock); U.social = social;
+  Object.assign(U, { rel: {}, mmIds: [], open: false, unmuted: new Set(), auto: new Set(), mmJoin: 0, mmCode: '', created: '', pview: '', fpage: 0, fsel: null, fmsg: '', mmMsg: '' });
+  try { U.hostOpen = localStorage.getItem('ych_open') === '1'; } catch (e) { U.hostOpen = false; }
   let call = (() => { try { const c = localStorage.getItem('bl_name'); return isCallsign(c) ? c : randomCallsign(); } catch (e) { return randomCallsign(); } })();
   const saveCall = () => { try { localStorage.setItem('bl_name', call); } catch (e) { } };
   saveCall();
@@ -19,19 +26,42 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
 
   U.menuButtons = () => [...(S.net === 'online' ? [['PLAYERS', 'st:players']] : []), ['CREDITS', 'st:credits:0']];
 
-  function showPlayers() {
-    const list = humans(), mine = U.owner === S.me.id, lines = [], btns = [];
-    if (!list.length) lines.push('Nobody else is in this room yet.');
-    for (const [id, o] of list) {
-      const muted = voice.isPeerMuted(id);
-      lines.push(clip(o.name + (muted ? '  (muted)' : '') + (id === U.owner ? '  (room owner)' : '')));
-      btns.push([(muted ? 'UNMUTE ' : 'MUTE ') + o.name, 'st:mute:' + id]);
-      if (mine) btns.push(['REMOVE ' + o.name, 'st:boot:' + id]);
+  const nameOf = id => (S.officers.get(id) || {}).name || 'PLAYER';
+  const isStranger = id => (U.mmIds.includes(id) || U.mmIds.includes(S.me.id)) && U.rel[id] !== 'friend';
+  // strangers start muted, blocked players stay muted; what you change yourself in PLAYERS sticks
+  function applyMutes() {
+    for (const [id] of humans()) {
+      const want = U.rel[id] === 'blocked' || (isStranger(id) && !U.unmuted.has(id));
+      if (want && !voice.isPeerMuted(id)) { voice.mutePeer(id, true); U.auto.add(id); }
+      else if (!want && U.auto.has(id)) { voice.mutePeer(id, false); U.auto.delete(id); }
     }
-    lines.push('', 'Muting only changes what you hear.', mine ? 'You own this room: REMOVE sends a player out.' : 'The room owner can remove players.', 'To report a player, press the Meta button > Report.');
-    btns.push(['CLOSE', 'close']);
-    panel.draw('PLAYERS', 'Room ' + S.room, lines, btns);
   }
+  U.applyMutes = applyMutes;
+  const tagOf = id => [id === U.owner ? 'room owner' : '', U.rel[id] === 'friend' ? 'friend' : '', U.mmIds.includes(id) ? 'quick match' : '', U.rel[id] === 'blocked' ? 'blocked' : '', voice.isPeerMuted(id) ? 'muted' : ''].filter(Boolean).join(', ');
+  function showPlayers() {
+    U.pview = 'players'; const list = humans(), mine = U.owner === S.me.id, lines = [], btns = [];
+    if (!list.length) lines.push('Nobody else is in this room yet.');
+    for (const [id, o] of list) { lines.push(clip(o.name + (tagOf(id) ? '  (' + tagOf(id) + ')' : ''))); btns.push([o.name, 'st:pl:' + id]); }
+    lines.push('', 'Pick a player to mute, block or add as a friend.');
+    lines.push(mine ? 'You own this room: you can remove players, and open it' : 'The room owner can remove players.', mine ? '   to strangers who play the terrorists (QUICK MATCH).' : 'To report a player, press the Meta button > Report.');
+    if (mine) btns.push(['STRANGERS: ' + (U.open ? 'OPEN' : 'CLOSED'), 'st:open']);
+    btns.push(['CLOSE', 'close']);
+    panel.draw('PLAYERS', 'Room ' + S.room + (U.open ? '   ·   open to strangers' : ''), lines, btns);
+  }
+  function showPlayer(id) {
+    const o = S.officers.get(id); if (!o || o.bot) return showPlayers(); U.pview = 'pl:' + id;
+    const mine = U.owner === S.me.id, r = U.rel[id] || '', muted = voice.isPeerMuted(id), btns = [];
+    const lines = [o.name + (tagOf(id) ? '  (' + tagOf(id) + ')' : ''), '',
+      { friend: 'You are friends: you can join each other from PLAY ONLINE > FRIENDS.', sent: 'Friend request sent. They can accept it here or in FRIENDS.', got: o.name + ' wants to be friends.', blocked: 'Blocked: muted, and never matched with you again.' }[r] || 'Friends join each other\'s rooms without a code.',
+      'Muting only changes what you hear.', 'To report a player, press the Meta button > Report.'];
+    btns.push([(muted ? 'UNMUTE ' : 'MUTE ') + o.name, 'st:mute:' + id]);
+    if (r === '' || r === 'got') btns.push([r === 'got' ? 'ACCEPT FRIEND REQUEST' : 'ADD FRIEND', 'st:addf:' + id]);
+    if (r !== 'blocked') btns.push(['BLOCK ' + o.name, 'st:blk:' + id]);
+    if (mine) btns.push(['REMOVE FROM ROOM', 'st:boot:' + id]);
+    btns.push(['BACK', 'st:players']);
+    panel.draw('PLAYER', 'Room ' + S.room, lines, btns);
+  }
+  const redrawPlayers = () => { if (!S.menu || !U.pview) return; if (U.pview === 'players') showPlayers(); else showPlayer(+U.pview.slice(3)); };
 
   function showCredits(p) {
     const pages = Math.ceil(CREDITS.length / PER_PAGE); U.page = (p + pages) % pages;
@@ -42,7 +72,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     }
     lines.push('', 'Full list with links: breachline credits page.');
     U.prev = S.panel === 'start' || (S.panel === 'credits' && U.prev) ? 'start' : null; if (U.prev) { S.panel = 'credits'; placeBoard(); }
-    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages + (DBG.on ? '   ·   build ' + DBG.build : ''), lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['DEBUG: ' + (DBG.on ? 'ON' : 'OFF'), 'st:debug'], U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
+    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages + (DBG.on ? '   ·   build ' + DBG.build + (social.acct ? '   ·   account ' + social.acct : '') : ''), lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['DEBUG: ' + (DBG.on ? 'ON' : 'OFF'), 'st:debug'], U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
   }
 
   // which edition this headset is running, on the start menu, so a developer unlock is never mistaken for the demo
@@ -54,11 +84,11 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     panel.draw("YOU CAN'T HIDE", 'Callsign ' + call + '   ·   ' + U.edition(), [
       'Clear buildings, save hostages, disarm bombs.',
       'PLAY SOLO: you lead three AI officers.',
-      'PLAY ONLINE: up to four players on a room code,',
-      '   AI officers fill the empty places.',
+      'PLAY ONLINE: up to four players: friends, a room code,',
+      '   or QUICK MATCH as a terrorist. AI fills empty places.',
       'Voice chat with your squad: ' + (voice.on ? 'ON' : 'OFF') + (voice.on && voice.err ? '  (' + voice.err.split(':')[0] + ')' : ''),
       'Point at a button and pull the trigger.',
-    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE', 'st:online'], ['CREDITS', 'st:credits:0'], ['MUSIC: ' + (S.music === false ? 'OFF' : 'ON'), 'st:music'], ['PLAY SOLO', 'st:solo']]);
+    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE' + (social.requests.length ? '  (' + social.requests.length + ' FRIEND REQUEST' + (social.requests.length > 1 ? 'S' : '') + ')' : ''), 'st:online'], ['CREDITS', 'st:credits:0'], ['MUSIC: ' + (S.music === false ? 'OFF' : 'ON'), 'st:music'], ['PLAY SOLO', 'st:solo']]);
   };
   // ---- the full game: what the demo leaves out, and Meta's purchase dialog ----
   function showBuy(why, from) {
@@ -75,25 +105,86 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   U.gate = what => { if (what === 'editor' ? unlock.full() : unlock.mapOk(what)) return false; showBuy(what === 'editor' ? 'editor' : 'map', 'board'); return true; };
   U.lockTag = id => unlock.mapOk(id) ? '' : '   [FULL GAME]';
   // the game redraws its own panels twice a second; while the start menu is up it redraws this instead
-  U.redraw = () => { if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); };
-  U.holdsPanel = () => S.panel === 'start' || S.panel === 'keypad' || S.panel === 'friend' || S.panel === 'buy' || (S.panel === 'credits' && U.prev);
+  U.redraw = () => { if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); else if (S.panel === 'online') showOnline(); else if (S.panel === 'friends') showFriends(); else if (S.panel === 'friend1') showFriend1(); else if (S.panel === 'mm') showMatch(); };
+  U.holdsPanel = () => ['start', 'keypad', 'friend', 'buy', 'online', 'friends', 'friend1', 'mm'].includes(S.panel) || (S.panel === 'credits' && U.prev);
 
-  // a 4-digit room code typed on a keypad (no system keyboard inside VR)
+  // a 6-character room code typed on an on-panel keyboard (no system keyboard inside VR)
   function showKeypad(msg) {
     if (msg !== undefined) U.msg = msg; msg = U.msg;
     S.panel = 'keypad'; placeBoard(); panel.mesh.visible = true;
     if (panel.key === 'keypad' + U.code + (msg || '')) return;
     const g = panel.c.getContext('2d'); g.fillStyle = '#0c1118'; g.fillRect(0, 0, 1024, 768); g.strokeStyle = '#3a6ea5'; g.lineWidth = 6; g.strokeRect(6, 6, 1012, 756);
-    g.textAlign = 'center'; g.fillStyle = '#e8eef5'; g.font = 'bold 56px sans-serif'; g.fillText('PLAY ONLINE', 512, 80);
-    g.fillStyle = '#8fb4dc'; g.font = '28px sans-serif'; g.fillText(msg || 'Type your squad\'s room code, or NEW for a fresh one to share.', 512, 126);
-    g.fillStyle = '#7dffa0'; g.font = 'bold 72px monospace'; g.fillText((U.code + '____').slice(0, 4).split('').join(' '), 512, 222);
+    g.textAlign = 'center'; g.fillStyle = '#e8eef5'; g.font = 'bold 56px sans-serif'; g.fillText('ROOM CODE', 512, 80);
+    g.fillStyle = '#8fb4dc'; g.font = '28px sans-serif'; g.fillText(msg || 'Type your squad\'s 6-character code, or NEW for a fresh one to share.', 512, 126);
+    g.fillStyle = '#7dffa0'; g.font = 'bold 72px monospace'; g.fillText((U.code + '______').slice(0, 6).split('').join(' '), 512, 222);
     const B = [], key = (text, act, x, y, w, col) => B.push({ x, y, w, h: 74, text, act, col });
-    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'DEL', '0', 'NEW'];
-    keys.forEach((k, i) => key(k, k === 'DEL' ? 'st:del' : k === 'NEW' ? 'st:new' : 'st:key:' + k, 222 + (i % 3) * 200, 262 + Math.floor(i / 3) * 86, 180, k.length > 1 ? '#39424e' : '#1f4a8a'));
-    key('BACK', 'st:back', 60, 676, 300, '#39424e'); key(U.code.length === 4 ? 'JOIN ROOM ' + U.code : 'JOIN', 'st:join', 380, 676, 584, U.code.length === 4 ? '#1f7a3d' : '#2a3038');
-    for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold 38px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
+    [...CODE_CHARS].forEach((k, i) => key(k, 'st:key:' + k, 59 + (i % 8) * 114, 262 + Math.floor(i / 8) * 84, 108, '#1f4a8a'));
+    const ok = isRoomCode(U.code);
+    key('BACK', 'st:oback', 60, 676, 200, '#39424e'); key('DEL', 'st:del', 270, 676, 200, '#39424e'); key('NEW', 'st:new', 480, 676, 200, '#39424e'); key(ok ? 'JOIN ' + U.code : 'JOIN', 'st:join', 690, 676, 274, ok ? '#1f7a3d' : '#2a3038');
+    for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold ' + (b.text.length > 8 ? 30 : 38) + 'px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     panel.btns = B; panel.key = 'keypad' + U.code + (msg || ''); panel.tex.needsUpdate = true;
   }
+  // ---- PLAY ONLINE: quick match, friends, room code ----
+  const reqN = () => social.requests.length;
+  function showOnline(msg) {
+    if (msg !== undefined) U.omsg = msg; S.panel = 'online'; placeBoard(); panel.mesh.visible = true;
+    const n = social.online();
+    panel.draw('PLAY ONLINE', 'Callsign ' + call, [
+      'QUICK MATCH: join a stranger\'s SWAT game as a TERRORIST.',
+      'FRIENDS: join a friend\'s room, no code needed' + (social.ticket ? ' (' + n + ' online).' : '.'),
+      'ROOM CODE: join your squad, or make a NEW room to share.',
+      'Rooms you make: ' + (U.hostOpen ? 'OPEN to terrorist players from QUICK MATCH.' : 'friends and room code only.'),
+      'Strangers start muted. MENU > PLAYERS: mute, block, add friend.',
+      ...(U.omsg ? ['', U.omsg] : []),
+    ], [['QUICK MATCH: TERRORIST', 'st:qm'], ['FRIENDS' + (reqN() ? '  (' + reqN() + ' NEW)' : n ? '  (' + n + ' ONLINE)' : ''), 'st:fl:0'], ['ROOM CODE', 'st:code'], ['MY ROOMS: ' + (U.hostOpen ? 'OPEN' : 'FRIENDS ONLY'), 'st:hostopen'], ['BACK', 'st:back']]);
+  }
+  const PERF = 4;   // friends per page
+  const entries = () => [...social.requests.map(r => ({ ...r, kind: 'req' })), ...social.friends.map(f => ({ ...f, kind: 'friend' }))];
+  function showFriends(p) {
+    if (p !== undefined) U.fpage = p; S.panel = 'friends'; placeBoard(); panel.mesh.visible = true;
+    const all = entries(), pages = Math.max(1, Math.ceil(all.length / PERF)); U.fpage = ((U.fpage % pages) + pages) % pages;
+    const page = all.slice(U.fpage * PERF, U.fpage * PERF + PERF), lines = [], btns = [];
+    if (!social.ticket) lines.push('Friends are not available: ' + (social.err || 'signing in...'));
+    else if (!all.length) lines.push('No friends yet.', '', 'To add someone you meet: in their room, MENU > PLAYERS,', 'pick them and press ADD FRIEND. They accept the same way,', 'or here in FRIENDS. Then you can join each other with no code.');
+    for (const [i, e] of page.entries()) {
+      lines.push(clip(e.call + '   ' + (e.kind === 'req' ? 'wants to be friends' : e.canJoin ? 'in a room: you can join' : e.inRoom ? 'in a full room' : e.online ? 'online' : 'offline')));
+      btns.push([e.call + (e.kind === 'req' ? '  (REQUEST)' : e.canJoin ? '  JOIN' : ''), 'st:fsel:' + (U.fpage * PERF + i)]);
+    }
+    if (U.fmsg) lines.push('', U.fmsg);
+    if (pages > 1) btns.push(['NEXT PAGE', 'st:fl:' + (U.fpage + 1)]);
+    if (social.ticket) btns.push([U.forget ? 'YES, DELETE IT ALL' : 'DELETE MY FRIENDS DATA', 'st:forget']);
+    btns.push(['BACK', 'st:ohome']);
+    panel.draw('FRIENDS', social.ticket ? social.friends.length + ' friend' + (social.friends.length === 1 ? '' : 's') + ', ' + social.online() + ' online' + (pages > 1 ? '   ·   page ' + (U.fpage + 1) + ' of ' + pages : '') : 'Not signed in', lines, btns);
+  }
+  function showFriend1() {
+    const e = U.fsel; if (!e) return showFriends(); S.panel = 'friend1'; placeBoard(); panel.mesh.visible = true;
+    const fresh = entries().find(x => x.id === e.id && x.kind === e.kind) || e; U.fsel = fresh;
+    if (fresh.kind === 'req') return panel.draw('FRIEND REQUEST', fresh.call, [fresh.call + ' wants to be friends.', 'Friends see when each other are online', 'and can join each other\'s rooms without a code.', ...(U.fmsg ? ['', U.fmsg] : [])], [['ACCEPT', 'st:facc'], ['DECLINE', 'st:fdec'], ['BLOCK', 'st:fblk'], ['BACK', 'st:fl']]);
+    const state = fresh.canJoin ? 'In a room with a free place.' : fresh.inRoom ? 'In a room, but it is full.' : fresh.online ? 'Online, not in a room.' : 'Offline.';
+    panel.draw('FRIEND', fresh.call, [state, '', 'REMOVE ends the friendship on both sides.', 'BLOCK also keeps you out of each other\'s games.', ...(U.fmsg ? ['', U.fmsg] : [])], [...(fresh.canJoin ? [['JOIN ' + fresh.call, 'st:fjoin']] : []), ['REMOVE FRIEND', 'st:frem'], ['BLOCK', 'st:fblk'], ['BACK', 'st:fl']]);
+  }
+  // QUICK MATCH: ask for an open SWAT room every few seconds, for up to two minutes
+  function showMatch() {
+    S.panel = 'mm'; placeBoard(); panel.mesh.visible = true;
+    const t = Math.round((Date.now() - U.mmStart) / 1000);
+    if (U.mmMsg) return panel.draw('QUICK MATCH', 'Terrorist', [U.mmMsg, '', 'Or open your own room to terrorist players:', 'PLAY ONLINE > MY ROOMS: OPEN, then ROOM CODE > NEW.'], [['TRY AGAIN', 'st:qm'], ['BACK', 'st:ohome']]);
+    panel.draw('QUICK MATCH', 'Terrorist   ·   ' + t + ' s', ['Looking for a SWAT team that wants terrorists...', '', 'You play a terrorist: lock and rig doors, take hostages,', 'and stop the SWAT team. Your side wins if they fail.', 'Strangers start muted. MENU > PLAYERS to unmute or block.'], [['CANCEL', 'st:mmstop']]);
+  }
+  function matchStep() {
+    if (S.panel !== 'mm' || U.mmMsg) return;
+    social.api('match').then(j => {
+      if (S.panel !== 'mm' || U.mmMsg) return;
+      if (j.room) { U.mmJoin = 1; U.mmCode = j.room; U.code = j.room; return go(false, false); }
+      if (j.error) { U.mmMsg = j.error === 'Not signed in' ? 'Quick match needs the full game on this account.' : 'Quick match is not available: ' + j.error; return showMatch(); }
+      if (Date.now() - U.mmStart > 120000) { U.mmMsg = 'No SWAT team is looking for terrorists right now.'; return showMatch(); }
+      showMatch(); U.mmTimer = setTimeout(matchStep, 3000);
+    });
+  }
+  // presence: every 20 s, and when a menu that shows friends opens
+  const hello = () => social.hello(call, U.room()).catch(() => { });
+  social.onChange = more => { if (more) notify('FRIEND REQUEST: PLAY ONLINE > FRIENDS'); if (['online', 'friends', 'friend1', 'start'].includes(S.panel)) U.redraw(); };
+  social.ready.then(hello); setInterval(hello, 20000);
+
   // quest-store: a friend's shared map, by its 8-digit code (mission board > FRIEND'S MAP). U.friendMap(code) is set by game.js:
   // it loads the map and resolves true, or false when no map has that code.
   U.fcode = ''; U.fmsg = '';
@@ -113,6 +204,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   }
   function go(solo, tut) {
     S.panel = null; panel.mesh.visible = false;
+    if (!solo && U.mmCode !== U.code) U.mmJoin = 0;
     play(solo, call, solo ? 'SOLO' : U.code, tut);   // connect first: the microphone prompt below can take the headset out of VR
     if (!solo && voice.on) voice.permission().then(st => {
       if (st !== 'granted') status('The headset leaves VR to ask for the microphone. Press ENTER VR to go back to room ' + U.code + '.');
@@ -138,12 +230,25 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'solo') go(true, false);
     else if (what === 'tut') go(true, true);
     else if (what === 'online' && !unlock.full()) showBuy('online', 'start');
-    else if (what === 'online') { U.msg = ''; try { U.code = (localStorage.getItem('bl_room') || '').replace(/\D/g, '').slice(0, 4); } catch (e) { U.code = ''; } showKeypad(); }
-    else if (what === 'key') { if (U.code.length < 4) U.code += arg; showKeypad(''); }
+    else if (what === 'online') { U.omsg = ''; showOnline(); hello(); }
+    else if (what === 'ohome') { clearTimeout(U.mmTimer); U.fmsg = ''; showOnline(''); }
+    else if (what === 'code') { U.msg = ''; try { const c = localStorage.getItem('bl_room') || ''; U.code = isRoomCode(c) ? c : ''; } catch (e) { U.code = ''; } showKeypad(); }
+    else if (what === 'oback') showOnline('');
+    else if (what === 'hostopen') { U.hostOpen = !U.hostOpen; try { localStorage.setItem('ych_open', U.hostOpen ? '1' : '0'); } catch (e) { } showOnline(''); }
+    else if (what === 'key') { if (U.code.length < 6) U.code += arg; showKeypad(''); }
     else if (what === 'del') { U.code = U.code.slice(0, -1); showKeypad(''); }
-    else if (what === 'new') { U.code = String(Math.floor(Math.random() * 9000) + 1000); showKeypad('New room: tell your squad the code ' + U.code + '.'); }
+    else if (what === 'new') { U.code = randomRoomCode(); U.created = U.code; showKeypad('New room' + (U.hostOpen ? ', open to terrorist players' : '') + ': tell your squad ' + U.code + '.'); }
     else if (what === 'back') { U.prev = null; U.showStart(); }
-    else if (what === 'join') { if (U.code.length === 4) go(false, false); else showKeypad('The room code has four digits.'); }
+    else if (what === 'join') { if (isRoomCode(U.code)) go(false, false); else showKeypad('The room code has six characters.'); }
+    else if (what === 'qm') { clearTimeout(U.mmTimer); U.mmMsg = ''; U.mmStart = Date.now(); showMatch(); matchStep(); }
+    else if (what === 'mmstop') { clearTimeout(U.mmTimer); showOnline(''); }
+    else if (what === 'fl') { U.fmsg = ''; U.forget = false; showFriends(arg === undefined ? U.fpage : +arg); hello(); }
+    else if (what === 'forget') { if (!U.forget) { U.forget = true; U.fmsg = 'Deletes your friends, requests and blocks on our server. Press again.'; return showFriends(), true; }
+      U.forget = false; social.api('forget').then(j => { social.friends = []; social.requests = []; U.fmsg = j.error || 'Deleted. Your friends list is empty now.'; showFriends(0); }); }
+    else if (what === 'fsel') { U.fmsg = ''; U.fsel = entries()[+arg] || null; showFriend1(); }
+    else if (what === 'facc' || what === 'fdec' || what === 'frem' || what === 'fblk') { const e = U.fsel; if (!e) return showFriends(), true;
+      U.fmsg = '...'; showFriend1(); social.api({ facc: 'accept', fdec: 'decline', frem: 'remove', fblk: 'block' }[what], { id: e.id }).then(j => hello().then(() => { U.fmsg = j.error || { facc: 'You and ' + e.call + ' are now friends.', fdec: 'Request declined.', frem: e.call + ' removed.', fblk: e.call + ' blocked.' }[what]; if (what === 'facc' && !j.error) { U.fsel = { ...e, kind: 'friend' }; showFriend1(); } else showFriends(); })); }
+    else if (what === 'fjoin') { const e = U.fsel; if (!e) return showFriends(), true; U.fmsg = 'Joining...'; showFriend1(); social.api('join', { id: e.id }).then(j => { if (j.room) { U.fmsg = ''; U.code = j.room; go(false, false); } else { U.fmsg = j.error || 'Could not join.'; showFriend1(); } }); }
     else if (what === 'buy') { unlock.buy().then(ok => { if (ok) { U.bought = true; showBuy(U.buyWhy, U.buyFrom); } }).catch(e => { U.buyErr = String(e && e.message || e); showBuy(U.buyWhy, U.buyFrom); }); }
     else if (what === 'nobuy') { U.bought = false; U.buyErr = ''; if (U.buyFrom === 'start') U.showStart(); else { S.panel = null; back2(); } }
     else if (what === 'friend') { if (!unlock.full()) return showBuy('editor', 'board'), true; U.fcode = ''; showFriendPad(''); }
@@ -155,22 +260,33 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       (U.friendMap ? U.friendMap(c) : Promise.resolve(false)).then(ok => { if (ok) { S.panel = null; back2(); } else showFriendPad('No map has that code (or it was reported).'); }); }
     else if (what === 'freport') { U.reportMap && U.reportMap(); }
     else if (what === 'players') showPlayers();
+    else if (what === 'pl') showPlayer(+arg);
+    else if (what === 'open') { if (U.owner === S.me.id) { U.open = !U.open; net.send({ t: 'open', v: U.open }); } showPlayers(); }
+    else if (what === 'addf') { net.send({ t: 'friend', p: +arg }); status('Asking ' + nameOf(+arg) + '...'); }
+    else if (what === 'blk') { const id = +arg; net.send({ t: 'block', p: id }); U.rel[id] = 'blocked'; U.unmuted.delete(id); applyMutes(); showPlayer(id); }
     else if (what === 'credits') showCredits(+arg || 0);
     else if (what === 'debug') { toggleDebug(); showCredits(U.page || 0); }
-    else if (what === 'mute') { const id = +arg; voice.mutePeer(id, !voice.isPeerMuted(id)); showPlayers(); }
+    else if (what === 'mute') { const id = +arg, m = !voice.isPeerMuted(id); voice.mutePeer(id, m); U.auto.delete(id); if (m) U.unmuted.delete(id); else U.unmuted.add(id); showPlayer(id); }
     else if (what === 'boot') { if (U.owner === S.me.id) net.send({ t: 'boot', p: +arg }); setTimeout(showPlayers, 400); }
     return true;
   };
 
   // room messages only the store Worker sends
   U.onMsg = m => {
-    if (m.t === 'owner') { U.owner = m.id; return true; }
+    if (m.t === 'owner') { U.owner = m.id; U.open = !!m.open; U.mmIds = m.mm || []; applyMutes(); redrawPlayers(); if (m.id === S.me.id && U.created === S.room && U.hostOpen && !m.open && !U.sentOpen) { U.sentOpen = true; net.send({ t: 'open', v: true }); } return true; }
     if (m.t === 'booted') { status('The room owner removed you from that room.'); return true; }
+    if (m.t === 'rel') { U.rel = m.m || {}; applyMutes(); redrawPlayers(); return true; }
+    if (m.t === 'friendres') { const n = nameOf(m.p); status({ sent: 'Friend request sent to ' + n + '.', friend: 'You and ' + n + ' are now friends.', limit: 'Too many friend requests today.', full: 'A friends list is full (100).', noacct: n + ' cannot be added: no full game on their account.', no: n + ' cannot be added.' }[m.res] || 'Could not add ' + n + '.'); hello(); redrawPlayers(); return true; }
+    if (m.t === 'friendreq') { notify(m.res === 'friend' ? 'NOW FRIENDS WITH ' + nameOf(m.p) : nameOf(m.p) + ' WANTS TO BE FRIENDS: MENU > PLAYERS'); hello(); return true; }
+    if (m.t === 'mmgone') { status('That game stopped taking terrorists. Try QUICK MATCH again.'); notify('THAT GAME IS NO LONGER OPEN'); return true; }
     return false;
   };
   U.started = () => S.net === 'online' || S.net === 'solo' || S.net === 'lost';
   U.room = () => S.net === 'online' || S.net === 'lost' ? S.room : '';
-  U.left = () => { S.mode = null; };
+  U.left = () => { S.mode = null; U.mmJoin = 0; U.mmCode = ''; U.sentOpen = false; U.rel = {}; U.mmIds = []; U.auto.clear(); };
+  // extra WebSocket query for a room: my ticket (account), a QUICK MATCH join (1; 2 when rejoining after a drop), and whether a
+  // room I made is open to strangers
+  U.wsExtra = (room, rejoin) => social.wsParam() + (U.mmJoin && U.mmCode === room ? '&mm=' + (rejoin ? 2 : 1) : '') + (U.created === room && U.hostOpen ? '&open=1' : '');
   U.store = store;
   U.back = back;
   return U;

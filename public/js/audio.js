@@ -108,6 +108,7 @@ export const sfx = {
     if (sample(far ? 'rifle_far' : kind === 'pistol' ? 'pistol' : 'rifle', pos, pos ? (far ? 1.4 : 1.15) : 0.85, { wet: pos ? 1 : 0.8 })) return;
     burst(pos, 0.2, 2400, 1.6); tone(pos, 160, 40, 0.14, 1.2);
   },
+  shotSupp() { if (!sample('pistol', null, 0.26, { wet: 0.25, rate: 1.35 })) burst(null, 0.06, 1800, 0.5); burst(null, 0.05, 6000, 0.35, 'highpass'); },   // quest-store: the suppressed pistol
   dry(kind) { sample(P(kind) + 'click', null, 0.9, { wet: 0 }) || burst(null, 0.03, 4000, 0.4, 'highpass'); },
   magOut(kind) { sample(P(kind) + 'magout', null, 1, { wet: 0.2 }) || burst(null, 0.06, 1800, 0.5, 'bandpass', 3); },
   magIn(kind) { sample(P(kind) + 'magin', null, 1, { wet: 0.2 }) || burst(null, 0.05, 2400, 0.6, 'bandpass', 3); },

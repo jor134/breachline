@@ -1,7 +1,7 @@
 # Turn the "Pistol 9mm Custom" Sketchfab scene (a display of two assembled pistols, exploded parts and attachments) into the
-# sidearm: only the upright assembled pistol is kept (frame, slide, magazine, red dot on its rail, weapon light, side laser; the
-# suppressor is left off), baked to one frame (muzzle toward -z, y up, metres), one mesh per part and material, textures
-# re-encoded small. Parts are named for js/m4.js: slide, frame, mag, sight, light.
+# sidearm: only the upright assembled pistol is kept (frame, slide, magazine, red dot on its rail, weapon light, side laser and
+# its suppressor, a separate part), baked to one frame (muzzle toward -z, y up, metres), one mesh per part and material, textures
+# re-encoded small. Parts are named for js/m4.js: slide, frame, mag, sight, light, supp.
 # usage: python3 tools/pistol9_glb.py in.glb assets-src/pistol9.glb   (then tools/obf_glb.py to public/models/pistol/pistol9.blx)
 import sys, io, json, struct
 import numpy as np
@@ -32,6 +32,7 @@ def part(name):
     if base == 'PicatinyBracing1' and k <= 6: return 'sight'
     if base == 'Fleshlight1' and k <= 10: return 'light'
     if base == 'LaserBlock' and k <= 7: return 'frame'
+    if base == 'Supressor1' and k <= 1: return 'supp'   # the suppressor screwed onto the upright pistol (an option in game)
     return None
 groups = {}   # (part, material) -> lists
 for i, n in enumerate(j['nodes']):

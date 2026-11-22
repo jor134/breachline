@@ -22,4 +22,9 @@ for (let i = 0; i < 18; i++) await call('POST', '/api/share', { map: sample, by:
 assert.equal((await call('POST', '/api/share', { map: sample }, '9.9.9.9')).status, 200); assert.equal((await call('POST', '/api/share', { map: sample }, '9.9.9.9')).status, 200);
 assert.equal((await call('POST', '/api/share', { map: sample }, '9.9.9.9')).status, 429, '20 a day per address');
 assert.equal((await call('POST', '/api/share', { map: { v: 1 } })).status, 400, 'broken maps are refused');
+// the admin page: reported maps behind the creator code; restore and delete
+assert.equal((await call('POST', '/api/admin/reported', { code: 'wrong' })).status, 403);
+let rep = parse(await call('POST', '/api/admin/reported', { code: 'secret' })); assert.equal(rep.maps.length, 1); assert.equal(rep.maps[0].id, id);
+await call('POST', '/api/admin/restore', { code: 'secret', id }); assert.equal((await call('GET', '/api/share/' + id)).status, 200, 'restored');
+await call('POST', '/api/admin/delete', { code: 'secret', id }); assert.equal((await call('GET', '/api/share/' + id)).status, 404, 'deleted');
 console.log('share tests passed');

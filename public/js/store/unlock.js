@@ -8,7 +8,7 @@ const get = k => { try { return localStorage.getItem(k); } catch (e) { return nu
 const skuOf = p => p && (p.itemId || p.sku || p.itemID);
 
 export function makeUnlock() {
-  const U = { gate: STORE.gate === 'iap', owned: false, dev: get('bl_dev') === '1', store: false, svc: null, price: '', err: '' };
+  const U = { gate: STORE.gate === 'iap', owned: false, token: '', dev: get('bl_dev') === '1', store: false, svc: null, price: '', err: '' };
   U.ready = (async () => {
     const code = new URLSearchParams(location.search).get('dev');
     if (code === 'off') { try { localStorage.removeItem('bl_dev'); localStorage.removeItem('bl_full'); } catch (e) { } U.dev = false; history.replaceState(null, '', location.pathname); }   // ?dev=off: back to what a buyer sees
@@ -19,7 +19,8 @@ export function makeUnlock() {
     if (typeof window.getDigitalGoodsService !== 'function') return;
     try {
       U.svc = await window.getDigitalGoodsService(STORE.billing); U.store = true;
-      U.owned = (await U.svc.listPurchases()).some(p => skuOf(p) === STORE.sku); put('bl_full', U.owned ? '1' : '0');
+      const mine = (await U.svc.listPurchases()).find(p => skuOf(p) === STORE.sku); U.owned = !!mine; put('bl_full', U.owned ? '1' : '0');
+      if (mine && mine.purchaseToken) U.token = mine.purchaseToken;   // quest-store: the account for friends (js/store/social.js)
       const it = (await U.svc.getDetails([STORE.sku])).find(d => skuOf(d) === STORE.sku);
       if (it && it.price) U.price = new Intl.NumberFormat(undefined, { style: 'currency', currency: it.price.currency }).format(+it.price.value);
     } catch (e) { U.err = String(e && e.message || e); if (get('bl_full') === '1') U.owned = true; }   // offline: trust the last check
@@ -31,7 +32,7 @@ export function makeUnlock() {
     if (!U.svc || typeof PaymentRequest !== 'function') return false;
     const req = new PaymentRequest([{ supportedMethods: STORE.billing, data: { sku: STORE.sku } }], { total: { label: 'Total', amount: { currency: 'USD', value: '0' } } });   // amounts are not used by Meta
     const res = await req.show(); await res.complete('success');   // complete() straight away, or the browser holds input until it times out
-    try { U.owned = (await U.svc.listPurchases()).some(p => skuOf(p) === STORE.sku); } catch (e) { U.owned = !!(res.details && res.details.purchaseToken); }
+    try { const mine = (await U.svc.listPurchases()).find(p => skuOf(p) === STORE.sku); U.owned = !!mine; if (mine && mine.purchaseToken) U.token = mine.purchaseToken; } catch (e) { U.owned = !!(res.details && res.details.purchaseToken); if (U.owned) U.token = res.details.purchaseToken; }
     put('bl_full', U.owned ? '1' : '0'); return U.owned;
   };
   return U;

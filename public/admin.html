@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>You Can't Hide - reported maps</title>
+<style>
+html,body{margin:0;background:#0a1020;color:#dfe7f0;font:15px/1.5 system-ui,sans-serif}main{max-width:980px;margin:0 auto;padding:20px}
+input,button{font:inherit;padding:8px 12px;border-radius:6px;border:1px solid #3a6ea5;background:#101a2c;color:#dfe7f0}button{cursor:pointer;background:#1f4a8a}
+.card{border:1px solid #2a3a55;border-radius:8px;padding:12px;margin:14px 0;display:flex;gap:16px;align-items:flex-start}.card svg{background:#060a12;border-radius:6px;flex:none}
+.small{color:#8fb4dc;font-size:13px}.del{background:#8a2a1f}h1{letter-spacing:.1em;font-size:22px}
+</style>
+</head>
+<body><main>
+<h1>REPORTED FRIEND MAPS</h1>
+<p class="small">A report hides a shared map from everyone at once. Look at the plan of each one: RESTORE puts it back, DELETE removes it for good. Needs the creator code (it is checked by the server and is not saved in this page).</p>
+<p><input id="code" type="password" placeholder="Creator code" autocomplete="off"> <button id="load">Show reported maps</button></p>
+<div id="out"></div>
+<script>
+const $ = id => document.getElementById(id), esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const api = (what, body) => fetch('api/admin/' + what, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: $('code').value, ...body }) }).then(r => r.json());
+// a top-down plan of every floor: rooms, glass, doors, furniture, suspects (red), civilians (blue), bombs (orange)
+function plan(m) {
+  const [w, h] = m.size || [40, 40], fl = m.floors || 1, k = Math.min(220 / w, 220 / h), W = w * k, H = h * k;
+  let svg = '';
+  for (let f = 0; f < fl; f++) {
+    const ox = f * (W + 10), on = a => a.filter(r => (r[0] | 0) === f);
+    let g = '';
+    for (const r of on(m.rooms || [])) g += `<rect x="${ox + r[1] * k}" y="${r[2] * k}" width="${(r[3] - r[1]) * k}" height="${(r[4] - r[2]) * k}" fill="#1b2a40" stroke="#7d9ac0" stroke-width="1"/>`;
+    for (const r of on(m.furniture || [])) g += `<rect x="${ox + r[1] * k}" y="${r[2] * k}" width="${(r[3] - r[1]) * k}" height="${(r[4] - r[2]) * k}" fill="#4a5568"/>`;
+    for (const r of on(m.glass || [])) g += `<line x1="${ox + r[1] * k}" y1="${r[2] * k}" x2="${ox + r[3] * k}" y2="${r[4] * k}" stroke="#7dd0ff" stroke-width="2"/>`;
+    for (const r of on(m.openings || [])) g += `<line x1="${ox + r[1] * k}" y1="${r[2] * k}" x2="${ox + r[3] * k}" y2="${r[4] * k}" stroke="#7dffa0" stroke-width="3"/>`;
+    for (const [key, col] of [['s', '#ff5050'], ['c', '#5aa0ff'], ['b', '#ffa040']]) for (const p of on(m[key] || [])) g += `<circle cx="${ox + p[1] * k}" cy="${p[2] * k}" r="3" fill="${col}"/>`;
+    svg += g + `<text x="${ox + 4}" y="${H - 4}" fill="#8fb4dc" font-size="11">floor ${f + 1}</text>`;
+  }
+  return `<svg width="${fl * (W + 10)}" height="${H}">${svg}</svg>`;
+}
+async function load() {
+  const j = await api('reported', {}); if (j.error) { $('out').textContent = j.error; return; }
+  $('out').innerHTML = `<p class="small">${j.maps.length} reported of ${j.total} shared maps.</p>` + j.maps.map(r => `<div class="card">${plan(r.map)}<div><b>${esc(r.id.slice(0, 4) + ' ' + r.id.slice(4))}</b><br><span class="small">by ${esc(r.map.creator)} · ${r.reports} report${r.reports > 1 ? 's' : ''}<br>shared ${new Date(r.created).toLocaleDateString()} · last played ${new Date(r.used).toLocaleDateString()}<br>${(r.map.s || []).length} suspects, ${(r.map.c || []).length} civilians, ${(r.map.b || []).length} bombs</span><p><button data-a="restore" data-id="${r.id}">Restore</button> <button class="del" data-a="delete" data-id="${r.id}">Delete</button></p></div></div>`).join('');
+}
+$('load').onclick = load;
+$('out').onclick = async e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.a === 'delete' && !confirm('Delete map ' + b.dataset.id + ' for good?')) return; const j = await api(b.dataset.a, { id: b.dataset.id }); if (j.error) alert(j.error); load(); };
+</script>
+</main></body>
+</html>

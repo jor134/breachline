@@ -80,6 +80,14 @@ export function makeRifle(holo = false, hq = false) {   // built-in M4-pattern c
   return g;
 }
 let pistolGeo = null;
+// quest-store: the pistol's suppressor, an option (MENU > SUPPRESSOR), kept on this headset. Only your own pistol shows it; with it on
+// the muzzle (shot origin and flash) moves to its end and the shot is quieter (audio.js).
+export const SUPP = { on: (() => { try { return localStorage.getItem('ych_supp') === '1'; } catch (e) { return false; } })() };
+const OWN_PISTOLS = [];
+export function setSuppressor(on) {
+  SUPP.on = !!on; try { localStorage.setItem('ych_supp', SUPP.on ? '1' : '0'); } catch (e) { }
+  for (const g of OWN_PISTOLS) { const U = g.userData; U.supp.visible = SUPP.on; U.muzzle.copy(SUPP.on ? U.muzzleS : U.muzzle0); U.flash.position.copy(U.muzzle).add(new THREE.Vector3(0, 0, -0.02)); U.flash.scale.setScalar(SUPP.on ? 0.35 : 1); }
+}
 export function makePistol(holo = false, hq = false) {   // built-in pistol; hq: the downloaded pistol once it loads (m4.js), holo: its red dot
   const K = 0x17181a, g = new THREE.Group();
   if (!pistolGeo) pistolGeo = merge([[BOX(0.03, 0.11, 0.046), K, 0, -0.02, 0.018, 0.2], [BOX(0.028, 0.02, 0.15), K, 0, 0.022, -0.045], [BOX(0.008, 0.03, 0.05), K, 0, -0.003, -0.02], [BOX(0.026, 0.02, 0.05), 0x24262a, 0, 0.005, -0.1]], 'plastic').geometry;
@@ -88,11 +96,12 @@ export function makePistol(holo = false, hq = false) {   // built-in pistol; hq:
   const mag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.012, 0.05), sheen({ color: 0x3a3f45 }, 'metal')); mag.position.set(0, -0.082, 0.03); g.add(mag);
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), basic(0xffd070)); flash.position.set(0, 0.045, -0.18); flash.visible = false; g.add(flash);
   g.userData = { kind: 'pistol', mag, slide, slideZ: -0.05, flash, muzzle: new THREE.Vector3(0, 0.045, -0.15), light: new THREE.Vector3(0, 0.02, -0.15), magwell: new THREE.Vector3(0, -0.09, 0.03), rack: new THREE.Vector3(0, 0.05, 0.03), sightY: 0.074 };
-  if (hq && HQ) loadSidearm().then(({ frame, slide: sl, plate, pts: P }) => {   // the downloaded pistol: frame with the red dot, the bolt that locks back, the magazine
+  if (hq && HQ) loadSidearm().then(({ frame, slide: sl, plate, pts: P, supp }) => {   // the downloaded pistol: frame with the red dot, the bolt that locks back, the magazine
     g.children[0].visible = false; slide.visible = false; const f2 = frame.clone(); g.add(f2); const s2 = sl.clone(); g.add(s2);
     mag.geometry = plate.geo; mag.material = plate.mat; mag.position.set(0, 0, 0);
     const U = g.userData; U.slide = s2; U.slideZ = 0; U.muzzle.copy(P.muzzle); U.light.copy(P.light); U.magwell.copy(P.magwell); U.rack.copy(P.rack); U.sightY = P.sightY; flash.position.copy(P.muzzle).add(new THREE.Vector3(0, 0, -0.02));
     if (holo) { U.ret = makeReticle(f2, P.sightY, P.sightW, P.sightH, P.sightZ, true); U.ret.visible = false; }
+    if (holo && supp.children.length && P.suppTip) { U.supp = supp.clone(); g.add(U.supp); U.muzzle0 = P.muzzle.clone(); U.muzzleS = P.suppTip.clone(); OWN_PISTOLS.push(g); setSuppressor(SUPP.on); }
   }).catch(e => console.warn('pistol model not loaded', e));
   return g;
 }
@@ -100,7 +109,7 @@ export function makePistol(holo = false, hq = false) {   // built-in pistol; hq:
 // the opening instead of showing through. (A separate lid box was tried: it was textured with the whole atlas and showed up as a
 // floating plate on other players' and bots' magazines.)
 let magMat2 = null;
-export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = magMat2 || (magMat2 = Object.assign(r.magMat.clone(), { side: THREE.DoubleSide })); } }).catch(() => { }); return m; };
+export const makeMag = (kind, hq = false) => { const m = makeMag0(kind); if (hq && HQ && kind === 'pistol') loadSidearm().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = r.plate.mat; } }).catch(() => { }); if (hq && HQ && kind === 'rifle') loadM4().then(r => { if (r.magLoose) { m.geometry = r.magLoose; m.material = magMat2 || (magMat2 = Object.assign(r.magMat.clone(), { side: THREE.DoubleSide })); } }).catch(() => { }); return m; };
 const makeMag0 = kind => kind === 'pistol' ? new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.11, 0.04), sheen({ color: 0x3a3f45 }, 'metal')) : new THREE.Mesh(merge([[BOX(0.027, 0.09, 0.056), 0x2a2c2f, 0, 0.02, 0], [BOX(0.027, 0.08, 0.056), 0x2a2c2f, 0, -0.055, -0.012, -0.28]], 'metal').geometry, vertexSheen('metal'));
 
 // quest-store: the built-in grenade until the downloaded M84 / M18 models arrive, then their geometry and material

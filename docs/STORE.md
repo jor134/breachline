@@ -47,7 +47,7 @@ No store-level conflict found, but a CIPO / USPTO trademark search before launch
       `privacy.html`, PLAYERS menu: mute anyone, room owner can remove a player (Worker).
 - [x] 2. VR-only launch (q3): `js/store/boot.js` asks for VR the moment the page opens and draws a "LOADING" card fixed in the
       room with raw WebGL (session in ~0.3 s in the headless test); game.js takes the same session over (`js/store/launch.js`)
-      and shows the start menu in VR: CALLSIGN (preset word + number), VOICE CHAT, TUTORIAL, PLAY ONLINE (4-digit keypad,
+      and shows the start menu in VR: CALLSIGN (preset word + number), VOICE CHAT, TUTORIAL, PLAY ONLINE (quick match as a terrorist, friends, 6-character room-code keyboard,
       NEW makes a code), CREDITS, PLAY SOLO. The Worker accepts preset callsigns only. The 2D page is just a fallback
       ENTER VR button; `?classic=1` brings back the full development screen (the headless tests use it).
       Still to check on the headset (stage 5 sideload): the microphone prompt inside the packaged app, and that the

@@ -22,6 +22,12 @@ class_name = "Room"
 name = "LIBRARY"
 class_name = "Library"
 
+# quest-store: accounts, friends, blocks and terrorist matchmaking (src/social.js). Tickets are signed with the SOCIAL_KEY secret
+# (falls back to CREATOR_CODE if it is not set).
+[[durable_objects.bindings]]
+name = "SOCIAL"
+class_name = "Social"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
@@ -31,6 +37,10 @@ new_sqlite_classes = ["Room"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Library"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Social"]
 
 [observability]
 enabled = true
