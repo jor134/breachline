@@ -4,7 +4,7 @@ import { RoomHost, TICK } from '../public/js/core/host.js';
 import { buildLevel, findPath, registerMap, MAPS } from '../public/js/core/level.js';
 import { compile, check } from '../public/js/core/maps/custom.js';
 import { cleanCallsign } from '../public/js/store/callsigns.js';
-import { Social, makeTicket, readTicket, ROOM_RE } from './social.js';
+import { Social, makeTicket, readTicket, ROOM_RE, makeTesterToken, readTesterToken, sameCode } from './social.js';
 export { Social };
 
 const ASSET_LINKS = [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: 'com.jordanbreccia.youcanthide', sha256_cert_fingerprints: ['5D:F8:23:37:37:DC:A0:A5:13:6E:92:74:2C:AE:D3:BE:C3:79:6A:E2:24:18:6F:93:25:4B:6B:5E:84:11:69:0C'] } }];
@@ -23,6 +23,7 @@ export default {
       const code = m[1].toUpperCase(); if (!ROOM_RE.test(code)) return new Response('Room codes have 6 characters', { status: 400 });
       // the player's account (from their signed ticket) goes to the room as ?acct=; anything the client put there is dropped
       const acct = await readTicket(env, url.searchParams.get('t')); url.searchParams.delete('t'); url.searchParams.delete('acct'); if (acct) url.searchParams.set('acct', acct);
+      const tester = await readTesterToken(env, url.searchParams.get('tt')); url.searchParams.delete('tt'); url.searchParams.delete('tester'); if (tester) url.searchParams.set('tester', '1');   // test mode (src/social.js)
       return env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(new Request(url.toString(), req));
     }
     // quest-store: Digital Asset Links, so the Quest app (a Trusted Web Activity) may open this site full screen in VR. The
@@ -40,6 +41,15 @@ export default {
       const b = await req.json().catch(() => ({})), t = await makeTicket(env, b.token);
       return t ? json({ ticket: t.ticket, acct: t.acct.slice(0, 6) }) : json({ error: 'Friends are switched off' }, 503);
     }
+    // quest-store: test mode. /api/tester takes the TEST_CODE (Worker secret; 20 tries a day per address) and returns a tester token.
+    if (url.pathname === '/api/tester' && req.method === 'POST') {
+      if (!env.NO_DELAY) await new Promise(r => setTimeout(r, 600)); const b = await req.json().catch(() => ({}));
+      if (!env.TEST_CODE || !social(env)) return json({ error: 'Test mode is not set up' }, 503);
+      const ok = await social(env).fetch(new Request('https://social/internal/try', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ip: req.headers.get('cf-connecting-ip') || '' }) })).then(r => r.json()).catch(() => ({ ok: false }));
+      if (!ok.ok) return json({ error: 'Too many tries today' }, 429);
+      return sameCode(String(b.code || ''), String(env.TEST_CODE)) ? json({ token: await makeTesterToken(env) }) : json({ error: 'Wrong code' }, 403);
+    }
+    if (url.pathname === '/api/tester/check' && req.method === 'POST') { const b = await req.json().catch(() => ({})); return json({ ok: await readTesterToken(env, b.token) }); }
     const sm = url.pathname.match(/^\/api\/social\/([a-z]+)$/);
     if (sm) {
       if (req.method !== 'POST' || !SOCIAL_API.includes(sm[1]) || !social(env)) return json({ error: 'Not found' }, 404);
@@ -143,7 +153,7 @@ export class Room {
   constructor(state, env) {
     this.env = env; this.socks = new Map(); this.next = 1; this.timer = null; this.queue = Promise.resolve();
     // quest-store: who each player is (account, from the ticket the Worker checked) and who came in through QUICK MATCH
-    this.acct = new Map(); this.mm = new Set(); this.specs = new Map();   // specs: spectators (up to 4, on top of the 4 players; not in the mission)
+    this.acct = new Map(); this.mm = new Set(); this.specs = new Map(); this.testers = new Set();   // testers: may pick maps marked test (test mode). specs: spectators (up to 4, on top of the 4 players; not in the mission)
     this.open = false; this.code = ''; this.reportT = 0; this.lastRep = '';
     this.host = new RoomHost((id, obj) => {
       const s = JSON.stringify(obj);
@@ -172,8 +182,9 @@ export class Room {
     try { ws.close(4001, 'Removed by the room owner'); } catch {}
     this.gone(target);
   }
-  gone(id) { if (this.specs.delete(id)) { this.announceOwner(); return; } if (!this.socks.delete(id)) return; this.acct.delete(id); this.mm.delete(id); this.host.leave(id); this.announceOwner(); this.refresh(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } }
+  gone(id) { if (this.specs.delete(id)) { this.announceOwner(); return; } if (!this.socks.delete(id)) return; this.acct.delete(id); this.testers.delete(id); this.mm.delete(id); this.host.leave(id); this.announceOwner(); this.refresh(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } }
   // QUICK MATCH may put a stranger in only while the owner has the room open and the squad is in the lobby
+  testing() { const s = this.host.sim, t = id => !!(MAPS[id] && MAPS[id].test); return t(s.M.id) || t(s.nextMap); }   // a room on a test map takes no strangers
   lobby() { const s = this.host.sim; return s.phase !== 'active' || !!s.M.training; }
   teams() { let swat = 0, tango = 0; for (const p of this.host.sim.players.values()) if (!p.bot) { if (p.team === 'tango') tango++; else swat++; } return { swat, tango }; }
   // tell each player what the others are to them (friend, request sent or received, blocked) and the matchmaker how the room stands
@@ -183,7 +194,7 @@ export class Room {
     this.report(true);
   }
   report(force) {
-    if (!this.code) return; const { swat, tango } = this.teams(), rep = { code: this.code, open: this.open, swat, tango, n: this.socks.size, lobby: this.lobby(), accts: [...this.acct.values()] }, k = JSON.stringify(rep);
+    if (!this.code) return; const { swat, tango } = this.teams(), rep = { code: this.code, open: this.open && !this.testing(), swat, tango, n: this.socks.size, lobby: this.lobby(), accts: [...this.acct.values()] }, k = JSON.stringify(rep);
     if (!force && k === this.lastRep && Date.now() - this.reportT < 15000) return; this.lastRep = k; this.reportT = Date.now(); this.social('/internal/room', rep);
   }
   async fetch(req) {
@@ -209,6 +220,7 @@ export class Room {
     const id = this.next++; this.socks.set(id, server);
     if (!this.host.join(id, name)) { this.socks.delete(id); server.close(4000, 'Room full'); return new Response(null, { status: 101, webSocket: client }); }
     if (acct) this.acct.set(id, acct);
+    if (q.get('tester') === '1') this.testers.add(id);
     if (mm || mmBack) { this.mm.add(id); this.host.sim.setTeam(id, 'tango'); }   // strangers play the terrorists
     const bye = () => this.gone(id);
     this.announceOwner(); this.refresh();
@@ -220,7 +232,8 @@ export class Room {
         this.social('/internal/request', { from: a, to: b }).then(r => { try { server.send(JSON.stringify({ t: 'friendres', p: m.p, res: r && r.res || 'error' })); } catch {} if (r && (r.res === 'sent' || r.res === 'friend')) { try { this.socks.get(m.p)?.send(JSON.stringify({ t: 'friendreq', p: id, res: r.res })); } catch {} } this.refresh(); }); return; }
       if (m && m.t === 'block') { const a = this.acct.get(id), b = this.acct.get(m.p); if (a && b) this.social('/internal/block', { from: a, to: b }).then(() => this.refresh()); return; }
       if (m && m.t === 'rels') { this.refresh(); return; }
-      if (m && m.t === 'team' && this.mm.has(id)) return;   // a matchmade stranger stays a terrorist
+      if (m && m.t === 'team' && this.mm.has(id)) return;
+      { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) return; }   // test maps: testers only   // a matchmade stranger stays a terrorist
       if (m && m.t === 'sig') { const to = this.socks.get(m.to) || this.specs.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
       const mid = m && (m.m || m.map);
       if (typeof mid === 'string' && (mid.startsWith('u_') || mid.startsWith('s_')) && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });

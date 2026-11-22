@@ -9,7 +9,7 @@ const { default: worker, Room, Social } = await import('../src/worker.js');
 const db = new DatabaseSync(':memory:');
 const sql = { exec: (q, ...a) => { const st = db.prepare(q); return /^\s*SELECT/i.test(q) ? st.all(...a) : (st.run(...a), []); } };
 const soc = new Social({ storage: { sql } });
-const rooms = new Map(), env = { CREATOR_CODE: 'secret', SOCIAL: { idFromName: n => n, get: () => soc }, ROOMS: { idFromName: n => n, get: id => rooms.get(id) || rooms.set(id, new Room(null, env)).get(id) } };
+const rooms = new Map(), env = { CREATOR_CODE: 'secret', TEST_CODE: '246813579024', NO_DELAY: 1, SOCIAL: { idFromName: n => n, get: () => soc }, ROOMS: { idFromName: n => n, get: id => rooms.get(id) || rooms.set(id, new Room(null, env)).get(id) } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const body = r => typeof r.body === 'string' ? JSON.parse(r.body) : r.body;
 const post = (path, b, ticket) => worker.fetch(new Request('https://x.dev' + path, { method: 'POST', headers: { 'content-type': 'application/json', ...(ticket ? { authorization: 'Bearer ' + ticket } : {}) }, body: JSON.stringify(b) }), env).then(body);
@@ -66,4 +66,17 @@ const more = []; for (let i = 0; i < 4; i++) more.push(await join('/ws/SWAT33?na
 for (const r of [sp, ...more]) r.ws.close(); await sleep(80); assert.deepEqual(rc.last('owner').specs, []);
 for (const r of [rc, ma, rb2, solo]) r.ws.close(); await sleep(80);
 assert.equal(soc.all('SELECT * FROM room').length, 0, 'empty rooms leave the list');
+// test mode: maps marked test are for testers only (TEST_CODE -> token -> ?tt=)
+const { MAPS, registerMap } = await import('../public/js/core/level.js'); registerMap({ ...MAPS.mansion, id: 'tstmap', name: 'TEST MAP', test: true });
+assert.equal((await post('/api/tester', { code: '111' })).error, 'Wrong code');
+const tk = (await post('/api/tester', { code: '246813579024' })).token; assert.ok(/^tst\./.test(tk));
+assert.equal((await post('/api/tester/check', { token: tk })).ok, true); assert.equal((await post('/api/tester/check', { token: tk.slice(0, -1) + (tk.endsWith('a') ? 'b' : 'a') })).ok, false);
+const plain = await join('/ws/TESTRM?name=WOLF-40'); plain.ws.send(JSON.stringify({ t: 'choose', m: 'tstmap' })); await sleep(120);
+assert.notEqual(rooms.get('TESTRM').host.sim.nextMap, 'tstmap', 'a player who is not a tester cannot pick a test map');
+const tst = await join('/ws/TESTRM?name=VIPER-27&tt=' + encodeURIComponent(tk)); tst.ws.send(JSON.stringify({ t: 'choose', m: 'tstmap' })); await sleep(120);
+assert.equal(rooms.get('TESTRM').host.sim.nextMap, 'tstmap', 'a tester can');
+plain.ws.send(JSON.stringify({ t: 'open', v: true })); await sleep(80); rooms.get('TESTRM').report(true); await sleep(50);
+assert.equal(soc.all("SELECT open FROM room WHERE code = 'TESTRM'")[0].open, 0, 'a room on a test map takes no strangers');
+for (let i = 0; i < 20; i++) await post('/api/tester', { code: '1' }); assert.equal((await post('/api/tester', { code: '246813579024' })).error, 'Too many tries today');
+plain.ws.close(); tst.ws.close(); await sleep(80);
 console.log('social tests passed'); process.exit(0);

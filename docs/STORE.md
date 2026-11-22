@@ -89,3 +89,15 @@ No store-level conflict found, but a CIPO / USPTO trademark search before launch
 - Signing key: RSA 2048, alias youcanthide, kept by Jordan (never in the repo). GitHub secrets ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD.
 - /.well-known/assetlinks.json is served by src/worker.js with the key's SHA-256 fingerprint. Without it the immersive app will not launch.
 - APK: GitHub Actions "Quest APK" (.github/workflows/quest-apk.yml), run by hand or when android/twa-manifest.json changes. Bump appVersionCode and appVersion there for each new APK. Download from the run's artifacts, upload to the ALPHA channel.
+
+## Test mode (unreleased maps on the live site)
+
+- Mark a map `test: true` in its definition (`public/js/core/maps/<map>.js`). It is left out of the mission and map lists for
+  everyone except testers, and rooms refuse it from anyone who is not a tester. A room on a test map is never offered to
+  QUICK MATCH. Boards show it as `NAME (TEST)`.
+- Become a tester on a headset: CREDITS > DEBUG: ON > TEST MODE: ENTER CODE, type the `TEST_CODE` (Worker secret, digits,
+  10-12 recommended; 20 tries a day per network address). The token lasts 90 days. TEST MODE: ON/OFF switches between your view
+  and a buyer's.
+- To release a map: remove `test: true` and push.
+- Limits: the map's code and models still ship with the site (anyone who digs through the files can find them); a bug in shared
+  code still reaches everyone; the shared code changes the moment it is pushed. For bigger changes use a staging Worker.

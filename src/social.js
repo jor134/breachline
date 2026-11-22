@@ -40,6 +40,7 @@ export class Social {
     q.exec('CREATE TABLE IF NOT EXISTS friend (a TEXT, b TEXT, since INTEGER, PRIMARY KEY (a, b))');   // stored both ways
     q.exec('CREATE TABLE IF NOT EXISTS req (src TEXT, dst TEXT, at INTEGER, PRIMARY KEY (src, dst))');
     q.exec('CREATE TABLE IF NOT EXISTS block (a TEXT, b TEXT, PRIMARY KEY (a, b))');                 // a blocked b
+    q.exec('CREATE TABLE IF NOT EXISTS tries (ip TEXT, day INTEGER, n INTEGER, PRIMARY KEY (ip, day))');   // tester-code attempts
     q.exec('CREATE TABLE IF NOT EXISTS room (code TEXT PRIMARY KEY, open INTEGER, swat INTEGER, tango INTEGER, n INTEGER, lobby INTEGER, accts TEXT, at INTEGER)');
   }
   all(q, ...a) { return [...this.sql.exec(q, ...a)]; }
@@ -83,6 +84,12 @@ export class Social {
         const list = (b.players || []).slice(0, 8), out = {};
         for (const [id, a] of list) { out[id] = {}; for (const [id2, a2] of list) if (id2 !== id && a && a2) { const r = this.rel(a, a2); if (r) out[id][id2] = r; } }
         return json({ rels: out });
+      }
+      if (p === '/internal/try') {   // at most 20 tester-code attempts per network address per day
+        const day = Math.floor(now / 864e5), r = this.one('SELECT n FROM tries WHERE ip = ? AND day = ?', b.ip || '', day), n = r ? r.n : 0;
+        if (n >= 20) return json({ ok: false });
+        this.sql.exec('INSERT OR REPLACE INTO tries (ip, day, n) VALUES (?, ?, ?)', b.ip || '', day, n + 1); this.sql.exec('DELETE FROM tries WHERE day < ?', day - 1);
+        return json({ ok: true });
       }
       if (p === '/internal/request') return json({ res: this.request(b.from, b.to) });
       if (p === '/internal/block') { this.block(b.from, b.to); return json({ ok: true }); }
@@ -128,3 +135,12 @@ export class Social {
     } catch (e) { return json({ error: 'Bad request: ' + (e && e.message) }, 400); }
   }
 }
+
+// ---- test mode: a signed tester token for whoever typed the TEST_CODE (Worker secret) ----
+export async function makeTesterToken(env) { const secret = socialSecret(env), exp = Math.floor(Date.now() / 1000) + 90 * 86400; return 'tst.' + exp + '.' + await sign(secret, 'tester.' + exp); }
+export async function readTesterToken(env, t) {
+  const secret = socialSecret(env); if (!secret || !env.TEST_CODE || typeof t !== 'string') return false;
+  const m = t.match(/^tst\.(\d{10})\.([0-9a-f]{32})$/); if (!m || +m[1] < Date.now() / 1000) return false;
+  const want = await sign(secret, 'tester.' + m[1]); let d = 0; for (let i = 0; i < 32; i++) d |= want.charCodeAt(i) ^ m[2].charCodeAt(i); return !d;
+}
+export function sameCode(a, b) { if (typeof a !== 'string' || typeof b !== 'string' || !b) return false; let d = a.length ^ b.length; for (let i = 0; i < Math.max(a.length, b.length); i++) d |= (a.charCodeAt(i) | 0) ^ (b.charCodeAt(i) | 0); return !d; }

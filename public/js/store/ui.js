@@ -7,6 +7,7 @@ import { WORDS, isCallsign, randomCallsign } from './callsigns.js';
 import { makeUnlock } from './unlock.js';
 import { makeSocial } from './social.js';
 import { CODE_CHARS, isRoomCode, randomRoomCode } from './roomcode.js';
+import { TEST } from './tester.js';
 
 const PER_PAGE = 4, clip = (s, n = 60) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 
@@ -73,7 +74,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     }
     lines.push('', 'Full list with links: breachline credits page.');
     U.prev = S.panel === 'start' || (S.panel === 'credits' && U.prev) ? 'start' : null; if (U.prev) { S.panel = 'credits'; placeBoard(); }
-    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages + (DBG.on ? '   ·   build ' + DBG.build + (social.acct ? '   ·   account ' + social.acct : '') : ''), lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['DEBUG: ' + (DBG.on ? 'ON' : 'OFF'), 'st:debug'], U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
+    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages + (DBG.on ? '   ·   build ' + DBG.build + (social.acct ? '   ·   account ' + social.acct : '') : ''), lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['DEBUG: ' + (DBG.on ? 'ON' : 'OFF'), 'st:debug'], ...(DBG.on ? [['TEST MODE: ' + (!TEST.ok ? 'ENTER CODE' : TEST.off ? 'OFF' : 'ON'), 'st:tester']] : []), U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
   }
 
   // which edition this headset is running, on the start menu, so a developer unlock is never mistaken for the demo
@@ -104,8 +105,8 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   U.gate = what => { if (what === 'editor' ? unlock.full() : unlock.mapOk(what)) return false; showBuy(what === 'editor' ? 'editor' : 'map', 'board'); return true; };
   U.lockTag = id => unlock.mapOk(id) ? '' : '   [FULL GAME]';
   // the game redraws its own panels twice a second; while the start menu is up it redraws this instead
-  U.redraw = () => { if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); else if (S.panel === 'online') showOnline(); else if (S.panel === 'friends') showFriends(); else if (S.panel === 'friend1') showFriend1(); else if (S.panel === 'mm') showMatch(); };
-  U.holdsPanel = () => ['start', 'keypad', 'friend', 'buy', 'online', 'friends', 'friend1', 'mm'].includes(S.panel) || (S.panel === 'credits' && U.prev);
+  U.redraw = () => { if (S.panel === 'tpad') showTestPad(); else if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); else if (S.panel === 'online') showOnline(); else if (S.panel === 'friends') showFriends(); else if (S.panel === 'friend1') showFriend1(); else if (S.panel === 'mm') showMatch(); };
+  U.holdsPanel = () => ['start', 'keypad', 'friend', 'buy', 'online', 'friends', 'friend1', 'mm', 'tpad'].includes(S.panel) || (S.panel === 'credits' && U.prev);
 
   // a 6-character room code typed on an on-panel keyboard (no system keyboard inside VR)
   function showKeypad(msg) {
@@ -201,6 +202,20 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold 38px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     panel.btns = B; panel.key = 'friend' + U.fcode + msg; panel.tex.needsUpdate = true;
   }
+  // test mode: the TEST_CODE typed on a number pad (up to 12 digits)
+  function showTestPad(msg) {
+    if (msg !== undefined) U.tmsg = msg; msg = U.tmsg || '';
+    S.panel = 'tpad'; placeBoard(); panel.mesh.visible = true; if (panel.key === 'tpad' + U.tcode + msg) return;
+    const g = panel.c.getContext('2d'); g.fillStyle = '#0c1118'; g.fillRect(0, 0, 1024, 768); g.strokeStyle = '#a5823a'; g.lineWidth = 6; g.strokeRect(6, 6, 1012, 756);
+    g.textAlign = 'center'; g.fillStyle = '#e8eef5'; g.font = 'bold 56px sans-serif'; g.fillText('TEST MODE', 512, 80);
+    g.fillStyle = '#dcc48f'; g.font = '28px sans-serif'; g.fillText(msg || 'Type the test code to see maps that are not released yet.', 512, 126);
+    g.fillStyle = '#ffd27d'; g.font = 'bold 64px monospace'; g.fillText(U.tcode.replace(/./g, '•') || '_', 512, 222);
+    const B = [], key = (text, act, x, y, w, col) => B.push({ x, y, w, h: 74, text, act, col });
+    ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'DEL', '0', 'CLEAR'].forEach((k, i) => key(k, k === 'DEL' ? 'st:tdel' : k === 'CLEAR' ? 'st:tclr' : 'st:tkey:' + k, 222 + (i % 3) * 200, 262 + Math.floor(i / 3) * 86, 180, k.length > 1 ? '#39424e' : '#5a4a1f'));
+    key('BACK', 'st:tback', 60, 676, 300, '#39424e'); key('ENTER', 'st:tgo', 380, 676, 584, U.tcode.length >= 6 ? '#1f7a3d' : '#2a3038');
+    for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold 38px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
+    panel.btns = B; panel.key = 'tpad' + U.tcode + msg; panel.tex.needsUpdate = true;
+  }
   function go(solo, tut, watch) {
     S.panel = null; panel.mesh.visible = false;
     if (!solo && U.mmCode !== U.code) U.mmJoin = 0;
@@ -240,6 +255,12 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'del') { U.code = U.code.slice(0, -1); showKeypad(''); }
     else if (what === 'new') { U.code = randomRoomCode(); U.created = U.code; showKeypad('New room' + (U.hostOpen ? ', open to terrorist players' : '') + ': tell your squad ' + U.code + '.'); }
     else if (what === 'back') { U.prev = null; U.showStart(); }
+    else if (what === 'tester') { if (!TEST.ok) { U.tcode = ''; showTestPad(''); } else { TEST.setOff(!TEST.off); status(TEST.off ? 'Test mode off: you see what players see.' : 'Test mode on: maps marked TEST are in the mission list.'); showCredits(U.page); } }
+    else if (what === 'tkey') { if (U.tcode.length < 12) U.tcode += arg; showTestPad(''); }
+    else if (what === 'tdel') { U.tcode = U.tcode.slice(0, -1); showTestPad(''); }
+    else if (what === 'tclr') { U.tcode = ''; showTestPad(''); }
+    else if (what === 'tback') { U.tcode = ''; showCredits(U.page); }
+    else if (what === 'tgo') { if (U.tcode.length < 6) return showTestPad('The code has at least 6 digits.'), true; const c = U.tcode; U.tcode = ''; showTestPad('Checking...'); TEST.enter(c).then(j => { if (j.token) { status('Test mode on.'); showCredits(U.page); } else showTestPad(j.error || 'Could not check the code.'); }); }
     else if (what === 'watch') { if (isRoomCode(U.code)) go(false, false, true); else showKeypad('The room code has six characters.'); }
     else if (what === 'join') { if (isRoomCode(U.code)) go(false, false); else showKeypad('The room code has six characters.'); }
     else if (what === 'qm') { clearTimeout(U.mmTimer); U.mmMsg = ''; U.mmStart = Date.now(); showMatch(); matchStep(); }
@@ -291,7 +312,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   // extra WebSocket query for a room: my ticket (account), a QUICK MATCH join (1; 2 when rejoining after a drop), and whether a
   // room I made is open to strangers
   U.specIds = () => U.specs;
-  U.wsExtra = (room, rejoin) => social.wsParam() + (U.watchCode === room ? '&spec=1' : '') + (U.mmJoin && U.mmCode === room ? '&mm=' + (rejoin ? 2 : 1) : '') + (U.created === room && U.hostOpen ? '&open=1' : '');
+  U.wsExtra = (room, rejoin) => social.wsParam() + TEST.wsParam() + (U.watchCode === room ? '&spec=1' : '') + (U.mmJoin && U.mmCode === room ? '&mm=' + (rejoin ? 2 : 1) : '') + (U.created === room && U.hostOpen ? '&open=1' : '');
   U.store = store;
   U.back = back;
   return U;
