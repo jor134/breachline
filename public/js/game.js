@@ -318,7 +318,34 @@ function hint(x, y, z, text) { if (S.now - S.hintT < 1.2) return; S.hintT = S.no
 // wounds: a leg hit slows you, an arm hit shakes your aim; a body diagram shows where you were hit
 const PARTS = ['head', 'torso', 'armL', 'armR', 'legL', 'legR'], FIG = { head: [14, 0, 12, 12], torso: [10, 13, 20, 26], armL: [2, 13, 7, 26], armR: [31, 13, 7, 26], legL: [10, 40, 9, 34], legR: [21, 40, 9, 34] };
 const legMul = () => [1, 0.65, 0.4][(S.me.w >> 4 & 1) + (S.me.w >> 5 & 1)] * (S.me.holding ? 0.5 : 1), armShake = () => [0, 0.012, 0.026][(S.me.w >> 2 & 1) + (S.me.w >> 3 & 1)];
-function drawBody(g, x, y, k, flash) { PARTS.forEach((p, i) => { const [a, b, c, d] = FIG[p]; g.fillStyle = p === flash ? '#ffffff' : S.me.w & (1 << i) ? '#e03030' : '#46505c'; g.fillRect(x + a * k, y + b * k, c * k, d * k); }); }
+// The damage figure (wrist and hit diagram): a SWAT officer in outline, helmet with ear cups, plate carrier, gloves, knee pads and
+// boots, rifle hanging at the right side. Same six parts and the same 40 x 74 box as before (FIG); each part fills red when hurt.
+const SWAT_FIG = (() => {
+  const m = f => (g, M) => f(g, M), mir = pts => pts.map(([a, b]) => [40 - a, b]);
+  const poly = pts => (g, M) => { pts.forEach(([a, b], i) => i ? g.lineTo(...M(a, b)) : g.moveTo(...M(a, b))); g.closePath(); };
+  const arm = [[9.6, 14.2], [6.2, 14.6], [4.2, 17.8], [3.6, 25.5], [2.8, 33], [3.2, 35.8], [7.4, 36.2], [7.9, 32.8], [8.6, 26], [9.9, 20.5]];
+  const leg = [[10.4, 39.4], [19.6, 39.4], [19.3, 66.4], [19.6, 70.5], [19.6, 73.6], [9.4, 73.6], [9.6, 70.8], [11.1, 68.6], [11.1, 62], [10.5, 50]];
+  return {
+    head: (g, M) => { g.moveTo(...M(12.6, 7.4)); g.quadraticCurveTo(...M(12.6, -0.6), ...M(20, -0.6)); g.quadraticCurveTo(...M(27.4, -0.6), ...M(27.4, 7.4)); g.lineTo(...M(24.8, 7.4)); g.lineTo(...M(24.4, 10.6)); g.quadraticCurveTo(...M(20, 13.4), ...M(15.6, 10.6)); g.lineTo(...M(15.2, 7.4)); g.closePath();
+      for (const cx of [13.3, 26.7]) { const [px, py] = M(cx, 8.2), [qx] = M(cx + 1.25, 8.2); g.moveTo(qx, py); g.arc(px, py, qx - px, 0, Math.PI * 2); } },
+    torso: poly([[10.6, 13.4], [15.6, 12.6], [20, 13.6], [24.4, 12.6], [29.4, 13.4], [30.6, 16.6], [29.6, 38.4], [10.4, 38.4], [9.4, 16.6]]),
+    armL: (g, M) => { poly(arm)(g, M); const [cx, cy] = M(5.2, 38.4), [rx] = M(7.5, 38.4); g.moveTo(rx, cy); g.ellipse(cx, cy, rx - cx, (rx - cx) * 1.2, 0, 0, Math.PI * 2); },
+    armR: (g, M) => { poly(mir(arm))(g, M); const [cx, cy] = M(34.8, 38.4), [rx] = M(37.1, 38.4); g.moveTo(rx, cy); g.ellipse(cx, cy, rx - cx, (rx - cx) * 1.2, 0, 0, Math.PI * 2); },
+    legL: poly(leg), legR: poly(mir(leg)),
+    // details drawn over the fill, darker: vest pouches and plate edge, knee pads, boot welts; and the rifle (not a body part)
+    lines: [[[18.4, 3.6], [18.4, 1.6], [21.6, 1.6], [21.6, 3.6]], [[12.4, 27], [15.6, 27], [15.6, 33.4], [12.4, 33.4]], [[16.8, 27], [20, 27], [20, 33.4], [16.8, 33.4]], [[21.2, 27], [24.4, 27], [24.4, 33.4], [21.2, 33.4]], [[11.2, 21.4], [28.8, 21.4]],
+      [[11.6, 52.2], [18.6, 52.2], [18.6, 57.2], [11.6, 57.2]], [[21.4, 52.2], [28.4, 52.2], [28.4, 57.2], [21.4, 57.2]], [[9.6, 70.6], [19.6, 70.6]], [[20.4, 70.6], [30.4, 70.6]]],
+    rifle: [[33.4, 36.4], [36.4, 36.4], [36.6, 41], [37.6, 43.4], [36.8, 47], [36.2, 47], [36, 62.5], [34.8, 62.5], [34.6, 47], [33.2, 44.6], [33.6, 41]],
+  };
+})();
+function drawBody(g, x, y, k, flash) {
+  const M = (a, b) => [x + a * k, y + b * k];
+  PARTS.forEach((p, i) => { g.beginPath(); SWAT_FIG[p](g, M); g.fillStyle = p === flash ? '#ffffff' : S.me.w & (1 << i) ? '#e03030' : '#46505c'; g.fill('nonzero'); });
+  g.save(); g.strokeStyle = 'rgba(8,12,18,0.55)'; g.lineWidth = Math.max(0.6, k * 0.55); g.lineJoin = 'round';
+  for (const L of SWAT_FIG.lines) { g.beginPath(); L.forEach(([a, b], i) => i ? g.lineTo(...M(a, b)) : g.moveTo(...M(a, b))); if (L.length > 2) g.closePath(); g.stroke(); }
+  g.beginPath(); SWAT_FIG.rifle.forEach(([a, b], i) => i ? g.lineTo(...M(a, b)) : g.moveTo(...M(a, b))); g.closePath(); g.fillStyle = '#1b222b'; g.fill(); g.strokeStyle = '#7d8794'; g.lineWidth = Math.max(0.6, k * 0.4); g.stroke();
+  g.restore();
+}
 const fig = (() => { const c = document.createElement('canvas'); c.width = 96; c.height = 176; const tex = new THREE.CanvasTexture(c); const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.085, 0.156), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, fog: false })); mesh.position.set(-0.17, -0.05, -0.5); mesh.renderOrder = 994; mesh.visible = false; camera.add(mesh); return { c, tex, mesh }; })();
 function drawFig() { const g = fig.c.getContext('2d'); g.clearRect(0, 0, 96, 176); g.fillStyle = 'rgba(5,8,12,0.7)'; g.fillRect(0, 0, 96, 176); drawBody(g, 8, 8, 2, Math.floor(S.now * 5) % 2 ? S.lastPart : ''); g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.textAlign = 'center'; g.fillText(S.lastPart ? ({ head: 'HEAD', torso: 'TORSO', armL: 'LEFT ARM', armR: 'RIGHT ARM', legL: 'LEFT LEG', legR: 'RIGHT LEG' })[S.lastPart] : 'TREATED', 48, 170); fig.tex.needsUpdate = true; }
 function useMed() { if (S.me.down) return; if (S.me.med) { hint(head.pos.x + head.fwd.x, head.pos.y, head.pos.z + head.fwd.z, 'MED KIT USED'); return; } net.send({ t: 'heal' }); }
@@ -1213,7 +1240,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q39';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q40';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
