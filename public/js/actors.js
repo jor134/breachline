@@ -185,7 +185,7 @@ export class Human {
       sk.hipsOff.set(0, this.body.position.y, 0);
     }
     W.clear(); let n = 0; const put = (i, Dq) => { if (i >= 0) W.set(i, sk.rig(i, Dq, q[n++])); };
-    put(r.hips, D.b); r.spine.forEach((i, k) => put(i, _q3.copy(D.b).slerp(D.u, (k + 1) / r.spine.length))); put(r.neck, D.u); put(r.head, D.u);
+    put(r.hips, D.b); r.spine.forEach((i, k) => put(i, _q3.copy(D.b).slerp(D.u, (k + 1) / r.spine.length))); put(r.neck, rest ? D.u : _q4.copy(D.u).multiply(_q2.setFromAxisAngle(UPY, (this.hl || 0) * 0.35))); put(r.head, rest ? D.u : _q4.copy(D.u).multiply(_q2.setFromAxisAngle(UPY, (this.hl || 0) * 0.85)));
     // model right (-x) <- rig +x side (index 1); model left <- rig index 0
     for (const [S, k] of [['R', 1], ['L', 0]]) { put(r.up[S], D.sh[k]); put(r.fore[S], D.el[k]); put(r.hand[S], D.el[k]); put(r.thigh[S], D.hp[k]); put(r.shin[S], D.kn[k]); put(r.foot[S], D.kn[k]); }
     sk.solve(W);
@@ -223,6 +223,8 @@ export class Human {
     const br = Math.sin(this.idle * 1.6) * 0.012, sway = up ? Math.sin(this.idle * (st === 'z' ? 3.1 : 0.55)) * (st === 'z' ? 0.09 : 0.02) * still : 0, hurt = st === 'i' ? Math.sin(this.idle * 2.2) * 0.1 : 0;
     this.flinch = Math.max(0, this.flinch - dt * 4); const fl = this.flinch * this.flinch, kick = this.flashT > 0 ? 0.07 : 0;
     // idle life: weight on one leg then the other, a look around now and then; a guard checks his weapon; hostages tremble and glance about
+    // a suspect standing guard looks left and right over his shoulders with his head, holding each glance a moment
+    { const gs = Math.sin(this.idle * 0.38 + this.phase * 0.2), want = (st === 'g' ? 0.95 : 0.35) * Math.sign(gs) * Math.min(1, Math.abs(gs) * 1.7) * still; this.hl = (this.hl || 0) + (want - (this.hl || 0)) * Math.min(1, dt * 2.5); }
     const shift = Math.sin(this.idle * 0.33) * still, look = (Math.sin(this.idle * 0.23) * Math.sin(this.idle * 0.071 + 1)) * 0.5 * still;
     const check = this.kind === 's' && st === 'g' && still > 0.8 ? Math.max(0, Math.sin(this.idle * 0.21 + this.phase0) - 0.8) * 5 : 0, scared = st === 'w' || st === 'y' ? Math.sin(this.idle * 13) * 0.012 + Math.sin(this.idle * 0.9) * 0.25 : 0;
     const [L, R] = this.legs;
@@ -282,11 +284,14 @@ export const HAND_BACK = [0.85, 0.5, -0.1], HAND_KN = [0.018, -0.012, -0.01];   
 export const SELF_BACK = { d: 0.02, tilt: 0.25, wide: 7 / 6, up: 0, gear: 0, gup: 0 };   // up / gear: BODY FIT height offset, all vest and belt gear forward   // up: BODY FIT height offset   // your own body sits this far behind your eyes, and is this much broader and deeper
 // Looking down, real eyes swing forward over the chest; the body here follows the eyes, so it is pushed back by up to
 // SELF_BACK.tilt more as the head tilts down: you see your chest and gear, not the tops of your shoulders and the collar.
+// goggles of the squad and other players: down when the power is out (the game sets GOG.night), flipped up otherwise
+export const GOG = { night: false };
 export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.0, -0.76, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qPi = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), _eul = new THREE.Euler(), _ax = new THREE.Vector3(1, 0, 0), _kneeFwd = new THREE.Vector3(0, 0, 1), GRIP = { i: 0.7, g: 0.8, t: 0.5 };
 const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
 let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null, TORSO = null, gearParts = null, gearG = null;
-const gearGeo = () => gearG || (gearG = merge(gearParts.filter(p => !(p[3] === -0.15 && p[4] === -0.2)).map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);   // minus the radio antenna: on your own vest it sat 15 cm under your eyes and showed as a black pole in front of you   // pouches, radio, holster, grenades on the squad model's vest
+const NADE_COLS = [0x5a6048, 0x9aa0a8, 0x6a6e72, 0xd8d8d8], isVestNade = p => NADE_COLS.includes(p[1]) && [0.125, 0.185, 0.04].includes(p[2]);   // the built-in vest grenades, replaced by the M84/M18 models
+const gearGeo = () => gearG || (gearG = merge(gearParts.filter(p => !(p[3] === -0.15 && p[4] === -0.2) && !(HQ && isVestNade(p))).map(p => { const q = p.slice(); q[4] -= 0.04; return q; }), 'cloth').geometry);   // minus the radio antenna: on your own vest it sat 15 cm under your eyes and showed as a black pole in front of you   // pouches, radio, holster, grenades on the squad model's vest
 // ---------- articulated glove: palm plus four fingers of three joints and a thumb, curled by a pose { i: index, g: other fingers, t: thumb } ----------
 // Local frame matches the controller grip: back of the hand up (+y), fingers forward (-z), thumb on the left for a right hand (mirrored for the left).
 const FINGERS = [[-0.027, [0.04, 0.024, 0.02], 0.0085, 0.06], [-0.009, [0.044, 0.027, 0.021], 0.0088, 0.01], [0.009, [0.041, 0.025, 0.02], 0.0082, -0.04], [0.026, [0.032, 0.019, 0.017], 0.0073, -0.11]];
@@ -339,6 +344,9 @@ export class Body {
     this.G = { ph: Math.random() * 6, vx: 0, vz: 0, spd: 0, last: null, lastYaw: null, lag: 0, step: 0, idle: Math.random() * 9, fall: 0, kick: 0, sink: 0, feet: [new THREE.Vector3(), new THREE.Vector3()] };
     if (CHARS_ON) loadChar('swat').then(t => this.attachSkin(t)).catch(e => console.warn('officer model not loaded', e));
   }
+  // goggles down (night vision on) or flipped up onto the helmet, swinging over about half a second
+  goggles(down, dt) { const G = this.gog; if (!G) return; G.want = down ? 0 : 1; if (G.a === G.want) return; G.a = G.want > G.a ? Math.min(G.want, G.a + dt * 2.2) : Math.max(G.want, G.a - dt * 2.2);
+    const e = G.a * G.a * (3 - 2 * G.a); G.piv.quaternion.setFromAxisAngle(G.axis, e * 1.4); G.piv.position.copy(G.h0).addScaledVector(G.back, e); }
   // PvP: a terrorist player wears the terrorist model. Swaps the skinned model; the vest gear and the arm solve stay.
   setTeam(team) {
     team = team === 'tango' ? 'tango' : 'swat'; if (team === this.team) return; this.team = team; const gen = ++this.skinGen;
@@ -349,8 +357,30 @@ export class Body {
   attachSkin(tpl) {
     const holder = this.holder = new THREE.Group(); holder.rotation.order = 'YXZ'; this.g.add(holder); holder.updateMatrixWorld(true);
     const sk = this.skin = new Skin(tpl, holder), r = sk.role, P = sk.restP;
-    this.torso.geometry = gearGeo(); this.legs.visible = false; for (const a of this.arms) { a.up.visible = a.fore.visible = a.glove.visible = false; a.off = true; }
+    this.torso.geometry = gearGeo(); this.legs.visible = false;
+    // the vest's two flashbangs and smoke: the same M84 / M18 models you throw (gear is shifted 4 cm back, see gearGeo)
+    if (HQ && !this.vestNades) { this.vestNades = true; loadNades().then(N => { for (const [k, x, z] of [['flash', 0.125, -0.075], ['flash', 0.185, -0.07], ['smoke', 0.04, -0.08]]) { const d = N[k]; if (!d) continue;
+      const m = new THREE.Mesh(d.geo, d.mat); m.position.set(x, -0.62, z - 0.04); this.torso.add(m); } }).catch(e => console.warn('vest grenades not loaded', e)); } for (const a of this.arms) { a.up.visible = a.fore.visible = a.glove.visible = false; a.off = true; }
     const hp = P[r.head]; this.eye = new THREE.Vector3(hp.x, hp.y + 0.1, hp.z + 0.1);
+    // night-vision goggles: the model has them always down. They become a rigid piece on the head bone, hinged at the helmet mount,
+    // so they can flip up onto the helmet when not in use (goggles(), called each frame by the game).
+    this.gog = null; sk.wrap.updateMatrixWorld(true);
+    let gm = null; sk.wrap.traverse(o => { if (!gm && o.isSkinnedMesh && o.material.name === 'night_vis_goggles') gm = o; });
+    if (gm && gm.skeleton.bones.includes(sk.bones[r.head])) { const o = gm;
+      const hb = o.skeleton.bones.indexOf(sk.bones[r.head]);
+      const geo = o.geometry.clone(); geo.deleteAttribute('skinIndex'); geo.deleteAttribute('skinWeight');
+      geo.applyMatrix4(new THREE.Matrix4().multiplyMatrices(o.skeleton.boneInverses[hb], o.bindMatrix)); geo.computeBoundingBox();
+      const bb = geo.boundingBox, c = bb.getCenter(new THREE.Vector3());
+      // the goggles hang in front of the face: the hinge is their top edge on the helmet side; they swing up about the head's side axis
+      const toward = new THREE.Vector3(c.x, 0, c.z); const fwdZ = Math.abs(c.z) >= Math.abs(c.x) ? Math.sign(c.z) || 1 : 0, fwdX = fwdZ ? 0 : Math.sign(c.x);
+      const hinge = new THREE.Vector3(fwdX ? (fwdX > 0 ? bb.min.x : bb.max.x) : c.x, bb.max.y, fwdZ ? (fwdZ > 0 ? bb.min.z : bb.max.z) : c.z);
+      geo.translate(-hinge.x, -hinge.y, -hinge.z);
+      const piv = new THREE.Group(); piv.position.copy(hinge); sk.bones[r.head].add(piv);
+      const m = new THREE.Mesh(geo, o.material); m.castShadow = o.castShadow; piv.add(m); o.visible = false; o.parent.remove(o);
+      const axis = fwdZ ? new THREE.Vector3(fwdZ > 0 ? -1 : 1, 0, 0) : new THREE.Vector3(0, 0, fwdX > 0 ? 1 : -1);   // positive turn = front edge up
+      const size = bb.getSize(new THREE.Vector3()), back = new THREE.Vector3(-fwdX, 0, -fwdZ).multiplyScalar(0.6 * (fwdZ ? size.z : size.x));   // flipped up, they tuck back against the helmet
+      this.gog = { piv, axis, a: 0, want: 0, h0: hinge.clone(), back: back.add(new THREE.Vector3(0, -0.22 * size.y, 0)) };
+    }
     if (this.detailed) { sk.bones[r.neck].scale.setScalar(0.001); sk.wrap.traverse(o => { if (o.isMesh && /glass/.test(o.material.name)) o.visible = false; }); }   // your own head and goggles would fill the view
     this.W = new Map(); this.H = {};
     // quest-store: the squad model's rest pose has its torso twisted: the left shoulder sits 9 cm further forward (and 4 cm lower)
@@ -517,7 +547,7 @@ export class Body {
     Gt.last.copy(headPos); Gt.spd = Math.hypot(Gt.vx, Gt.vz); Gt.idle += dt;
     if (Gt.lastYaw !== null) { let dy = yaw - Gt.lastYaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; Gt.lag = Math.max(-1.2, Math.min(1.2, Gt.lag - dy)); } Gt.lastYaw = yaw;
     Gt.fall = Math.max(0, Math.min(1, Gt.fall + (o.down ? dt / 0.75 : -dt / 0.95)));
-    if (this.skin) this.poseSkin(headPos, yaw, hands, feetY, headQ, dt, o);
+    if (this.skin) { this.poseSkin(headPos, yaw, hands, feetY, headQ, dt, o); this.goggles(o.nvg ?? GOG.night, dt); }
     const tb = 0.05 + (this.back || 0) - (this.detailed && this.skin ? SELF_BACK.gear : 0); this.torso.position.set(headPos.x + s * tb, headPos.y + (this.detailed ? SELF_BACK.up + (this.skin ? SELF_BACK.gup : 0) : 0), headPos.z + c * tb); this.torso.rotation.y = yaw; this.legs.position.copy(this.torso.position); this.legs.rotation.y = yaw; this.legs.visible = !this.skin && headPos.y - feetY > 1.25; this.blob.position.set(this.torso.position.x, feetY + 0.024, this.torso.position.z); this.blob.visible = Number.isFinite(feetY);   // vest gear moves back with the body, matching the grab zones (bodyPt), and turns with it
     this.arms.forEach((a, i) => {
       if (a.off) return; const h = hands[i]; a.up.visible = a.fore.visible = a.glove.visible = !!h; if (!h) return;
@@ -560,7 +590,7 @@ export class Officer {   // another player
       o.pos.set(lp(P[0], X[0]), lp(P[1], X[1]), lp(P[2], X[2])); o.quat.set(P[3], P[4], P[5], P[6]).slerp(_q.set(X[3], X[4], X[5], X[6]), k); g.position.copy(o.pos); g.quaternion.copy(o.quat);
       g.userData.items.forEach((m, j) => { if (m) m.visible = j === (b.items ? b.items[i] : 0); }); return o; });
     const hp = this.head.position, gy = GROUND.y ? GROUND.y(hp.x, hp.z, hp.y - (b.down ? 0.1 : 0.9)) : null, feet = gy !== null && Number.isFinite(gy) && hp.y - gy < 2.2 ? gy : hp.y - (b.down ? 0.3 : 1.7);
-    this.body.update(hp, this.e.y, hands, feet, this.head.quaternion, { down: b.down });
+    this.body.update(hp, this.e.y, hands, feet, this.head.quaternion, { down: b.down, nvg: b.nvg ?? GOG.night });
     if (this.body.skin && !this.hid) { this.hid = true; this.head.material = new THREE.MeshBasicMaterial({ visible: false }); }
   }
 }

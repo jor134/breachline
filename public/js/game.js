@@ -1,7 +1,7 @@
 // BREACHLINE client: WebXR rig, manual weapon handling, interactions, networking, HUD.
 import * as THREE from '../vendor/three.module.min.js';
 import { buildWorld, label } from './gfx.js';
-import { Human, Officer, Bomb, Body, RIG, SELF_BACK, GROUND, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
+import { Human, Officer, Bomb, Body, RIG, GOG, SELF_BACK, GROUND, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
 import { loadCar, loadParkedCars } from './car.js';
 import { setEnvInside } from './mats.js';
 import { gfxMode, gfxLabel, toggleGfx, applyGfx } from './store/gfxmode.js';
@@ -179,7 +179,7 @@ const mkGun = (kind, mesh) => { scene.add(mesh); return { kind, st: createGun(ki
 const guns = { rifle: mkGun('rifle', makeRifle(true, true)), pistol: mkGun('pistol', makePistol(true, true)) };
 // quest-store: the sidearm drawn 1.6x its modelled size (it read as a toy in the hand). Its points (muzzle, sight, magwell) are in the
 // mesh's own frame, so they scale with it; the grip stays at the hand because the gun frame's origin is the top of the grip.
-const PISTOL_SCALE = 1.34;   // 1.6 asked for with the old .22; the 9 mm model a third smaller, then a quarter larger (18 Nov) guns.pistol.mesh.scale.setScalar(PISTOL_SCALE); for (const h of hands) h.mags.pistol.scale.setScalar(PISTOL_SCALE);
+const PISTOL_SCALE = 1.675;   // 1.6 asked for with the old .22; the 9 mm model a third smaller, then a quarter larger (18 Nov) guns.pistol.mesh.scale.setScalar(PISTOL_SCALE); for (const h of hands) h.mags.pistol.scale.setScalar(PISTOL_SCALE);
 // quest-store: hands lock onto the gun. A held gun follows the controller (or, two-handed, the line to the support hand), and the
 // hand drawn on it takes its pose from the gun: the gun hand round the pistol grip, the support hand round the foregrip, wherever
 // the controllers really are. GRIP_AT: where the controller origin would be for a proper grip, in the gun's frame.
@@ -311,7 +311,7 @@ const breaker = (() => { const g = new THREE.Group(); const box = (w, h, d, c, x
   for (let i = 0; i < 6; i++) g.add(box(0.06, 0.035, 0.02, 0x15171a, -0.1, 0.1 - i * 0.06, 0.07)); scene.add(g); return { g, lever, led, cur: 0 }; })();
 const nearBreaker = (p, d) => !!M.breaker && Math.hypot(p.x - M.breaker.x, p.y - M.breaker.y, p.z - M.breaker.z) < d;
 const lookFog = { c: new THREE.Color(), bg: new THREE.Color(), d: 0, on: false };   // the scene's own fog, for smoke to thicken without re-running the whole look
-const applyLook = () => { world.look(S.night, S.nvg, S.wx); weather.set(S.wx, S.night, S.nvg); nvgMask.visible = S.nvg; irLamp.intensity = S.nvg ? (S.night ? 3.2 : 1.2) : 0; lookFog.on = false; };
+const applyLook = () => { GOG.night = S.night; world.look(S.night, S.nvg, S.wx); weather.set(S.wx, S.night, S.nvg); nvgMask.visible = S.nvg; irLamp.intensity = S.nvg ? (S.night ? 3.2 : 1.2) : 0; lookFog.on = false; };
 function toggleNVG() { if (nvgFlip.busy()) return; const on = !S.nvg; sfx.nvg(on); nvgFlip.start(on); }   // the goggles flip down / up (js/store/nvgflip.js)
 function hint(x, y, z, text) { if (S.now - S.hintT < 1.2) return; S.hintT = S.now; sayAt(x, y, z, text, '#ffd060'); sfx.beep(null, 300); }
 // wounds: a leg hit slows you, an arm hit shakes your aim; a body diagram shows where you were hit
@@ -654,7 +654,7 @@ function onEvent(e) {
     case 'liftmove': { if (e.ids.includes(S.me.id)) { rig.position.y += e.dy; S.feetY += e.dy; headWorld(); for (const h of hands) buzz(h, 0.4, 120); } const L = M.lift; if (L) { const y = L.stops[e.at], c = L.car; sfx.chime(v1.set((c.x0 + c.x1) / 2, y + 2, c.z1)); } break; }
     case 'kick': { const d = level.doors[e.d]; const ko = S.officers.get(e.p); if (ko) ko.body.kick(); if (e.p === S.me.id) myBody.kick(); sfx.kick(v1.set(d.cx, d.y + 1, d.cz), e.ok); if (e.ok) world.doors[e.d].cur = 0.9; else sayAt(d.cx, d.y + 1.5, d.cz, 'HELD', '#ffb060'); break; }
     case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (a.kind === 's' && sfx.vo('vo_s_' + e.k, v1.set(a.g.position.x, a.g.position.y + 1.6, a.g.position.z))) { /* recorded suspect line */ } else if (L[2] && a.g.position.distanceTo(head.pos) < 14) { sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); if (voiceState.error) noteErr(voiceState.error); } } } break;
-    case 'shout': if (e.p !== S.me.id) sfx.say('Police! Hands up!', 1); break;
+    case 'shout': if (e.p !== S.me.id) { const o = S.officers.get(e.p), p = o && o.head.position; if (!sfx.vo('vo_p_shout', p || null, 1.3)) sfx.say('Police! Hands up!', 1); } break;
     case 'cuff': if (a) { sfx.cuff(a.g.position); if (a.kind === 's') sfx.vo('vo_s_cuffed', v1.set(a.g.position.x, a.g.position.y + 0.9, a.g.position.z), 1.3); } break;
     case 'flash': { v1.set(e.x, e.y, e.z); sfx.bang(v1); puff([e.x, e.y + 0.2, e.z], 0xffffff); const d = v1.distanceTo(head.pos);
       if (d < 12) { v2.copy(v1).sub(head.pos).multiplyScalar(1 / Math.max(d, 0.01)); if (rayStatic(level, S.doorOpen, head.pos.x, head.pos.y, head.pos.z, v2.x, v2.y, v2.z, d) >= d - 0.15) { const k = (1 - d / 12) * (v2.dot(head.fwd) > 0.15 ? 1 : 0.35) * (S.nvg ? 1.4 : 1); flashWhite = Math.max(flashWhite, k * 2.2); sfx.ring(k); for (const h of hands) buzz(h, 1, 200); } } break; }
@@ -737,7 +737,11 @@ function doKick() {
   level.doors.forEach((d, i) => { const dx = d.cx - head.pos.x, dz = d.cz - head.pos.z, dd = Math.hypot(dx, dz); if (!S.doorOpen[i] && Math.abs(d.y - S.feetY) < 1.2 && dd < bd && (dx * head.fwd.x + dz * head.fwd.z) / Math.max(dd, 0.01) > 0.2) { bd = dd; bi = i; } });
   if (bi >= 0) { net.send({ t: 'kick', d: bi }); for (const h of hands) buzz(h, 1, 80); }
 }
-function doShout() { if (S.me.down) return; net.send({ t: 'shout' }); sfx.say(S.pvp && S.me.team === 'tango' ? 'Get down! Nobody move!' : 'Police! Hands up!', 1); }
+// Your shout: a recorded line when sfx/manifest.json has 'vo_p_shout' (or 'vo_t_shout' as a terrorist), else the headset's speech
+// voice, which Quest's browser may not have, so the words also show in front of you and the controller buzzes.
+function doShout() { if (S.me.down) return; net.send({ t: 'shout' }); const t = S.pvp && S.me.team === 'tango', line = t ? 'GET DOWN! NOBODY MOVE!' : 'POLICE! HANDS UP!';
+  if (!sfx.vo(t ? 'vo_t_shout' : 'vo_p_shout', null, 1.3)) sfx.say(line.toLowerCase(), 1);
+  sayAt(head.pos.x + head.fwd.x * 1.6, head.pos.y - 0.15, head.pos.z + head.fwd.z * 1.6, line, '#ffffff'); for (const h of hands) buzz(h, 0.5, 60); }
 
 function readVR() {
   for (const h of hands) { Object.assign(h.prev, h.in); h.active = false; }
@@ -1101,7 +1105,7 @@ function frame(t) {
   for (const h of hands) { if (h.active) { v1.copy(h.pos).sub(h.last).multiplyScalar(1 / dt); if (v1.lengthSq() < 900) h.vel.lerp(v1, 0.45); h.last.copy(h.pos); } }
   placeGuns(dt);
   for (const h of hands) h.pose = handPose(h, hands[1 - h.i]);
-  myBody.g.visible = S.mode === 'vr'; if (S.mode === 'vr') myBody.update(head.pos, S.bodyYaw, [handOnGun(hands[0]), handOnGun(hands[1])], S.feetY, head.quat, { down: !!S.me.down, stride: 0.5 });   // your own legs step, smaller
+  myBody.g.visible = S.mode === 'vr'; if (S.mode === 'vr') myBody.update(head.pos, S.bodyYaw, [handOnGun(hands[0]), handOnGun(hands[1])], S.feetY, head.quat, { down: !!S.me.down, stride: 0.5, nvg: S.nvg });   // your own legs step, smaller
   if (S.mode === 'vr') { handVR(hands[0], hands[1], dt); handVR(hands[1], hands[0], dt); }
   else if (S.mode === 'desktop') { const h = hands[1], G = gunIn(h); if (G && !S.reloading) fire(h, G, hands[0]); mouseLPrev = mouseL; }
   if (S.deskPick) { const P = S.deskPick, d = level.doors[P.id]; if (S.doorOpen[P.id] && (P.lock || P.trap) || !(P.lock ? !S.doorLocked[P.id] : P.trap ? !S.doorTrap[P.id] : P.disarm ? S.doorTrap[P.id] : S.doorLocked[P.id]) || Math.hypot(d.cx - head.pos.x, d.cz - head.pos.z) > 2.2) S.deskPick = null; else if ((P.t += dt) >= 4) { net.send({ t: P.lock ? 'lockdoor' : P.trap ? 'trapdoor' : P.disarm ? 'disarm' : P.snip ? 'snip' : 'pick', d: P.id }); S.deskPick = null; } else if (Math.floor(P.t * 3) !== Math.floor((P.t - dt) * 3)) sfx.click(); }
@@ -1208,7 +1212,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q34';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q35';   // quest-store builds: q1, q2... (main uses vNN)
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);

@@ -397,7 +397,7 @@ export class Sim {
   sees(n, p, d) {
     const lit = this.night && p.light;                 // in the dark a flashlight gives you away at any range, even through glass
     if (d > Math.max(3.5, (this.night && !lit ? 7 : 22) * SIGHT[this.weather])) return false;
-    if (d > 2.5) { const a = Math.atan2(p.hx - n.x, p.hz - n.z); if (Math.abs(angDiff(a, n.yaw)) > 1.05) return false; }
+    if (d > 2.5) { const a = Math.atan2(p.hx - n.x, p.hz - n.z); if (Math.abs(angDiff(a, n.yaw)) > (n.st === 'g' && !n.path ? 1.5 : 1.05)) return false; }   // a guard standing still also looks over his shoulders
     if (this.smokes.length && this.inSmoke(n.x, this.eyeY(n), n.z, p.hx, p.hy, p.hz)) return false;
     return this.clear(n.x, this.eyeY(n), n.z, p.hx, p.hy, p.hz, d > 8 && !lit);   // a lit room's glass only shows what is close
   }
@@ -444,10 +444,13 @@ export class Sim {
     if (n.fleeing) { const [f, x, z] = hv.flee; if (!n.path && Math.hypot(n.x - x, n.z - z) > 1.5 && !this.goto(n, x, z, f * this.M.H)) n.fleeing = false; if (n.fleeing && !this.walk(n, dt, 3.3)) { n.fleeing = false; n.post = [x, z, f * this.M.H]; n.st = 'a'; n.tA = 0; n.hold = true; n.crouch = true; n.lk = [x, z + 6, n.y]; } return; }
     let seen = null, best = 1e9;
     for (const p of this.players.values()) { if (p.down || !p.has || p.team === 'tango') continue; const d = Math.hypot(p.hx - n.x, p.hy - n.y - 1.5, p.hz - n.z); if (d < best && this.sees(n, p, d)) { seen = p; best = d; } }   // human terrorists are on their side
+    if (n.st !== 'g') n.gyaw = null;
     if (n.st === 'g') {
       if (seen) return this.engage(n, seen, 0.6 + this.rnd() * 0.5);
-      if (n.path) { if (!this.walk(n, dt, 1.3)) n.pwait = 4 + this.rnd() * 8; }
-      else { n.yaw += n.sweep * dt; if (n.patrol) { n.pwait -= dt; if (n.pwait <= 0) { n.pt = 1 - n.pt; const t = n.pt ? [n.patrol[1], n.patrol[2], n.patrol[0] * this.M.H] : n.post; if (!this.goto(n, t[0], t[1], t[2])) n.pwait = 5; } } }
+      // standing guard: the body sways gently either side of the way it faces (the head looks further, client side) instead of
+      // turning round and round like a top
+      if (n.path) { n.gyaw = null; if (!this.walk(n, dt, 1.3)) n.pwait = 4 + this.rnd() * 8; }
+      else { if (n.gyaw == null) n.gyaw = n.yaw; n.gph = (n.gph ?? n.id * 1.7) + dt * (0.25 + Math.abs(n.sweep) * 0.4); n.yaw = n.gyaw + Math.sin(n.gph) * 0.45; if (n.patrol) { n.pwait -= dt; if (n.pwait <= 0) { n.pt = 1 - n.pt; const t = n.pt ? [n.patrol[1], n.patrol[2], n.patrol[0] * this.M.H] : n.post; if (!this.goto(n, t[0], t[1], t[2])) n.pwait = 5; } } }
     } else if (n.st === 'a') {
       if (seen) return this.engage(n, seen, 0.35 + this.rnd() * 0.35);
       n.tA += dt;

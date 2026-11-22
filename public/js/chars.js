@@ -167,6 +167,7 @@ function cloneSkinned(src) {
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _m = new THREE.Matrix4(), X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0), DOWN = new THREE.Vector3(0, -1, 0);
 // A posed copy of a character inside `holder`. Works in the holder's frame ("g"): gq / gp are each bone's rotation / position there.
+const STR_WRAPPED = new WeakSet();
 export class Skin {
   constructor(tpl, holder) {
     this.tpl = tpl; const def = CHARS[tpl.def || tpl.id], wrap = this.wrap = new THREE.Group(); wrap.scale.setScalar(tpl.k); wrap.position.y = tpl.y0;
@@ -185,6 +186,18 @@ export class Skin {
     if (def.fingers) { this.role.fingers = { L: def.fingers.L.map(c => c.map(B)), R: def.fingers.R.map(c => c.map(B)) }; this.role.thumb = { L: def.thumb.L.map(B), R: def.thumb.R.map(B) }; }
     if (def.rest) this.role.rest = { L: def.rest.L.map(c => c.map(B)), R: def.rest.R.map(c => c.map(B)) };
     this.str = new Float32Array(n).fill(1);   // quest-store: per-bone stretch of its offset from the parent (arms reaching past their length)
+    // The joints moving apart is not enough: an arm's sleeve is skinned to the upper arm and forearm bones, so it kept its length and
+    // a gap opened between the cuff and the glove (worst on the support hand, out on the handguard). Each skeleton's skinning
+    // matrices for a bone whose child is pushed out are also stretched along that bone, so the cloth reaches the moved joint.
+    { const sks = new Set(); wrap.traverse(o => { if (o.isSkinnedMesh) sks.add(o.skeleton); });
+      for (const skel of sks) { if (STR_WRAPPED.has(skel)) continue; STR_WRAPPED.add(skel); const me = this, M = new THREE.Matrix4(), Sm = new THREE.Matrix4(), ax = new THREE.Vector3();
+        const map = this.bones.map(b => skel.bones.indexOf(b)), orig = skel.update.bind(skel);
+        skel.update = function () { orig(); const bm = this.boneMatrices;
+          for (let c = 0; c < me.bones.length; c++) { const k = me.str[c], p = me.par[c]; if (k === 1 || p < 0 || map[p] < 0) continue;
+            ax.copy(me.rp[c]).normalize(); const e = Sm.elements, f = k - 1;   // scale by k along ax, in the parent bone's own frame
+            e[0] = 1 + f * ax.x * ax.x; e[4] = f * ax.x * ax.y; e[8] = f * ax.x * ax.z; e[1] = f * ax.y * ax.x; e[5] = 1 + f * ax.y * ax.y; e[9] = f * ax.y * ax.z; e[2] = f * ax.z * ax.x; e[6] = f * ax.z * ax.y; e[10] = 1 + f * ax.z * ax.z; e[3] = e[7] = e[11] = e[12] = e[13] = e[14] = 0; e[15] = 1;
+            const q = map[p]; M.multiplyMatrices(this.bones[q].matrixWorld, Sm).multiply(this.boneInverses[q]).toArray(bm, q * 16); }
+          if (this.boneTexture) this.boneTexture.needsUpdate = true; }; } }
     this.solve(null);   // rest pose in the holder's frame
     this.restQ = this.gq.map(q => q.clone()); this.restP = this.gp.map(p => p.clone());
     const dirTo = (a, b) => _v.copy(this.restP[b]).sub(this.restP[a]).normalize().clone();
