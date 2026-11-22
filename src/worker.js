@@ -143,10 +143,11 @@ export class Room {
   constructor(state, env) {
     this.env = env; this.socks = new Map(); this.next = 1; this.timer = null; this.queue = Promise.resolve();
     // quest-store: who each player is (account, from the ticket the Worker checked) and who came in through QUICK MATCH
-    this.acct = new Map(); this.mm = new Set(); this.open = false; this.code = ''; this.reportT = 0; this.lastRep = '';
+    this.acct = new Map(); this.mm = new Set(); this.specs = new Map();   // specs: spectators (up to 4, on top of the 4 players; not in the mission)
+    this.open = false; this.code = ''; this.reportT = 0; this.lastRep = '';
     this.host = new RoomHost((id, obj) => {
       const s = JSON.stringify(obj);
-      if (id == null) { for (const ws of this.socks.values()) try { ws.send(s); } catch {} }
+      if (id == null) { for (const ws of this.socks.values()) try { ws.send(s); } catch {} for (const ws of this.specs.values()) try { ws.send(s); } catch {} }
       else { try { this.socks.get(id)?.send(s); } catch {} }
     });
   }
@@ -163,15 +164,15 @@ export class Room {
   // quest-store: the longest-connected player owns the room and may remove others (store policy: players need a way to deal
   // with someone abusive in a lobby). Everyone is told who the owner is whenever it can change.
   owner() { for (const id of this.socks.keys()) return id; return 0; }
-  bcast(o) { const s = JSON.stringify(o); for (const ws of this.socks.values()) try { ws.send(s); } catch {} }
-  announceOwner() { this.bcast({ t: 'owner', id: this.owner(), open: this.open, mm: [...this.mm] }); }
+  bcast(o) { const s = JSON.stringify(o); for (const ws of this.socks.values()) try { ws.send(s); } catch {} for (const ws of this.specs.values()) try { ws.send(s); } catch {} }
+  announceOwner() { this.bcast({ t: 'owner', id: this.owner(), open: this.open, mm: [...this.mm], specs: [...this.specs.keys()] }); }
   boot(from, target) {
     if (from !== this.owner() || target === from) return; const ws = this.socks.get(target); if (!ws) return;
     try { ws.send(JSON.stringify({ t: 'booted' })); } catch {}
     try { ws.close(4001, 'Removed by the room owner'); } catch {}
     this.gone(target);
   }
-  gone(id) { if (!this.socks.delete(id)) return; this.acct.delete(id); this.mm.delete(id); this.host.leave(id); this.announceOwner(); this.refresh(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } }
+  gone(id) { if (this.specs.delete(id)) { this.announceOwner(); return; } if (!this.socks.delete(id)) return; this.acct.delete(id); this.mm.delete(id); this.host.leave(id); this.announceOwner(); this.refresh(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } }
   // QUICK MATCH may put a stranger in only while the owner has the room open and the squad is in the lobby
   lobby() { const s = this.host.sim; return s.phase !== 'active' || !!s.M.training; }
   teams() { let swat = 0, tango = 0; for (const p of this.host.sim.players.values()) if (!p.bot) { if (p.team === 'tango') tango++; else swat++; } return { swat, tango }; }
@@ -191,6 +192,18 @@ export class Room {
     const acct = /^[0-9a-f]{24}$/.test(q.get('acct') || '') ? q.get('acct') : '', mm = q.get('mm') === '1', mmBack = q.get('mm') === '2';   // 2: a matchmade player rejoining after a drop
     const [client, server] = Object.values(new WebSocketPair());
     server.accept();
+    // quest-store: a spectator (?spec=1, from a friend's room or a room code) watches without playing: not in the mission, invisible,
+    // never heard (only voice set-up passes from them, and players keep them muted), up to 4 of them
+    if (q.get('spec') === '1') {
+      if (this.specs.size >= 4) { try { server.send(JSON.stringify({ t: 'specfull' })); } catch {} server.close(4003, 'Enough spectators'); return new Response(null, { status: 101, webSocket: client }); }
+      const id = this.next++; this.specs.set(id, server);
+      try { server.send(JSON.stringify({ t: 'welcome', id, spec: true, slot: -1, init: this.host.sim.init(), n: this.host.count, ph: this.host.sim.phase })); } catch {}
+      this.announceOwner();
+      server.addEventListener('message', e => { let m; try { m = JSON.parse(e.data); } catch { return; }
+        if (m && m.t === 'sig') { const to = this.socks.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} } });
+      const bye = () => this.gone(id); server.addEventListener('close', bye); server.addEventListener('error', bye);
+      return new Response(null, { status: 101, webSocket: client });
+    }
     if (mm && (!this.open || !this.lobby() || this.teams().swat < 1)) { try { server.send(JSON.stringify({ t: 'mmgone' })); } catch {} server.close(4002, 'That game is no longer open'); return new Response(null, { status: 101, webSocket: client }); }
     if (!this.socks.size) this.open = q.get('open') === '1';   // the first one in decides whether strangers may come
     const id = this.next++; this.socks.set(id, server);
@@ -208,7 +221,7 @@ export class Room {
       if (m && m.t === 'block') { const a = this.acct.get(id), b = this.acct.get(m.p); if (a && b) this.social('/internal/block', { from: a, to: b }).then(() => this.refresh()); return; }
       if (m && m.t === 'rels') { this.refresh(); return; }
       if (m && m.t === 'team' && this.mm.has(id)) return;   // a matchmade stranger stays a terrorist
-      if (m && m.t === 'sig') { const to = this.socks.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
+      if (m && m.t === 'sig') { const to = this.socks.get(m.to) || this.specs.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
       const mid = m && (m.m || m.map);
       if (typeof mid === 'string' && (mid.startsWith('u_') || mid.startsWith('s_')) && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });
       else this.queue = this.queue.then(() => { try { this.host.message(id, m); } catch {} });

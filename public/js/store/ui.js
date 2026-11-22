@@ -17,7 +17,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   // quest-store: friends and strangers. rel: what each player in the room is to me (friend / sent / got / blocked), from the room.
   // mmIds: players who came in through QUICK MATCH. Strangers start muted (both ways) unless they are friends; blocked players always.
   const social = makeSocial(unlock); U.social = social;
-  Object.assign(U, { rel: {}, mmIds: [], open: false, unmuted: new Set(), auto: new Set(), mmJoin: 0, mmCode: '', created: '', pview: '', fpage: 0, fsel: null, fmsg: '', mmMsg: '' });
+  Object.assign(U, { rel: {}, specs: [], watchCode: '', mmIds: [], open: false, unmuted: new Set(), auto: new Set(), mmJoin: 0, mmCode: '', created: '', pview: '', fpage: 0, fsel: null, fmsg: '', mmMsg: '' });
   try { U.hostOpen = localStorage.getItem('ych_open') === '1'; } catch (e) { U.hostOpen = false; }
   let call = (() => { try { const c = localStorage.getItem('bl_name'); return isCallsign(c) ? c : randomCallsign(); } catch (e) { return randomCallsign(); } })();
   const saveCall = () => { try { localStorage.setItem('bl_name', call); } catch (e) { } };
@@ -42,6 +42,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     U.pview = 'players'; const list = humans(), mine = U.owner === S.me.id, lines = [], btns = [];
     if (!list.length) lines.push('Nobody else is in this room yet.');
     for (const [id, o] of list) { lines.push(clip(o.name + (tagOf(id) ? '  (' + tagOf(id) + ')' : ''))); btns.push([o.name, 'st:pl:' + id]); }
+    if (U.specs.length) lines.push(U.specs.length + ' spectator' + (U.specs.length > 1 ? 's' : '') + ' watching (they cannot be heard).');
     lines.push('', 'Pick a player to mute, block or add as a friend.');
     lines.push(mine ? 'You own this room: you can remove players, and open it' : 'The room owner can remove players.', mine ? '   to strangers who play the terrorists (QUICK MATCH).' : 'To report a player, press the Meta button > Report.');
     if (mine) btns.push(['STRANGERS: ' + (U.open ? 'OPEN' : 'CLOSED'), 'st:open']);
@@ -113,12 +114,12 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     if (panel.key === 'keypad' + U.code + (msg || '')) return;
     const g = panel.c.getContext('2d'); g.fillStyle = '#0c1118'; g.fillRect(0, 0, 1024, 768); g.strokeStyle = '#3a6ea5'; g.lineWidth = 6; g.strokeRect(6, 6, 1012, 756);
     g.textAlign = 'center'; g.fillStyle = '#e8eef5'; g.font = 'bold 56px sans-serif'; g.fillText('ROOM CODE', 512, 80);
-    g.fillStyle = '#8fb4dc'; g.font = '28px sans-serif'; g.fillText(msg || 'Type your squad\'s 6-character code, or NEW for a fresh one to share.', 512, 126);
+    g.fillStyle = '#8fb4dc'; g.font = '28px sans-serif'; g.fillText(msg || 'Type a 6-character code: JOIN to play, WATCH to spectate, NEW to share.', 512, 126);
     g.fillStyle = '#7dffa0'; g.font = 'bold 72px monospace'; g.fillText((U.code + '______').slice(0, 6).split('').join(' '), 512, 222);
     const B = [], key = (text, act, x, y, w, col) => B.push({ x, y, w, h: 74, text, act, col });
     [...CODE_CHARS].forEach((k, i) => key(k, 'st:key:' + k, 59 + (i % 8) * 114, 262 + Math.floor(i / 8) * 84, 108, '#1f4a8a'));
     const ok = isRoomCode(U.code);
-    key('BACK', 'st:oback', 60, 676, 200, '#39424e'); key('DEL', 'st:del', 270, 676, 200, '#39424e'); key('NEW', 'st:new', 480, 676, 200, '#39424e'); key(ok ? 'JOIN ' + U.code : 'JOIN', 'st:join', 690, 676, 274, ok ? '#1f7a3d' : '#2a3038');
+    key('BACK', 'st:oback', 60, 676, 160, '#39424e'); key('DEL', 'st:del', 230, 676, 150, '#39424e'); key('NEW', 'st:new', 390, 676, 150, '#39424e'); key('WATCH', 'st:watch', 550, 676, 170, ok ? '#1f4a8a' : '#2a3038'); key(ok ? 'JOIN ' + U.code : 'JOIN', 'st:join', 730, 676, 234, ok ? '#1f7a3d' : '#2a3038');
     for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold ' + (b.text.length > 8 ? 30 : 38) + 'px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     panel.btns = B; panel.key = 'keypad' + U.code + (msg || ''); panel.tex.needsUpdate = true;
   }
@@ -145,7 +146,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     if (!social.ticket) lines.push('Friends are not available: ' + (social.err || 'signing in...'));
     else if (!all.length) lines.push('No friends yet.', '', 'To add someone you meet: in their room, MENU > PLAYERS,', 'pick them and press ADD FRIEND. They accept the same way,', 'or here in FRIENDS. Then you can join each other with no code.');
     for (const [i, e] of page.entries()) {
-      lines.push(clip(e.call + '   ' + (e.kind === 'req' ? 'wants to be friends' : e.canJoin ? 'in a room: you can join' : e.inRoom ? 'in a full room' : e.online ? 'online' : 'offline')));
+      lines.push(clip(e.call + '   ' + (e.kind === 'req' ? 'wants to be friends' : e.canJoin ? 'in a room: join or spectate' : e.inRoom ? 'in a full room: you can spectate' : e.online ? 'online' : 'offline')));
       btns.push([e.call + (e.kind === 'req' ? '  (REQUEST)' : e.canJoin ? '  JOIN' : ''), 'st:fsel:' + (U.fpage * PERF + i)]);
     }
     if (U.fmsg) lines.push('', U.fmsg);
@@ -159,7 +160,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     const fresh = entries().find(x => x.id === e.id && x.kind === e.kind) || e; U.fsel = fresh;
     if (fresh.kind === 'req') return panel.draw('FRIEND REQUEST', fresh.call, [fresh.call + ' wants to be friends.', 'Friends see when each other are online', 'and can join each other\'s rooms without a code.', ...(U.fmsg ? ['', U.fmsg] : [])], [['ACCEPT', 'st:facc'], ['DECLINE', 'st:fdec'], ['BLOCK', 'st:fblk'], ['BACK', 'st:fl']]);
     const state = fresh.canJoin ? 'In a room with a free place.' : fresh.inRoom ? 'In a room, but it is full.' : fresh.online ? 'Online, not in a room.' : 'Offline.';
-    panel.draw('FRIEND', fresh.call, [state, '', 'REMOVE ends the friendship on both sides.', 'BLOCK also keeps you out of each other\'s games.', ...(U.fmsg ? ['', U.fmsg] : [])], [...(fresh.canJoin ? [['JOIN ' + fresh.call, 'st:fjoin']] : []), ['REMOVE FRIEND', 'st:frem'], ['BLOCK', 'st:fblk'], ['BACK', 'st:fl']]);
+    panel.draw('FRIEND', fresh.call, [state, '', 'REMOVE ends the friendship on both sides.', 'BLOCK also keeps you out of each other\'s games.', ...(U.fmsg ? ['', U.fmsg] : [])], [...(fresh.canJoin ? [['JOIN ' + fresh.call, 'st:fjoin']] : []), ...(fresh.inRoom ? [['SPECTATE ' + fresh.call, 'st:fwatch']] : []), ['REMOVE FRIEND', 'st:frem'], ['BLOCK', 'st:fblk'], ['BACK', 'st:fl']]);
   }
   // QUICK MATCH: ask for an open SWAT room every few seconds, for up to two minutes
   function showMatch() {
@@ -200,9 +201,11 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold 38px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     panel.btns = B; panel.key = 'friend' + U.fcode + msg; panel.tex.needsUpdate = true;
   }
-  function go(solo, tut) {
+  function go(solo, tut, watch) {
     S.panel = null; panel.mesh.visible = false;
     if (!solo && U.mmCode !== U.code) U.mmJoin = 0;
+    U.watchCode = watch ? U.code : ''; voice.listenOnly = !!watch;   // spectators only listen: no microphone
+    if (watch) { play(false, call, U.code, false); return; }
     play(solo, call, solo ? 'SOLO' : U.code, tut);   // connect first: the microphone prompt below can take the headset out of VR
     if (!solo && voice.on) voice.permission().then(st => {
       if (st !== 'granted') status('The headset leaves VR to ask for the microphone. Press ENTER VR to go back to room ' + U.code + '.');
@@ -237,6 +240,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'del') { U.code = U.code.slice(0, -1); showKeypad(''); }
     else if (what === 'new') { U.code = randomRoomCode(); U.created = U.code; showKeypad('New room' + (U.hostOpen ? ', open to terrorist players' : '') + ': tell your squad ' + U.code + '.'); }
     else if (what === 'back') { U.prev = null; U.showStart(); }
+    else if (what === 'watch') { if (isRoomCode(U.code)) go(false, false, true); else showKeypad('The room code has six characters.'); }
     else if (what === 'join') { if (isRoomCode(U.code)) go(false, false); else showKeypad('The room code has six characters.'); }
     else if (what === 'qm') { clearTimeout(U.mmTimer); U.mmMsg = ''; U.mmStart = Date.now(); showMatch(); matchStep(); }
     else if (what === 'mmstop') { clearTimeout(U.mmTimer); showOnline(''); }
@@ -246,6 +250,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'fsel') { U.fmsg = ''; U.fsel = entries()[+arg] || null; showFriend1(); }
     else if (what === 'facc' || what === 'fdec' || what === 'frem' || what === 'fblk') { const e = U.fsel; if (!e) return showFriends(), true;
       U.fmsg = '...'; showFriend1(); social.api({ facc: 'accept', fdec: 'decline', frem: 'remove', fblk: 'block' }[what], { id: e.id }).then(j => hello().then(() => { U.fmsg = j.error || { facc: 'You and ' + e.call + ' are now friends.', fdec: 'Request declined.', frem: e.call + ' removed.', fblk: e.call + ' blocked.' }[what]; if (what === 'facc' && !j.error) { U.fsel = { ...e, kind: 'friend' }; showFriend1(); } else showFriends(); })); }
+    else if (what === 'fwatch') { const e = U.fsel; if (!e) return showFriends(), true; U.fmsg = 'Joining as a spectator...'; showFriend1(); social.api('join', { id: e.id, watch: true }).then(j => { if (j.room) { U.fmsg = ''; U.code = j.room; go(false, false, true); } else { U.fmsg = j.error || 'Could not spectate.'; showFriend1(); } }); }
     else if (what === 'fjoin') { const e = U.fsel; if (!e) return showFriends(), true; U.fmsg = 'Joining...'; showFriend1(); social.api('join', { id: e.id }).then(j => { if (j.room) { U.fmsg = ''; U.code = j.room; go(false, false); } else { U.fmsg = j.error || 'Could not join.'; showFriend1(); } }); }
     else if (what === 'buy') { unlock.buy().then(ok => { if (ok) { U.bought = true; showBuy(U.buyWhy, U.buyFrom); } }).catch(e => { U.buyErr = String(e && e.message || e); showBuy(U.buyWhy, U.buyFrom); }); }
     else if (what === 'nobuy') { U.bought = false; U.buyErr = ''; if (U.buyFrom === 'start') U.showStart(); else { S.panel = null; back2(); } }
@@ -271,20 +276,22 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
 
   // room messages only the store Worker sends
   U.onMsg = m => {
-    if (m.t === 'owner') { U.owner = m.id; U.open = !!m.open; U.mmIds = m.mm || []; applyMutes(); redrawPlayers(); if (m.id === S.me.id && U.created === S.room && U.hostOpen && !m.open && !U.sentOpen) { U.sentOpen = true; net.send({ t: 'open', v: true }); } return true; }
+    if (m.t === 'owner') { U.owner = m.id; U.open = !!m.open; U.mmIds = m.mm || []; U.specs = m.specs || []; for (const id of U.specs) voice.mutePeer(id, true); applyMutes(); redrawPlayers(); if (m.id === S.me.id && U.created === S.room && U.hostOpen && !m.open && !U.sentOpen) { U.sentOpen = true; net.send({ t: 'open', v: true }); } return true; }
     if (m.t === 'booted') { status('The room owner removed you from that room.'); return true; }
     if (m.t === 'rel') { U.rel = m.m || {}; applyMutes(); redrawPlayers(); return true; }
     if (m.t === 'friendres') { const n = nameOf(m.p); status({ sent: 'Friend request sent to ' + n + '.', friend: 'You and ' + n + ' are now friends.', limit: 'Too many friend requests today.', full: 'A friends list is full (100).', noacct: n + ' cannot be added: no full game on their account.', no: n + ' cannot be added.' }[m.res] || 'Could not add ' + n + '.'); hello(); redrawPlayers(); return true; }
     if (m.t === 'friendreq') { notify(m.res === 'friend' ? 'NOW FRIENDS WITH ' + nameOf(m.p) : nameOf(m.p) + ' WANTS TO BE FRIENDS: MENU > PLAYERS'); hello(); return true; }
+    if (m.t === 'specfull') { status('That room already has four spectators.'); return true; }
     if (m.t === 'mmgone') { status('That game stopped taking terrorists. Try QUICK MATCH again.'); notify('THAT GAME IS NO LONGER OPEN'); return true; }
     return false;
   };
   U.started = () => S.net === 'online' || S.net === 'solo' || S.net === 'lost';
   U.room = () => S.net === 'online' || S.net === 'lost' ? S.room : '';
-  U.left = () => { S.mode = null; U.mmJoin = 0; U.mmCode = ''; U.sentOpen = false; U.rel = {}; U.mmIds = []; U.auto.clear(); };
+  U.left = () => { S.mode = null; U.watchCode = ''; U.specs = []; U.mmJoin = 0; U.mmCode = ''; U.sentOpen = false; U.rel = {}; U.mmIds = []; U.auto.clear(); };
   // extra WebSocket query for a room: my ticket (account), a QUICK MATCH join (1; 2 when rejoining after a drop), and whether a
   // room I made is open to strangers
-  U.wsExtra = (room, rejoin) => social.wsParam() + (U.mmJoin && U.mmCode === room ? '&mm=' + (rejoin ? 2 : 1) : '') + (U.created === room && U.hostOpen ? '&open=1' : '');
+  U.specIds = () => U.specs;
+  U.wsExtra = (room, rejoin) => social.wsParam() + (U.watchCode === room ? '&spec=1' : '') + (U.mmJoin && U.mmCode === room ? '&mm=' + (rejoin ? 2 : 1) : '') + (U.created === room && U.hostOpen ? '&open=1' : '');
   U.store = store;
   U.back = back;
   return U;

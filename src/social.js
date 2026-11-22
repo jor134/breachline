@@ -112,7 +112,7 @@ export class Social {
         if (!other || !this.isFriend(me, other) || this.blocked(me, other)) return json({ error: 'Not your friend' }, 403);
         const f = this.one('SELECT seen, room FROM acct WHERE id = ?', other), r = f && now - f.seen < ONLINE && f.room ? this.roomOf(f.room) : null;
         if (!r) return json({ error: 'Your friend is not in a room right now.' }, 404);
-        if (r.n >= 4) return json({ error: "Your friend's room is full." }, 409);
+        if (r.n >= 4 && !b.watch) return json({ error: "Your friend's room is full." }, 409);   // watch: spectating does not take a place
         return json({ room: r.code });
       }
       if (p === '/match') {   // QUICK MATCH: a stranger, as a terrorist, into an open SWAT room

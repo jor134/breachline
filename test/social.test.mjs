@@ -56,6 +56,14 @@ const solo = await join('/ws/THERE4?name=ECHO-12&t=' + (await post('/api/me', { 
 assert.equal((await post('/api/social/match', {}, B.ticket)).room, 'THERE4', 'skips the room with someone who blocked you');
 // the owner can close it again
 rc.ws.send(JSON.stringify({ t: 'open', v: false })); await sleep(80); assert.equal(rc.last('owner').open, false);
+// spectators: watch a room without being in the mission; up to 4; only voice set-up passes from them
+const sp = await join('/ws/SWAT33?name=ECHO-12&spec=1'); await sleep(120);
+assert.equal(sp.msgs[0].t, 'welcome'); assert.equal(sp.msgs[0].spec, true); assert.ok(sp.last('s'), 'a spectator gets the snapshots');
+assert.ok(!sp.last('s').P.some(p => p[0] === sp.msgs[0].id), 'and is not in the mission'); assert.deepEqual(rc.last('owner').specs, [sp.msgs[0].id], 'players are told who is watching');
+const inits = rc.msgs.filter(m => m.t === 'init').length; sp.ws.send(JSON.stringify({ t: 'start' })); sp.ws.send(JSON.stringify({ t: 'restart', map: 'mansion' })); await sleep(150); assert.equal(rc.msgs.filter(m => m.t === 'init').length, inits, 'a spectator cannot start or play');
+sp.ws.send(JSON.stringify({ t: 'sig', to: rc.id, data: { desc: { type: 'offer', sdp: 'x' } } })); await sleep(80); assert.equal(rc.msgs.filter(m => m.t === 'sig').at(-1).from, sp.msgs[0].id, 'voice set-up still passes');
+const more = []; for (let i = 0; i < 4; i++) more.push(await join('/ws/SWAT33?name=ECHO-12&spec=1')); await sleep(80); assert.equal(more[3].ws.open, false, 'four spectators at most');
+for (const r of [sp, ...more]) r.ws.close(); await sleep(80); assert.deepEqual(rc.last('owner').specs, []);
 for (const r of [rc, ma, rb2, solo]) r.ws.close(); await sleep(80);
 assert.equal(soc.all('SELECT * FROM room').length, 0, 'empty rooms leave the list');
 console.log('social tests passed'); process.exit(0);

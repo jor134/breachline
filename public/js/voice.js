@@ -38,7 +38,7 @@ export function createVoice(send) {
   function peer(id) {
     const pc = new RTCPeerConnection({ iceServers: (V.ice && V.ice.iceServers) || [{ urls: ['stun:stun.cloudflare.com:3478'] }] });
     const st = { pc, polite: V.me > id, making: false, ignore: false }; V.pcs.set(id, st);
-    if (V.mic) V.mic.getTracks().forEach(t => pc.addTrack(t, V.mic)); else pc.addTransceiver('audio', { direction: 'recvonly' });
+    if (V.mic && !V.listenOnly) V.mic.getTracks().forEach(t => pc.addTrack(t, V.mic)); else pc.addTransceiver('audio', { direction: 'recvonly' });   // quest-store: a spectator only listens
     pc.onnegotiationneeded = async () => { try { st.making = true; await pc.setLocalDescription(); send({ t: 'sig', to: id, data: { desc: pc.localDescription } }); } catch (e) { } finally { st.making = false; } };
     pc.onicecandidate = e => { if (e.candidate) send({ t: 'sig', to: id, data: { cand: e.candidate } }); };
     pc.ontrack = e => attach(id, e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]));
