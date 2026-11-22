@@ -473,7 +473,9 @@ const pvpOn = () => (S.squadT || []).some(t => t === 'tango');
 const teamBtn = () => ['TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT'), 'team'];
 const squadLine = () => (pvpOn() ? 'PvP  -  ' : 'Squad: ') + ((S.squad || []).map((n, i) => n + ((S.squadT || [])[i] === 'tango' ? ' (T)' : pvpOn() ? ' (SWAT)' : '')).join(', ') || '-');
 function showLobbyPanel() {
-  if (S.menu) return; if (S.watch) { if (storeUI.holdsPanel()) return storeUI.redraw(); panel.mesh.visible = false; S.panel = null; return; }   // spectators get no boards: B or Y opens their menu if (storeUI.holdsPanel()) return storeUI.redraw(); if (S.panel === 'fit' && M.training) return showFit(false); if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz, BOARD_K);
+  if (S.menu) return;
+  if (S.watch) { if (storeUI.holdsPanel()) return storeUI.redraw(); panel.mesh.visible = false; S.panel = null; return; }   // spectators get no boards: B or Y opens their menu
+  if (storeUI.holdsPanel()) return storeUI.redraw(); if (S.panel === 'fit' && M.training) return showFit(false); if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz, BOARD_K);
   panel.draw("YOU CAN'T HIDE", M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
     [squadLine(), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, tap B/Y = SHOUT, hold = SQUAD. Helmet = NVG.',
       'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.hint ? M.hint : M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name + (M.test ? ' (TEST)' : ''), 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ...(storeUI.store ? [['MAIN MENU', 'home']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
@@ -1268,7 +1270,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q47';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q48';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

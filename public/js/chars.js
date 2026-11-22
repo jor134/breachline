@@ -132,7 +132,7 @@ function rigCivilian(parts, i, name) {
       si[k * 4] = a; si[k * 4 + 1] = b; sw[k * 4] = wa; sw[k * 4 + 1] = wb;
     }
     geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
-    const mat = parts[gi].material; mat.envMap = envMap; mat.userData.env = mat.envMapIntensity = 0.2; mat.metalness = 0; if (mat.transparent) { mat.transparent = false; mat.alphaTest = 0.5; mat.depthWrite = true; }   // hair cards and lashes: cut out, not blended (blending sorts badly) if (!pbrMats.includes(mat)) pbrMats.push(mat);
+    const mat = parts[gi].material; mat.envMap = envMap; mat.userData.env = mat.envMapIntensity = 0.2; mat.metalness = 0; if (mat.transparent) { mat.transparent = false; mat.alphaTest = 0.5; mat.depthWrite = true; } if (!pbrMats.includes(mat)) pbrMats.push(mat);   // hair cards and lashes: cut out, not blended (blending sorts badly)
     const mesh = new THREE.SkinnedMesh(geo, mat); mesh.receiveShadow = true; if (!first) { first = mesh; mesh.add(B.hips); } root.add(mesh);
   });
   root.updateMatrixWorld(true); skel.calculateInverses(); for (const o of root.children) o.bind(skel, first.matrixWorld);
