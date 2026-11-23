@@ -16,7 +16,7 @@ export const BLOCK = { x0: 0, x1: 56, z0: 6, z1: 28 };             // the VIP bl
 export const TERR = { x0: 0, x1: 56, z0: 28, z1: 33 };             // the club terrace (outdoor seats) in front of it
 export const FC = 2, FS = 3, RF = 8;
 export const YC = FC * H, YS = FS * H, ROOF = RF * H;
-export const DECK = { x0: 6, x1: 56, z0: 18, z1: 26 };             // the roof catwalk over the stand's roof
+export const DECK = { x0: 6, x1: 56, z0: 18, z1: 28 };             // the roof catwalk over the stand's roof (its front rail over the suites' glass: the ropes hang just past it, as on the casino roof)
 export const HELI = { x0: 29, x1: 33.2, z0: 18.6, z1: 21.2, y: ROOF + 4.5, door: [29.05, 32.4] };
 export const SHAFT = { x0: 0, x1: 6, z0: 6, z1: 16, top: 8, bot: 14 };   // the stair: top landing z 6..8 (suites), flight, bottom landing z 14..16 (club)
 export const SUITES = [6, 16, 26, 36, 46];                          // their west walls; each 10 m wide, z 10..28
@@ -105,7 +105,7 @@ export const HVTS = [{ at: [FS, 30, 14], guards: [[FS, 27.5, 22], [FS, 34.5, 22]
 export const ROPES = [
   { x: 31, z: HELI.z1 + 0.45, top: HELI.y, bot: ROOF, out: [0, 1], step: [31, 22.4, ROOF], top0: [31, 20.4, HELI.y], win: null, heli: true },
   ...WINX.map(x => ({ x, z: ROPE_Z, top: ROOF, bot: YC, out: [0, 1], step: [x, 30.2, YC], top0: [x, DECK.z1 - 0.5, ROOF], winAt: [x, 28], mid: { y: YS, step: [x, 27.1, YS] },
-    arm: [DECK.z1 - 0.3, ROOF + 1.66] })),
+    arm: [DECK.z1 - 0.6, ROOF + 1.66] })),
 ];
 
 // ---- shape helpers ----
