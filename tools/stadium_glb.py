@@ -31,7 +31,7 @@ def acc(i):
 IN = 0.0254; PITCH_C = (1205.0, -2063.0); XC, ZC = 28.0, 88.0
 def ours(P): return np.stack([(P[:, 2] - PITCH_C[1]) * IN + XC, (P[:, 1] + 59.0) * IN, -(P[:, 0] - PITCH_C[0]) * IN + ZC], 1)
 # ---- the cuts (our frame, metres): the VIP block and its terrace, the roof slot and deck over it ----
-CUTS = [(-0.5, 56.5, 4.0, 14.7, 5.0, 33.6), (5.5, 56.5, 21.0, 30.5, 16.0, 31.5)]
+CUTS = [(-0.5, 56.5, 4.0, 14.7, 5.0, 33.6), (5.5, 56.5, 21.0, 30.5, 27.9, 29.5)]   # the VIP block; a slot in the roof for the ropes (the catwalk stands on the roof)
 PITCH = (-30, 86, 50, 126)
 SEAT_MATS = {'Tworzywo_sztuczne_01', 'Skra_07', 'Color_M08_1'}
 DROP = {'Stal_04__szczotkowana', 'Trawa_03_1', 'Kostka_17'}   # railings; the grass and paving (drawn by the game)
@@ -53,6 +53,12 @@ for i, n in enumerate(N):
         P = acc(pr['attributes']['POSITION']).astype(np.float64); P = ours((np.c_[P, np.ones(len(P))] @ M.T)[:, :3])
         I = acc(pr['indices']).reshape(-1, 3).astype(np.int64) if 'indices' in pr else np.arange(len(P)).reshape(-1, 3)
         C = P[I].mean(1); keep = np.ones(len(I), bool)
+        if os.environ.get('PROBE'):   # what the cuts take: heights of the model's triangles over the catwalk, per material
+            m = (C[:, 0] > 6) & (C[:, 0] < 56) & (C[:, 2] > 14) & (C[:, 2] < 40) & (C[:, 1] > 15)
+            if m.any():
+                for z0 in range(14, 40, 2):
+                    mm = m & (C[:, 2] >= z0) & (C[:, 2] < z0 + 2)
+                    if mm.any(): print('PROBE', name, z0, round(float(C[mm, 1].min()), 2), round(float(np.median(C[mm, 1])), 2), round(float(C[mm, 1].max()), 2), int(mm.sum()))
         for x0, x1, y0, y1, z0, z1 in CUTS: keep &= ~((C[:, 0] > x0) & (C[:, 0] < x1) & (C[:, 1] > y0) & (C[:, 1] < y1) & (C[:, 2] > z0) & (C[:, 2] < z1))
         keep &= ~((C[:, 1] < 0.25) & (C[:, 0] > PITCH[0]) & (C[:, 0] < PITCH[1]) & (C[:, 2] > PITCH[2]) & (C[:, 2] < PITCH[3]))
         # the ground round the pitch too (the game draws its own grass and turf there: two surfaces at one height flicker)
@@ -88,6 +94,8 @@ for mi, (Ps, Is, _) in groups.items():
     V, T = weld(np.vstack(Ps), np.vstack(Is)); name = j['materials'][mi]['name']
     r = RATIO * (0.5 if name.startswith('Stal_02') else 1.0)   # the roof trusses: thousands of members, the outline is what reads
     if name == 'Color_M07': r = RATIO * 2   # the facade panels: cut as hard as the rest they break up into spikes (seen on the fly-in)
+    if name.startswith('Wood_47'): r = 0.25   # the stands' stepped tiers (wood and concrete): cut hard, a step's edges join the next row's
+    if name == 'Beton_16_3': r = 0.15          # into long brown shards across the seats
     V2, T2 = qem(V, T, max(40, int(len(T) * r)))
     V2, T2 = clean(V2, T2)
     c, glass = colour(mi); out_meshes.append((name, V2.astype(np.float32), T2.astype(np.uint32), c, glass)); print(f'{name:30s} {len(T):8d} -> {len(T2):7d}', flush=True)

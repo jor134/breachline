@@ -87,7 +87,7 @@ const furn = {
     const n = Math.max(1, Math.round(len / 0.62)), cw = len / n;
     for (let i = 0; i < n; i++) { const a = i * cw + 0.04, c = (i + 1) * cw - 0.04; P('seatB', a, c, 0.05, dep, 0.38, 0.48); P('seatB', a, c, 0, 0.12, 0.48, h); P('chrome', a + cw / 2 - 0.05, a + cw / 2 + 0.03, 0.2, 0.3, 0, 0.38); }
   },
-  hvac({ P, len, dep, h }) { P('roofunit', 0, len, 0, dep, 0, h); P('grille', 0.1, len - 0.1, dep - 0.02, dep, 0.3, h - 0.2, 'Z'); },
+  hvac({ P, len, dep, h }) { P('roofunit', 0, len, 0, dep, 0, h); P('grille', 0.1, len - 0.1, dep, dep + 0.02, 0.3, h - 0.2, 'Z'); },   // proud of the casing (flush, the two faces flickered)
 };
 export default {
   get env() { return tod === 'dusk' ? DUSK : NIGHT; },
@@ -203,6 +203,7 @@ export default {
         for (let u = hz ? w.x0 : w.z0; u <= (hz ? w.x1 : w.z1); u += 1.5) hz ? B('chrome', u - 0.03, u + 0.03, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 1) : B('chrome', w.x0, w.x1, w.y0, w.y1, u - 0.03, u + 0.03, 'xXzZ', 1); }
     }
     flat('terrazzo', TERR.x0, TERR.x1, TERR.z0, TERR.z1, YC + 0.004, 0.4);                       // the terrace floor
+    B('standC', BLOCK.x0, BLOCK.x1, YS + H, YS + H + 0.35, BLOCK.z0, BLOCK.z1, 'YZ', 0.5);           // the suites' roof slab (seen from the ropes)
     for (const [x0, x1] of [[TERR.x0 - 0.3, TERR.x0], [TERR.x1, TERR.x1 + 0.3]]) B('standC', x0, x1, 4, YS + H, TERR.z0 - 0.2, TERR.z1, 'xXYZ', 0.5);   // the terrace's end walls (screen off the cut stand beside it)
     B('standC', TERR.x0, TERR.x1, YC - 0.4, YC, TERR.z0, TERR.z1, 'yZ', 0.5);
     B('suiteW', BLOCK.x0, BLOCK.x1, YS - 0.05, YS + 0.02, BLOCK.z1 - 0.02, BLOCK.z1 + 0.25, 'yYZ', 0.5);   // the slab edge between the floors
@@ -223,8 +224,8 @@ export default {
     // soffit under it, a handrail each side ----
     { const N = 18, run = (SHAFT.bot - SHAFT.top) / N, rise = H / N, x0 = SHAFT.x0 + 0.1, x1 = SHAFT.x1 - 0.1;
       for (let i = 0; i < N; i++) { const top = YC + (i + 1) * rise, zb = SHAFT.bot - i * run, za = zb - run;
-        B('concrete', x0, x1, top - rise, top, za, zb, 'Yz', 0.5); B('chrome', x0, x1, top - 0.004, top + 0.002, zb - 0.05, zb, 'Y', 1); }
-      b('concW').quad([x0, YC - 0.25, SHAFT.bot], [x1, YC - 0.25, SHAFT.bot], [x1, YS - 0.25, SHAFT.top], [x0, YS - 0.25, SHAFT.top], [0, -0.857, -0.514], 0.5);
+        B('concrete', x0, x1, Math.max(YC, top - rise - 0.3), top, za, zb, 'xXYZy', 0.5); B('chrome', x0 + 0.05, x1 - 0.05, top, top + 0.008, zb - 0.05, zb, 'YZ', 1); }   // solid steps: tread, riser, a stepped underside
+      B('concrete', SHAFT.x0, SHAFT.x1, YS - 0.3, YS, SHAFT.z0, SHAFT.top, 'YyZ', 0.5);   // the top landing (the suites floor has no slab over the stair)
       for (const x of [x0 + 0.06, x1 - 0.06]) { const dz = SHAFT.bot - SHAFT.top, L = Math.hypot(dz, H), rail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, L, 8), MATS.chrome);
         rail.position.set(x, (YC + YS) / 2 + 0.95, (SHAFT.bot + SHAFT.top) / 2); rail.rotation.x = -Math.atan2(dz, H); root.add(rail); } }
     // ---- signs ----

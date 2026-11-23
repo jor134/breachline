@@ -116,7 +116,7 @@ export const inShaft = (x, z) => x > SHAFT.x0 && x < SHAFT.x1 && z > SHAFT.z0 &&
 export const inHeli = (x, z) => x > HELI.x0 && x < HELI.x1 && z > HELI.z0 && z < HELI.z1;
 const flightY = z => YC + H * (SHAFT.bot - z) / (SHAFT.bot - SHAFT.top);
 // the fly-in: from far out over the city to the hover over the main stand's roof
-const FLY0 = [-300, 60, -160], FLY1 = [-110, 18, -40];
+const FLY0 = [300, 60, -160], FLY1 = [110, 18, -40];   // in from +x, so the helicopter (nose to -x) flies forwards
 export const FLY = { T: 16, drop: 1.6,
   at(t) { const u = Math.min(1, Math.max(0, t / FLY.T)), e = 1 - (1 - u) ** 3, a = (1 - e) * (1 - e), b = 2 * (1 - e) * e; return [a * FLY0[0] + b * FLY1[0], a * FLY0[1] + b * FLY1[1], a * FLY0[2] + b * FLY1[2]]; },
   aboard: (x, z, y) => inHeli(x, z) && y > HELI.y - 1 };

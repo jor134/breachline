@@ -34,7 +34,8 @@ export function makeCrowd(root) {
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p3 = new THREE.Vector3(), s3 = new THREE.Vector3(), dummy = { morphTargetInfluences: new Float32Array(POSES - 1) }, run = { morphTargetInfluences: new Float32Array(RUN) };
   C.load = () => new Promise((res) => new ObfLoader().load('models/stadium/crowd.glb', gl => {
     const byName = {}; gl.scene.traverse(o => { if (o.isMesh) byName[o.name] = o; });
-    const inst = (src, n) => { const mt = src.material; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.2; if (!pbrMats.includes(mt)) pbrMats.push(mt);
+    const inst = (src, n) => { const mt = src.material; mt.side = THREE.DoubleSide;   // simplified people have a few flipped faces: drawn one-sided they showed as holes
+      mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.2; if (!pbrMats.includes(mt)) pbrMats.push(mt);
       const im = new THREE.InstancedMesh(src.geometry, mt, n); im.instanceMatrix.setUsage(THREE.DynamicDrawUsage); im.castShadow = false; im.receiveShadow = false; C.group.add(im); return im; };
     ['fan_cheer', 'fan_talk', 'fan_woman', 'fan_grandma'].forEach((n, t) => { const src = byName[n]; if (!src) return; const list = C.fans.filter(f => f.type === t);
       const im = inst(src, list.length); list.forEach((f, i) => { f.i = i; const [x, y, z] = f.s; e.set(0, f.ry, 0); q.setFromEuler(e); m4.compose(p3.set(x, y - 0.42, z), q, s3.setScalar(f.k)); im.setMatrixAt(i, m4); im.setMorphAt(i, dummy); });
