@@ -625,4 +625,34 @@ await t('casino: the lift leaves by itself once someone stands in it and comes w
   assert.ok(!ledgeNear(s.level, s.doorOpen, 30, 30, 0, 0.6) || true);
   const r = C.ROPES.find(q => q.arm); assert.ok(r.arm[0] < C.WING.z1 - 0.3, 'the davit arm reaches back over the roof');
 });
+await t('stadium: the match carries on: the ball goes round both sides, every player touches it, nobody leaves the pitch', async () => {
+  const { makeMatch, stepMatch } = await import('../public/js/maps/stadium-match.js'), { PITCH } = await import('../public/js/core/maps/stadium.js');
+  const m = makeMatch(), touched = new Set(); let last = null, poss = 0, out = 0;
+  for (let i = 0; i < 20 * 600; i++) { stepMatch(m, 0.05); const b = m.ball; if (b.owner && b.owner !== last) { poss++; touched.add(b.owner); } last = b.owner;
+    for (const p of m.players) if (!(p.x >= PITCH.x0 && p.x <= PITCH.x1 && p.z >= PITCH.z0 && p.z <= PITCH.z1)) out++; }
+  assert.ok(poss > 60, 'possessions ' + poss); assert.equal(touched.size, 22); assert.equal(out, 0);
+});
+await t('stadium: every spot reachable inside the VIP level; suites and club joined by the stair; in only by rope; out at the concourse gate', async () => {
+  const { buildLevel: BL, findPath: FP } = await import('../public/js/core/level.js'), C = await import('../public/js/core/maps/stadium.js');
+  const L = BL('stadium'), M = L.map, near = (p, x, z) => { const e = p && p[p.length - 1]; return !!p && Math.hypot(e[0] - x, e[1] - z) < 1.2; };
+  const club = ([f, x, z]) => near(FP(L, 30, 20, C.YC, x, z, M.yAt(f, x, z), true), x, z);
+  for (const sp of [...M.spots.s, ...M.spots.c, ...M.civMust, ...M.hvts.map(h => h.at)]) assert.ok(club(sp), 'reachable from the club: ' + sp);
+  assert.ok(near(FP(L, 30, 20, C.YC, C.EXIT.x0 + 2, 8, C.YC, true), C.EXIT.x0 + 2, 8), 'the gate');
+  for (const r of C.ROPES.filter(q => q.mid)) { assert.ok(club([C.FC, r.step[0], r.step[1]]), 'from the foot of rope ' + r.x + ' on the terrace into the club'); assert.ok(club([C.FS, r.mid.step[0], r.mid.step[1]]), 'and from inside its window'); }
+  assert.ok(!FP(L, 30, 22, C.ROOF, 30, 20, C.YS, true), 'no walking from the roof catwalk down'); assert.ok(!FP(L, 31, 19.8, C.HELI.y, 30, 22, C.ROOF, true), 'nor off the helicopter');
+  assert.equal(L.doors.filter(d => d.win).length, 5, 'a breach window in each suite');
+  const s = new Sim('stadium'); s.addPlayer(1, 'A'); s.start(3, false, 'clear', 'stadium');
+  assert.ok(s.npcs.some(n => n.hvt && Math.abs(n.y - C.YS) < 0.01), 'the leader in the suites'); assert.ok(s.npcs.filter(n => n.kind === 's').length >= 10 && s.bombs.length === 2, 'crew and bombs placed');
+});
+await t('stadium: bots fast-rope to the catwalk, rappel down past the suites and come in with the squad', async () => {
+  const C = await import('../public/js/core/maps/stadium.js');
+  const s = new Sim('stadium'); s.addPlayer(1, 'A'); s.start(5, false, 'clear', 'stadium'); for (const n of s.npcs) if (n.kind === 's') { n.st = 'u'; n.armed = false; }
+  assert.ok(s.bots().every(b => b.bot.y > C.ROOF + 2), 'bots start aboard');
+  s.phase = 'active'; s.pose(1, { h: [31, C.YS + 1.65, 18, 0, 0, 0, 1] }); s.players.get(1).y = C.YS;
+  run(s, C.FLY.T); run(s, 160, () => s.bots().every(p => Math.abs(p.bot.y - C.YS) < 0.3 && p.bot.z < 28 && p.bot.z > 6));
+  for (const p of s.bots()) assert.ok(Math.abs(p.bot.y - C.YS) < 0.3 && p.bot.z < 28, p.name + ' in the suites: ' + [p.bot.x, p.bot.y, p.bot.z].map(v => v.toFixed(1)));
+  s.pose(1, { h: [12, C.YC + 1.65, 13.5, 0, 0, 0, 1] }); s.players.get(1).y = C.YC;
+  run(s, 120, () => s.bots().every(p => Math.abs(p.bot.y - C.YC) < 0.3));
+  for (const p of s.bots()) assert.ok(Math.abs(p.bot.y - C.YC) < 0.3, p.name + ' down the stair in the club: ' + [p.bot.x, p.bot.y, p.bot.z].map(v => v.toFixed(1)));
+});
 console.log(n + ' tests passed');

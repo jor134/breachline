@@ -9,8 +9,9 @@ import trainingGfx from './maps/training-gfx.js';
 import grandprixGfx from './maps/grandprix-gfx.js';
 import airportGfx from './maps/airport-gfx.js';
 import casinoGfx from './maps/casino-gfx.js';
+import stadiumGfx from './maps/stadium-gfx.js';
 import { customGfx } from './maps/custom-gfx.js';
-const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx, casino: casinoGfx };
+const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx, casino: casinoGfx, stadium: stadiumGfx };
 let MAPFURN = null;   // a map's own furniture pieces (gfx.furn): sub -> builder
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
