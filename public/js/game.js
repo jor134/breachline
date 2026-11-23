@@ -669,6 +669,7 @@ function applySnap(m) {
   for (const e of m.E) onEvent(e);
   if (S.phase !== prev) { S.menu = false; if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'active' && !M.training) { panel.mesh.visible = false; S.panel = null; } else showLobbyPanel(); }
 }
+const CIV_VO = { plead: 'help', comply: 'sigh' };   // hostage lines with a recording: grabbed or still tied up 'help!', a relieved sigh when told to stay down
 const LINES = { spot: ['THERE!', '#ff7070', ''], medic: ['HANG ON!', '#ffb070', "Hang on, I've got you!"], surrender: ["DON'T SHOOT!", '#ffe080', "Don't shoot! I give up!"], defy: ['NO!', '#ff7070', 'No way!'], comply: ['OK! OK!', '#a0e0ff', 'Okay, okay!'], plead: ['PLEASE!', '#a0e0ff', 'Please help us!'], threat: ['BACK OFF OR THEY DIE!', '#ff3030', 'Back off or the hostage dies!'], fake: ['(draws weapon)', '#ff4040', ''] };
 function onEvent(e) {
   tut.event(e, S.me.id);
@@ -690,7 +691,8 @@ function onEvent(e) {
     case 'drop': { const a = S.actors.get(e.n); if (a && e.why !== 'let go') sayAt(a.g.position.x, a.g.position.y + 2.0, a.g.position.z, e.why === 'flash' ? 'HOSTAGE BROKE FREE (FLASHED)' : e.why === 'shot' ? 'HOSTAGE BROKE FREE (SHOT)' : 'HOSTAGE FREE', '#80d0ff'); break; }
     case 'carhit': if (e.p != null) { sfx.boom({ x: e.x, y: 0.5, z: e.z }); if (e.p === S.me.id) sayAt(head.pos.x + head.fwd.x * 1.5, head.pos.y, head.pos.z + head.fwd.z * 1.5, 'HIT BY A RACE CAR', '#ff6060'); } break;
     case 'revive': if (e.p === S.me.id) { sfx.ok(); if (e.by) sayAt(head.pos.x + head.fwd.x * 1.2, head.pos.y, head.pos.z + head.fwd.z * 1.2, 'BACK ON YOUR FEET', '#7dffa0'); } break;
-    case 'hit': if (a) { a.flinch = 1; if (a.kind === 's' && (e.dead || Math.random() < 0.7)) sfx.vo(e.dead ? 'vo_s_die' : 'vo_s_pain', v1.set(a.g.position.x, a.g.position.y + 1.4, a.g.position.z)); } break;
+    case 'hit': if (a) { a.flinch = 1; if (a.kind === 's' && (e.dead || Math.random() < 0.7)) sfx.vo(e.dead ? 'vo_s_die' : 'vo_s_pain', v1.set(a.g.position.x, a.g.position.y + 1.4, a.g.position.z));
+      else if (a.kind === 'c') sfx.vo('vo_c_die_' + (a.female ? 'f' : 'm'), v1.set(a.g.position.x, a.g.position.y + 1.2, a.g.position.z), e.dead ? 1.6 : 1.1); } break;   // a hostage hit: their cry (a man's or a woman's)
     case 'power': if (M.breaker) sfx.power(v1.set(M.breaker.x, M.breaker.y, M.breaker.z), e.on); break;
     case 'door': { const d = level.doors[e.d]; sfx.door(v1.set(d.cx, d.y + 1, d.cz), e.open); break; }
     case 'locked': { const d = level.doors[e.d]; sfx.rattle(v1.set(d.cx, d.y + 1, d.cz)); sayAt(d.cx, d.y + 1.5, d.cz, 'LOCKED', '#ffb060'); break; }
@@ -700,7 +702,8 @@ function onEvent(e) {
     case 'lift': { const L = M.lift; if (L) { const y = L.stops[e.from], c = L.car; sfx.chime(v1.set((c.x0 + c.x1) / 2, y + 2, c.z1)); sayAt((c.x0 + c.x1) / 2, y + 2.4, c.z1 + 0.3, e.to > e.from ? 'GOING UP' : 'GOING DOWN', '#9fd8ff'); } break; }
     case 'liftmove': { if (e.ids.includes(S.me.id)) { rig.position.y += e.dy; S.feetY += e.dy; headWorld(); for (const h of hands) buzz(h, 0.4, 120); } const L = M.lift; if (L) { const y = L.stops[e.at], c = L.car; sfx.chime(v1.set((c.x0 + c.x1) / 2, y + 2, c.z1)); } break; }
     case 'kick': { const d = level.doors[e.d]; const ko = S.officers.get(e.p); if (ko) ko.body.kick(); if (e.p === S.me.id) myBody.kick(); sfx.kick(v1.set(d.cx, d.y + 1, d.cz), e.ok); if (e.ok) world.doors[e.d].cur = 0.9; else sayAt(d.cx, d.y + 1.5, d.cz, 'HELD', '#ffb060'); break; }
-    case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (a.kind === 's' && sfx.vo('vo_s_' + e.k, v1.set(a.g.position.x, a.g.position.y + 1.6, a.g.position.z))) { /* recorded suspect line */ } else if (L[2] && a.g.position.distanceTo(head.pos) < 14) { sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); if (voiceState.error) noteErr(voiceState.error); } } } break;
+    case 'say': if (a) { const L = LINES[e.k]; if (L) { say(a, L[0], L[1]); if (a.kind === 's' && sfx.vo('vo_s_' + e.k, v1.set(a.g.position.x, a.g.position.y + 1.6, a.g.position.z))) { /* recorded suspect line */ }
+      else if (a.kind === 'c' && CIV_VO[e.k] && sfx.vo('vo_c_' + CIV_VO[e.k] + '_' + (a.female ? 'f' : 'm'), v1.set(a.g.position.x, a.g.position.y + 1.5, a.g.position.z), 1.5)) { cryT.set(e.n, 6 + Math.random() * 6); /* recorded hostage line */ } else if (L[2] && a.g.position.distanceTo(head.pos) < 14) { sfx.say(L[2], a.kind === 'c' ? 1.4 : 0.8); if (voiceState.error) noteErr(voiceState.error); } } } break;
     case 'shout': if (e.p !== S.me.id) { const o = S.officers.get(e.p), p = o && o.head.position; if (!sfx.vo('vo_p_shout', p || null, 1.3)) sfx.say('Police! Hands up!', 1); } break;
     case 'cuff': if (a) { sfx.cuff(a.g.position); if (a.kind === 's') sfx.vo('vo_s_cuffed', v1.set(a.g.position.x, a.g.position.y + 0.9, a.g.position.z), 1.3); } break;
     case 'flash': { v1.set(e.x, e.y, e.z); sfx.bang(v1); puff([e.x, e.y + 0.2, e.z], 0xffffff); const d = v1.distanceTo(head.pos);
@@ -1091,6 +1094,19 @@ function handPose(h, o) {
   else { P.i = Math.max(I.trigT ? 0.22 : 0.05, I.trig * 0.95); P.g = 0.08 + I.grip * 0.87; P.t = I.thumb ? 0.55 : 0.1; }   // empty: point, fist, open
   return P;
 }
+// ---------- hostages who are still held (waiting to be freed) sob now and then: a man's or a woman's voice to match their model,
+// one at a time, only within earshot, each on their own few-second rhythm. Dead, freed and shielded hostages are quiet ----------
+const cryT = new Map(); let cryHold = 0;
+function hostageCries(dt) {
+  cryHold -= dt; if (!S.mode || S.phase !== 'active') return;
+  for (const [id, a] of S.actors) {
+    if (a.kind !== 'c' || a.st !== 'w') { cryT.delete(id); continue; }   // (heard through walls too: a hidden actor is only not drawn)
+    let t = cryT.get(id); if (t === undefined) t = 2 + Math.random() * 10; t -= dt;
+    if (t <= 0 && cryHold <= 0) { const p = a.g.position, d = Math.hypot(p.x - head.pos.x, p.z - head.pos.z);
+      if (d < 16 && Math.abs(p.y - head.pos.y) < 4 && sfx.vo('vo_c_cry_' + (a.female ? 'f' : 'm'), v1.set(p.x, p.y + 1.0, p.z), 0.9)) { cryHold = 3.5; t = 9 + Math.random() * 10; } else t = 1.5; }
+    cryT.set(id, t);
+  }
+}
 // ---------- footsteps: suspects, hostages and teammates are heard walking (muffled through walls); your own steps are quieter ----------
 const stepAcc = new Map(), stepPos = new THREE.Vector3(), myStep = { x: 0, z: 0, acc: 0, init: false };
 function stepSound(key, x, y, z, moved, gainK, self) {
@@ -1227,6 +1243,7 @@ function frame(t) {
   setAmbience(S.wx === 'storm' ? 1 : S.wx === 'rain' ? 0.7 : 0, weather.state.inside);
   { const ins = level.inside(head.pos.x, head.pos.z, head.pos.y); setListener(head.pos, head.fwd, ins); setEnvInside(ins); }   // the reflections show pot lights indoors, the sky outside
   if (!S.watch) { footsteps(dt); exitPrompt(dt); }
+  hostageCries(dt);
   if (S.mode && !S.watch && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(fo(head.pos), head.quat), l: hands[0].active ? (lh => arr7(fo(lh.pos), lh.quat))(handOnGun(hands[0])) : null, r: hands[1].active ? (rh => arr7(fo(rh.pos), rh.quat))(handOnGun(hands[1])) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.intensity > 0 ? 1 : 0 }); }
   const c1 = performance.now(); renderer.render(scene, camera); perf.cpuNote(c1 - c0, performance.now() - c1, renderer.info.render.calls);
 }
@@ -1287,10 +1304,10 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q53';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q54';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { perf, storeUI, voice, drawBody, panelAct: a => { const pr = panel.probe; panel.probe = () => a; try { return tryPanel(v1.set(0, 0, 0), v2.set(0, 0, -1)); } finally { panel.probe = pr; } }, onMsg: m => onMsg(m), cycleMap: () => cycleMap(), showLobbyPanel: () => showLobbyPanel(), toggleMenu, goHome, ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { perf, storeUI, voice, drawBody, sfx, onEvent: e => onEvent(e), panelAct: a => { const pr = panel.probe; panel.probe = () => a; try { return tryPanel(v1.set(0, 0, 0), v2.set(0, 0, -1)); } finally { panel.probe = pr; } }, onMsg: m => onMsg(m), cycleMap: () => cycleMap(), showLobbyPanel: () => showLobbyPanel(), toggleMenu, goHome, ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }

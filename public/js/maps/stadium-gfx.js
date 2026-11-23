@@ -15,14 +15,16 @@ let tod = 'night', glows = [], heli = null, screens = null, crowd = null, inner 
 // lamps: [x, y, z, intensity, range] — the club, the suites, the terrace and the concourse
 const LAMPS = [[24, YC + 3.2, 16.5, 12, 16], [12, YC + 3.2, 23, 8, 12], [36, YC + 3.2, 23, 8, 12], [30, YC + 3.2, 8, 7, 12], [49, YC + 3.0, 15, 7, 11],
   [11, YS + 3.0, 19, 6, 10], [21, YS + 3.0, 19, 6, 10], [31, YS + 3.0, 19, 7, 10], [41, YS + 3.0, 19, 6, 10], [51, YS + 3.0, 19, 6, 10], [30, YS + 3.0, 8, 5, 12], [3, YS + 3.0, 22, 5, 10]];
+// the moon's (or low sun's) shadows cover the VIP block and the roof catwalk only (sunAt, shadow: 80 m across): over the whole
+// bowl a shadow-map pixel was 9 cm, and thin things (the catwalk's rail posts) drew as stepped copies; here it is 4 cm
 const NIGHT = {
   sky: [[0, '#05070f'], [0.3, '#0b1022'], [0.45, '#18203d'], [0.5, '#2b2f4a'], [0.53, '#121420'], [1, '#0e0f16']], skyR: 520, moon: [-150, 140, -100],
-  fog: [0x10131d], fogD: [0.0016, 0.004], sunAt: [XC, ZC - 20], sunFrom: [-30, 90, 60], shadow: 90, sunCol: 0xdfe8ff, sunK: 1.25, hemi: 1.15, hemiSky: 0xc6d2ec, hemiGround: 0x5a544c,
+  fog: [0x10131d], fogD: [0.0016, 0.004], sunAt: [28, 18], sunFrom: [-30, 90, 60], shadow: 40, sunCol: 0xdfe8ff, sunK: 1.25, hemi: 1.15, hemiSky: 0xc6d2ec, hemiGround: 0x5a544c,
   hillColor: 0x07080d, lamps: LAMPS,
 };
 const DUSK = {
   sky: [[0, '#1b2350'], [0.28, '#3a3f7a'], [0.42, '#a0628a'], [0.475, '#f09a62'], [0.5, '#ffc98a'], [0.53, '#2a2330'], [1, '#18161d']], skyR: 520, moon: [140, 120, -160],
-  fog: [0x40364e], fogD: [0.0018, 0.0045], sunAt: [XC, ZC - 20], sunFrom: [-110, 40, 60], shadow: 90, sunCol: 0xffb37a, sunK: 1.1, hemi: 1.1, hemiSky: 0xbab4da, hemiGround: 0x625a52,
+  fog: [0x40364e], fogD: [0.0018, 0.0045], sunAt: [28, 18], sunFrom: [-110, 40, 60], shadow: 40, sunCol: 0xffb37a, sunK: 1.1, hemi: 1.1, hemiSky: 0xbab4da, hemiGround: 0x625a52,
   hillColor: 0x1c1726, lamps: LAMPS,
 };
 // ---------- painted textures ----------
@@ -124,7 +126,7 @@ export default {
     }, undefined, rej));
   },
   noshade: { glowW: 1, flood: 1, pitchLine: 1, led: 1 },
-  noCast: ['grass', 'pitchLine', 'terrazzo', 'oak', 'carpetB', 'carpetG', 'carpetO', 'tileK', 'deck', 'standC'],
+  noCast: ['grass', 'pitchLine', 'terrazzo', 'oak', 'carpetB', 'carpetG', 'carpetO', 'tileK', 'deck', 'standC', 'chrome'],   // chrome: rails and davits, too thin for clean shadows
   tread: 'concrete',
   outer: () => 'standC',
   inner: w => w.f === 3 ? 'suiteW' : 'clubW',

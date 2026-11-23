@@ -1,7 +1,7 @@
 // Characters, the player's own body, weapons and bombs. Each rigid piece is one merged mesh with vertex colours (one draw call).
 import * as THREE from '../vendor/three.module.min.js';
 import { loadM4, loadSidearm, loadNades } from './m4.js';
-import { CHARS_ON, SUSPECT_MODELS, loadChar, loadCivilian, Skin, mirror, align2 } from './chars.js';
+import { CHARS_ON, SUSPECT_MODELS, CIV_FILES, loadChar, loadCivilian, Skin, mirror, align2 } from './chars.js';
 const HQ = typeof location === 'undefined' || !new URLSearchParams(location.search).get('lite') || !!new URLSearchParams(location.search).get('m4');   // ?lite=1 (tests) keeps the built-in rifle unless &m4=1
 import { sheen, vertexSheen } from './mats.js';
 import { SOFT } from './gfx.js';
@@ -158,6 +158,7 @@ export class Human {
     else if (s) { this.gun = makeRifle(); this.gun.position.set(0, -0.3, 0.03); this.gun.rotation.set(-HP, 0, Math.PI); this.arms[1].el.add(this.gun); }
     this.kind = kind; this.st = ''; this.first = true; this.flashT = 0; this.flinch = 0; this.phase = Math.random() * 6; this.idle = Math.random() * 9; this.speed = 0;
     this.fwd = 1; this.side = 0; this.fl = 0; this.fl0 = 0; this.rlT = 0; this.buckle = 0; this.footSink = 0; this.phase0 = Math.random() * 6;
+    this.female = !s && /^female/.test(CIV_FILES[(((id * 7 + v * 3) % CIV_FILES.length) + CIV_FILES.length) % CIV_FILES.length]);   // the civilian model loadCivilian picks below (hostage voices match it)
     this.p0 = new THREE.Vector3(); this.p1 = new THREE.Vector3(); this.y0 = 0; this.y1 = 0; this.it = 0; this.dur = 0.07; this.lastT = 0;
     this.cur = Object.assign({}, REST); this.tgt = Object.assign({}, REST); this.blob = makeBlob(0.5); g.traverse(o => { if (o.isMesh) o.receiveShadow = true; });
     // everyone wears a downloaded model (suspects, the boss in his suit, civilians); the stick rig above keeps animating, invisibly, and drives its bones

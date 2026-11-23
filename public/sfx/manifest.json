@@ -229,5 +229,34 @@
   "vo_p_shout_2.blx",
   "vo_p_shout_3.blx",
   "vo_p_shout_4.blx"
+ ],
+ "vo_c_cry_m": [
+  "vo_c_cry_m_1.mp3",
+  "vo_c_cry_m_2.mp3",
+  "vo_c_cry_m_3.mp3"
+ ],
+ "vo_c_cry_f": [
+  "vo_c_cry_f_1.mp3",
+  "vo_c_cry_f_2.mp3",
+  "vo_c_cry_f_3.mp3",
+  "vo_c_cry_f_4.mp3"
+ ],
+ "vo_c_sigh_m": [
+  "vo_c_sigh_m_1.mp3"
+ ],
+ "vo_c_sigh_f": [
+  "vo_c_sigh_f_1.mp3"
+ ],
+ "vo_c_die_m": [
+  "vo_c_die_m_1.mp3"
+ ],
+ "vo_c_die_f": [
+  "vo_c_die_f_1.mp3"
+ ],
+ "vo_c_help_m": [
+  "vo_c_help_m_1.mp3"
+ ],
+ "vo_c_help_f": [
+  "vo_c_help_f_1.mp3"
  ]
 }
