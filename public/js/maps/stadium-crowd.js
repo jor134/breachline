@@ -9,17 +9,20 @@ import { SEATS } from './stadium-seats.js';
 import { BLOCK } from '../core/maps/stadium.js';
 import { makeMatch, stepMatch } from './stadium-match.js';
 
-const FANS = 160, POSES = 24, POSE_T = 0.25;   // the bake: 24 poses 0.25 s apart, played forwards then back
+const FANS = 240, POSES = 24, POSE_T = 0.25, RUN = 12;   // the bake: 24 poses 0.25 s apart, played forwards then back
 let seed = 11; const rr = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 
-// which seats get a fan: the nearest to the VIP block's front, with gaps (never the terrace or the block itself)
+// which seats get a fan: spread round the whole bowl in little groups (friends sit together), a bit thicker in the stands you can
+// see from the VIP block; never the terrace or the block itself (stadium-seats.js already leaves those out)
 function pickSeats() {
-  seed = 11; const cx = (BLOCK.x0 + BLOCK.x1) / 2, cz = BLOCK.z1 + 6;
-  const ok = SEATS.filter(s => !(s[0] > BLOCK.x0 - 0.6 && s[0] < BLOCK.x1 + 0.6 && s[2] < 34));
-  ok.sort((a, b) => Math.hypot(a[0] - cx, (a[2] - cz) * 1.4) - Math.hypot(b[0] - cx, (b[2] - cz) * 1.4));
-  const near = ok.slice(0, Math.round(FANS * 1.7)), out = [];
-  for (const s of near) if (out.length < FANS && rr() < 0.62) out.push(s);
-  for (const s of near) if (out.length < FANS && !out.includes(s)) out.push(s);
+  seed = 11; const out = [], used = new Set(), cx = (BLOCK.x0 + BLOCK.x1) / 2, cz = BLOCK.z1 + 6;
+  const near = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]) < 1.6 && Math.abs(a[1] - b[1]) < 0.3;
+  for (let guard = 0; out.length < FANS && guard < 20000; guard++) {
+    const i = Math.floor(rr() * SEATS.length), s = SEATS[i]; if (used.has(i)) continue;
+    const d = Math.hypot(s[0] - cx, s[2] - cz); if (rr() > 0.45 + 0.55 * Math.exp(-d / 70)) continue;   // thinner far away (it shows less)
+    used.add(i); out.push(s); const n = Math.floor(rr() * 3);   // and up to two friends beside them
+    for (let k = 0, j = Math.max(0, i - 40); k < n && j < Math.min(SEATS.length, i + 40) && out.length < FANS; j++) if (!used.has(j) && near(SEATS[j], s)) { used.add(j); out.push(SEATS[j]); k++; }
+  }
   return out;
 }
 
@@ -28,7 +31,7 @@ export function makeCrowd(root) {
   C.group.name = 'crowd'; root.add(C.group);
   const seats = pickSeats(); seats.forEach((s, i) => C.fans.push({ s, type: i % 4, ph: rr() * POSES * 2, rate: 0.7 + rr() * 0.6, ry: s[3] + (rr() - 0.5) * 0.5, k: 0.93 + rr() * 0.12 }));
   const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 1), new THREE.MeshLambertMaterial({ color: 0xf4f4f0 })); ball.castShadow = true; C.group.add(ball); C.ball = ball;
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p3 = new THREE.Vector3(), s3 = new THREE.Vector3(), dummy = { morphTargetInfluences: new Float32Array(POSES - 1) };
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p3 = new THREE.Vector3(), s3 = new THREE.Vector3(), dummy = { morphTargetInfluences: new Float32Array(POSES - 1) }, run = { morphTargetInfluences: new Float32Array(RUN) };
   C.load = () => new Promise((res) => new ObfLoader().load('models/stadium/crowd.glb', gl => {
     const byName = {}; gl.scene.traverse(o => { if (o.isMesh) byName[o.name] = o; });
     const inst = (src, n) => { const mt = src.material; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.2; if (!pbrMats.includes(mt)) pbrMats.push(mt);
@@ -45,8 +48,12 @@ export function makeCrowd(root) {
     stepMatch(C.match, Math.min(dt, 0.05));
     const b = C.match.ball; C.ball.position.set(b.x, b.y, b.z); C.ball.rotation.x += Math.hypot(b.vx, b.vz) * dt / 0.11;
     if (!C.ready) return;
-    for (const P of C.players) { if (!P) continue; P.list.forEach((p, i) => { const bob = Math.abs(Math.sin(p.ph)) * Math.min(0.09, p.sp * 0.015); e.set(Math.min(0.18, p.sp * 0.02), p.ry, Math.sin(p.ph) * Math.min(0.06, p.sp * 0.01)); q.setFromEuler(e);
-      m4.compose(p3.set(p.x, bob, p.z), q, s3.setScalar(p.ref ? 0.97 : 1)); P.im.setMatrixAt(i, m4); }); P.im.instanceMatrix.needsUpdate = true; }
+    // the players' run: RUN baked poses round one stride (tools/crowd_glb.py), the two either side of the stride's phase blended,
+    // all of it scaled by speed (zero is the standing base: a jog is a smaller stride, stood still is standing)
+    for (const P of C.players) { if (!P) continue; P.list.forEach((p, i) => { e.set(0, p.ry, 0); q.setFromEuler(e); m4.compose(p3.set(p.x, 0, p.z), q, s3.setScalar(p.ref ? 0.97 : 1)); P.im.setMatrixAt(i, m4);
+        const u = p.ph / (2 * Math.PI) * RUN, a = Math.floor(u) % RUN, w = u - Math.floor(u), amp = Math.min(1, p.sp / 3.2); run.morphTargetInfluences.fill(0);
+        run.morphTargetInfluences[a] = (1 - w) * amp; run.morphTargetInfluences[(a + 1) % RUN] += w * amp; P.im.setMorphAt(i, run); });
+      P.im.instanceMatrix.needsUpdate = true; if (P.im.morphTexture) P.im.morphTexture.needsUpdate = true; }
     // the fans' poses at 30 Hz: pose u (0..POSES-1, ping-pong), blending its two neighbours
     C.t += dt; if ((C.acc += dt) < 1 / 30) return; C.acc = 0;
     for (const T of C.types) { if (!T) continue; for (const f of T.list) { const raw = (C.t * f.rate / POSE_T + f.ph) % (2 * (POSES - 1)), u = raw < POSES - 1 ? raw : 2 * (POSES - 1) - raw, a = Math.floor(u), w = u - a;

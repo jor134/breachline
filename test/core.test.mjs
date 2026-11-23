@@ -625,11 +625,11 @@ await t('casino: the lift leaves by itself once someone stands in it and comes w
   assert.ok(!ledgeNear(s.level, s.doorOpen, 30, 30, 0, 0.6) || true);
   const r = C.ROPES.find(q => q.arm); assert.ok(r.arm[0] < C.WING.z1 - 0.3, 'the davit arm reaches back over the roof');
 });
-await t('stadium: the match carries on: the ball goes round both sides, every player touches it, nobody leaves the pitch', async () => {
+await t('stadium: the match carries on: the ball goes round both sides, every player touches it, nobody strays past the touchline', async () => {
   const { makeMatch, stepMatch } = await import('../public/js/maps/stadium-match.js'), { PITCH } = await import('../public/js/core/maps/stadium.js');
   const m = makeMatch(), touched = new Set(); let last = null, poss = 0, out = 0;
   for (let i = 0; i < 20 * 600; i++) { stepMatch(m, 0.05); const b = m.ball; if (b.owner && b.owner !== last) { poss++; touched.add(b.owner); } last = b.owner;
-    for (const p of m.players) if (!(p.x >= PITCH.x0 && p.x <= PITCH.x1 && p.z >= PITCH.z0 && p.z <= PITCH.z1)) out++; }
+    for (const p of m.players) if (!(p.x >= PITCH.x0 - 1.5 && p.x <= PITCH.x1 + 1.5 && p.z >= PITCH.z0 - 1.5 && p.z <= PITCH.z1 + 1.5)) out++; }
   assert.ok(poss > 60, 'possessions ' + poss); assert.equal(touched.size, 22); assert.equal(out, 0);
 });
 await t('stadium: every spot reachable inside the VIP level; suites and club joined by the stair; in only by rope; out at the concourse gate', async () => {

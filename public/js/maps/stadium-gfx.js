@@ -190,20 +190,19 @@ export default {
       const gw = 3.66, gh = 2.44, d = 1.8; for (const z of [ZC - gw, ZC + gw]) B('goalW', gx - 0.06, gx + 0.06, 0, gh, z - 0.06, z + 0.06); B('goalW', gx - 0.06, gx + 0.06, gh - 0.12, gh, ZC - gw, ZC + gw);
       const back = gx + s * d; b('net').quad([back, 0, ZC - gw], [back, 0, ZC + gw], [back, gh * 0.8, ZC + gw], [back, gh * 0.8, ZC - gw], [s, 0, 0]); b('net').quad([gx, gh, ZC - gw], [gx, gh, ZC + gw], [back, gh * 0.8, ZC + gw], [back, gh * 0.8, ZC - gw], [0, 1, 0]);
       for (const z of [ZC - gw, ZC + gw]) b('net').quad([gx, 0, z], [back, 0, z], [back, gh * 0.8, z], [gx, gh, z], [0, 0, 1]); }
-    // LED advertising boards round the pitch (invented names only)
-    const ledRun = (x0, z0, x1, z1, n) => { const dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz), nx = dz / l * n, nz = -dx / l * n; b('led').quad([x0, 0, z0], [x1, 0, z1], [x1, 0.95, z1], [x0, 0.95, z0], [nx, 0, nz], 1, [[0, 0], [l / 30, 0], [l / 30, 1], [0, 1]]);
-      B('standC', Math.min(x0, x1) - 0.05, Math.max(x0, x1) + 0.05, 0, 0.95, Math.min(z0, z1) - 0.05, Math.max(z0, z1) + 0.05, 'Y', 0.5); };
-    ledRun(P.x0 - 2, P.z0 - 5, P.x1 + 2, P.z0 - 5, 1); ledRun(P.x1 + 2, P.z1 + 5, P.x0 - 2, P.z1 + 5, 1); ledRun(P.x0 - 5, P.z1 - 2, P.x0 - 5, P.z0 + 2, 1); ledRun(P.x1 + 5, P.z0 + 2, P.x1 + 5, P.z1 - 2, 1);
+    // (the advertising boards round the pitch are the stadium model's own)
     // ---- the VIP block from outside: the stand's concrete either side and behind, the club terrace, the suites' canopy, the catwalk ----
     for (const w of level.boxes) {
-      if (w.kind === 'mass') { if (w.x1 - w.x0 < 40) B('standC', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, w.x0 < 0 ? 'XZY' : 'xZY'); else if (w.z1 <= BLOCK.z0) B('standC', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'Y'); else B('standC', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'Z'); }
+      // the stand either side of and behind the block is the stadium model's own (these boxes only stop you walking out: drawn, their
+      // faces hid the side stands' seats and flickered against the model); under the terrace, only the strip the cut opened up
+      if (w.kind === 'mass') { if (w.x1 - w.x0 > 40 && w.z1 > BLOCK.z1) B('standC', w.x0, w.x1, 4, w.y1, w.z0, w.z1, 'Z'); }
       else if (w.kind === 'parapet') { B('standC', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXYzZ', 0.5); if (w.y0 > YS) B('glowW', w.x0, w.x1, w.y0 - 0.02, w.y0, w.z1 - 0.3, w.z1 - 0.1, 'y', 1); }
       else if (w.kind === 'fence' && w.sub === 'rail') { const hz = w.x1 - w.x0 > w.z1 - w.z0; B('chrome', w.x0, w.x1, w.y1 - 0.05, w.y1, w.z0, w.z1, 'xXYzZ', 1); B('chrome', w.x0, w.x1, w.y0 + 0.5, w.y0 + 0.54, w.z0, w.z1, 'xXYzZ', 1);
         for (let u = hz ? w.x0 : w.z0; u <= (hz ? w.x1 : w.z1); u += 1.5) hz ? B('chrome', u - 0.03, u + 0.03, w.y0, w.y1, w.z0, w.z1, 'xXzZ', 1) : B('chrome', w.x0, w.x1, w.y0, w.y1, u - 0.03, u + 0.03, 'xXzZ', 1); }
     }
     flat('terrazzo', TERR.x0, TERR.x1, TERR.z0, TERR.z1, YC + 0.004, 0.4);                       // the terrace floor
+    for (const [x0, x1] of [[TERR.x0 - 0.3, TERR.x0], [TERR.x1, TERR.x1 + 0.3]]) B('standC', x0, x1, 4, YS + H, TERR.z0 - 0.2, TERR.z1, 'xXYZ', 0.5);   // the terrace's end walls (screen off the cut stand beside it)
     B('standC', TERR.x0, TERR.x1, YC - 0.4, YC, TERR.z0, TERR.z1, 'yZ', 0.5);
-    B('standC', BLOCK.x0, BLOCK.x1, YS + H, YS + H + 0.4, BLOCK.z0, BLOCK.z1 + 0.6, 'Y', 0.5);   // the block's top under the upper tier
     B('suiteW', BLOCK.x0, BLOCK.x1, YS - 0.05, YS + 0.02, BLOCK.z1 - 0.02, BLOCK.z1 + 0.25, 'yYZ', 0.5);   // the slab edge between the floors
     // the catwalk on the roof: a grating deck on trusses, davits over its front, a rope from each down through the roof's slot
     flat('deck', DECK.x0, DECK.x1, DECK.z0, DECK.z1, ROOF + 0.004, 0.3); B('deck', DECK.x0, DECK.x1, ROOF - 0.35, ROOF, DECK.z0, DECK.z1, 'yxXzZ', 0.3);
@@ -218,6 +217,14 @@ export default {
       const bankX = (x, z, rx) => { B('standC', x - 0.3, x + 0.3, yL, yL + 1.4, z - 2.2, z + 2.2, 'xXyYzZ', 1); b('flood').quad([x + rx * 0.31, yL + 0.1, z - 2.0], [x + rx * 0.31, yL + 0.1, z + 2.0], [x + rx * 0.31, yL + 1.3, z + 2.0], [x + rx * 0.31, yL + 1.3, z - 2.0], [rx, 0, 0], 1); };
       for (let x = rect[0] + 8; x < rect[2] - 4; x += 9) { if (x < DECK.x0 - 3 || x > DECK.x1 + 3) bank(x, rect[1] + 2, 0, 1); bank(x, rect[3] - 2, 0, -1); }
       for (let z = rect[1] + 10; z < rect[3] - 6; z += 9) { bankX(rect[0] + 2, z, 1); bankX(rect[2] - 2, z, -1); } }
+    // ---- the stair: one straight flight from the club (z 14) up to the suites (z 8), concrete treads with a nosing strip, the
+    // soffit under it, a handrail each side ----
+    { const N = 18, run = (SHAFT.bot - SHAFT.top) / N, rise = H / N, x0 = SHAFT.x0 + 0.1, x1 = SHAFT.x1 - 0.1;
+      for (let i = 0; i < N; i++) { const top = YC + (i + 1) * rise, zb = SHAFT.bot - i * run, za = zb - run;
+        B('concrete', x0, x1, top - rise, top, za, zb, 'Yz', 0.5); B('chrome', x0, x1, top - 0.004, top + 0.002, zb - 0.05, zb, 'Y', 1); }
+      b('concW').quad([x0, YC - 0.25, SHAFT.bot], [x1, YC - 0.25, SHAFT.bot], [x1, YS - 0.25, SHAFT.top], [x0, YS - 0.25, SHAFT.top], [0, -0.857, -0.514], 0.5);
+      for (const x of [x0 + 0.06, x1 - 0.06]) { const dz = SHAFT.bot - SHAFT.top, L = Math.hypot(dz, H), rail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, L, 8), MATS.chrome);
+        rail.position.set(x, (YC + YS) / 2 + 0.95, (SHAFT.bot + SHAFT.top) / 2); rail.rotation.x = -Math.atan2(dz, H); root.add(rail); } }
     // ---- signs ----
     plane(root, 'SUITES ▲', 1.4, 0.3, SHAFT.x1 + 0.12, YC + 2.4, 14.6, Math.PI / 2, { bg: '#0e2a5c' }); plane(root, 'CLUB ▼', 1.4, 0.3, SHAFT.x1 + 0.12, YS + 2.4, 7.2, Math.PI / 2, { bg: '#0e2a5c' });
     plane(root, 'THE HARBOUR CLUB', 5, 0.6, 24, YC + 2.95, 11.15, 0, { bg: null, fg: '#d8c08a', pw: 1024, ph: 96 });

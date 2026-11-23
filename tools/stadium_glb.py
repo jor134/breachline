@@ -11,7 +11,7 @@
 import sys, os, io, json, struct, subprocess, tempfile
 import numpy as np
 from PIL import Image
-src, dst = sys.argv[1], sys.argv[2]; QEM = os.environ.get('QEM', '/tmp/qem'); RATIO = float(os.environ.get('RATIO', '0.06'))
+src, dst = sys.argv[1], sys.argv[2]; QEM = os.environ.get('QEM', '/tmp/qem'); RATIO = float(os.environ.get('RATIO', '0.06')); KEEP = os.environ.get('KEEP', '1') == '1'
 d = open(src, 'rb').read(); L = struct.unpack('<I', d[12:16])[0]; j = json.loads(d[20:20 + L]); BIN = 20 + L + 8
 N = j['nodes']; par = {c: i for i, n in enumerate(N) for c in n.get('children', [])}
 def mat(n):
@@ -55,6 +55,9 @@ for i, n in enumerate(N):
         C = P[I].mean(1); keep = np.ones(len(I), bool)
         for x0, x1, y0, y1, z0, z1 in CUTS: keep &= ~((C[:, 0] > x0) & (C[:, 0] < x1) & (C[:, 1] > y0) & (C[:, 1] < y1) & (C[:, 2] > z0) & (C[:, 2] < z1))
         keep &= ~((C[:, 1] < 0.25) & (C[:, 0] > PITCH[0]) & (C[:, 0] < PITCH[1]) & (C[:, 2] > PITCH[2]) & (C[:, 2] < PITCH[3]))
+        # the ground round the pitch too (the game draws its own grass and turf there: two surfaces at one height flicker)
+        Nn = np.cross(P[I[:, 1]] - P[I[:, 0]], P[I[:, 2]] - P[I[:, 0]]); flat = np.abs(Nn[:, 1]) > 0.9 * (np.linalg.norm(Nn, axis=1) + 1e-12)
+        keep &= ~(flat & (np.abs(C[:, 1]) < 0.06) & (C[:, 0] > PITCH[0] - 16) & (C[:, 0] < PITCH[1] + 16) & (C[:, 2] > PITCH[2] - 12) & (C[:, 2] < PITCH[3] + 12))
         I = I[keep]
         if not len(I): continue
         if name in SEAT_MATS: seats.append((name, P, I)); continue
@@ -67,14 +70,26 @@ def qem(V, T, target):
     if target >= len(T): return V, T
     t = tempfile.mkdtemp(); a, b = os.path.join(t, 'in.bin'), os.path.join(t, 'out.bin')
     with open(a, 'wb') as f: f.write(struct.pack('<ii', len(V), len(T))); f.write(V.astype(np.float64).tobytes()); f.write(T.astype(np.int32).tobytes())
-    subprocess.run([QEM, a, b, str(target)], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run([QEM, a, b, str(target)] + (['keep'] if KEEP else []), check=True, stdout=subprocess.DEVNULL)   # keep: collapse onto existing points (no spikes)
     r = open(b, 'rb').read(); nv, nt = struct.unpack('<ii', r[:8]); return np.frombuffer(r, np.float64, nv * 3, 8).reshape(nv, 3), np.frombuffer(r, np.int32, nt * 3, 8 + nv * 24).reshape(nt, 3)
+# after simplifying: no triangle may reach into the playable rooms (a big facade triangle whose middle is outside can still
+# cross them: the shards in the suites and the stair), and long slivers (simplification spikes) go
+ROOMS_BOX = [(0.02, 55.98, 7.22, 14.38, 6.02, 27.98), (0.02, 55.98, 7.22, 9.6, 28.0, 33.0)]   # VIP block (both floors), the terrace
+SLIV_Q, SLIV_L = float(os.environ.get("SLIV_Q", "0.012")), float(os.environ.get("SLIV_L", "4"))
+def clean(V, T):
+    A, Bv, Cv = V[T[:, 0]], V[T[:, 1]], V[T[:, 2]]; lo = np.minimum(np.minimum(A, Bv), Cv); hi = np.maximum(np.maximum(A, Bv), Cv); keep = np.ones(len(T), bool)
+    for x0, x1, y0, y1, z0, z1 in ROOMS_BOX: keep &= ~((hi[:, 0] > x0) & (lo[:, 0] < x1) & (hi[:, 1] > y0) & (lo[:, 1] < y1) & (hi[:, 2] > z0) & (lo[:, 2] < z1))
+    e = np.stack([np.linalg.norm(Bv - A, axis=1), np.linalg.norm(Cv - Bv, axis=1), np.linalg.norm(A - Cv, axis=1)], 1); area = 0.5 * np.linalg.norm(np.cross(Bv - A, Cv - A), axis=1)
+    q = 4 * np.sqrt(3) * area / ((e ** 2).sum(1) + 1e-12); keep &= ~((q < SLIV_Q) & (e.max(1) > SLIV_L))
+    return V, T[keep]
 # far parts can go coarser: the share of each material's triangles near the VIP block decides how hard it is cut
 out_meshes = []
 for mi, (Ps, Is, _) in groups.items():
     V, T = weld(np.vstack(Ps), np.vstack(Is)); name = j['materials'][mi]['name']
     r = RATIO * (0.5 if name.startswith('Stal_02') else 1.0)   # the roof trusses: thousands of members, the outline is what reads
+    if name == 'Color_M07': r = RATIO * 2   # the facade panels: cut as hard as the rest they break up into spikes (seen on the fly-in)
     V2, T2 = qem(V, T, max(40, int(len(T) * r)))
+    V2, T2 = clean(V2, T2)
     c, glass = colour(mi); out_meshes.append((name, V2.astype(np.float32), T2.astype(np.uint32), c, glass)); print(f'{name:30s} {len(T):8d} -> {len(T2):7d}', flush=True)
 # ---- seats -> row strips ----
 cen = [];
@@ -135,10 +150,12 @@ for r in np.unique(roots):
 for nm, V, T, c in [('seats', SV, ST, np.array([0.05, 0.18, 0.55])), ('seatsVIP', SVV, STV, np.array([0.12, 0.10, 0.10]))]:
     if V: out_meshes.append((nm, np.array(V, np.float32), np.array(T, np.uint32), c, False)); print(nm, len(T))
 # seats for the 3D crowd: the lower tier and the boxes level in front of the VIP block and either side of it
-sel = (S[:, 0] > -26) & (S[:, 0] < 82) & (S[:, 2] > 26) & (S[:, 2] < 54)
+# every stand, a sample of about 2600 seats spread round the bowl (the game picks its few hundred fans from these)
+sel = np.zeros(len(S), bool); sel[np.random.default_rng(5).permutation(len(S))[:2600]] = True
+sel &= ~((S[:, 0] > -0.6) & (S[:, 0] < 56.6) & (S[:, 2] < 34))
 rows = [[round(float(S[i, 0]), 2), round(float(SLO[i] + 0.05), 2), round(float(S[i, 2]), 2), round(float(np.arctan2(F[i, 0], F[i, 1])), 3)] for i in np.where(sel)[0]]
 open(os.path.join(os.path.dirname(__file__), '..', 'public/js/maps/stadium-seats.js'), 'w').write(
-    '// generated by tools/stadium_glb.py: seats of the stadium model in front of the VIP block, [x, seat height, z, facing (rad, 0 = +z)]\nexport const SEATS = ' + json.dumps(rows, separators=(',', ':')) + ';\n')
+    '// generated by tools/stadium_glb.py: a sample of the stadium model seats round the whole bowl, [x, seat height, z, facing (rad, 0 = +z)]\nexport const SEATS = ' + json.dumps(rows, separators=(',', ':')) + ';\n')
 print('crowd seats', len(rows))
 # ---- write the glb: one mesh per material, flat colours ----
 out = bytearray(); views = []; accs = []; meshes = []; mats = []

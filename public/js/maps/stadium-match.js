@@ -5,8 +5,8 @@ let seed = 23; const rr = () => { seed = (seed * 16807) % 2147483647; return see
 const SHAPE = [[-48, 0], [-34, -22], [-36, -7], [-36, 7], [-34, 22], [-18, -16], [-20, 0], [-18, 16], [-4, -20], [-2, 0], [-4, 20]];   // 4-3-3, home attacking +x
 export function makeMatch() {
   const players = [];
-  for (const side of [1, -1]) SHAPE.forEach(([x, z], i) => players.push({ side, gk: i === 0, home: [x * side, z * side], x: XC + x * side * 0.9, z: ZC + z * side, vx: 0, vz: 0, ry: side > 0 ? Math.PI / 2 : -Math.PI / 2, ph: rr() * 6 }));
-  const ref = { side: 0, home: [0, 0], x: XC, z: ZC + 8, vx: 0, vz: 0, ry: 0, ph: 0, ref: true };
+  for (const side of [1, -1]) SHAPE.forEach(([x, z], i) => players.push({ side, gk: i === 0, home: [x * side, z * side], x: XC + x * side * 0.9, z: ZC + z * side, vx: 0, vz: 0, sp: 0, ry: side > 0 ? Math.PI / 2 : -Math.PI / 2, ph: rr() * 6 }));
+  const ref = { side: 0, home: [0, 0], x: XC, z: ZC + 8, vx: 0, vz: 0, sp: 0, ry: 0, ph: 0, ref: true };
   return { players, ref, ball: { x: XC, z: ZC, y: 0.11, vx: 0, vz: 0, vy: 0, owner: null, hold: 0, free: 0 }, swing: 0 };
 }
 export function stepMatch(m, dt) {
@@ -37,11 +37,18 @@ export function stepMatch(m, dt) {
     else if (b.owner === p) { const gx = p.side > 0 ? PITCH.x1 : PITCH.x0; tx = p.x + Math.sign(gx - p.x) * 6; tz = p.z + (ZC - p.z) * 0.2; top = 6.5; }
     else { tx = XC + p.home[0] * 0.85 + lineX + (b.x - XC) * 0.25; tz = ZC + p.home[1] * 0.9 + (b.z - ZC) * 0.2; top = 4.5; }
     tx = Math.max(PITCH.x0 + 0.5, Math.min(PITCH.x1 - 0.5, tx)); tz = Math.max(PITCH.z0 + 0.5, Math.min(PITCH.z1 - 0.5, tz));
-    const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz), want = d < 0.6 ? 0 : Math.min(top, d * 1.2), ax = (d > 0.01 ? dx / d * want : 0) - p.vx, az = (d > 0.01 ? dz / d * want : 0) - p.vz, k = Math.min(1, dt * 3);
-    p.vx += ax * k; p.vz += az * k; p.x += p.vx * dt; p.z += p.vz * dt;
-    const sp = Math.hypot(p.vx, p.vz); if (sp > 0.4) { const want = Math.atan2(p.vx, p.vz); let da = want - p.ry; da = Math.atan2(Math.sin(da), Math.cos(da)); p.ry += da * Math.min(1, dt * 6); } else if (!p.ref) { const want = Math.atan2(b.x - p.x, b.z - p.z); let da = want - p.ry; da = Math.atan2(Math.sin(da), Math.cos(da)); p.ry += da * Math.min(1, dt * 3); }
-    p.ph += dt * (2 + sp * 1.6); p.sp = sp;
-    if (!p.ref && !b.owner && b.free <= 0 && b.y < 1.2 && Math.hypot(p.x - b.x, p.z - b.z) < 0.7) { b.owner = p; b.hold = 0.6 + rr() * 1.6; }
+    // run like a person: turn towards where you are going (slower the faster you run), speed up and slow down at a human rate,
+    // and always move the way you face (no sliding sideways); stood still, face the ball. p.ph is the stride's phase, by distance
+    const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz), chasing = p === chase[p.side] && b.owner !== p, want = chasing ? Math.min(top, 2 + d * 1.5) : d < 0.8 ? 0 : Math.min(top, (d - 0.6) * 1.1);
+    const head = Math.atan2(dx, dz), face = want > 0 ? head : (p.ref ? p.ry : Math.atan2(b.x - p.x, b.z - p.z));
+    let da = Math.atan2(Math.sin(face - p.ry), Math.cos(face - p.ry)); const turn = (want > 0 ? 7 / (1 + p.sp * 0.35) : 3) * dt; p.ry += Math.max(-turn, Math.min(turn, da));
+    const ahead = Math.max(0, Math.cos(da)), goal = want * ahead * ahead;   // a sharp turn slows you first
+    p.sp += Math.max(-7 * dt, Math.min(4 * dt, goal - p.sp)); if (p.sp < 0.05 && goal === 0) p.sp = 0;
+    p.vx = Math.sin(p.ry) * p.sp; p.vz = Math.cos(p.ry) * p.sp; p.x += p.vx * dt; p.z += p.vz * dt;
+    p.x = Math.max(PITCH.x0 - 1.5, Math.min(PITCH.x1 + 1.5, p.x)); p.z = Math.max(PITCH.z0 - 1.5, Math.min(PITCH.z1 + 1.5, p.z));   // over the line chasing it, no further
+    const stride = 1.2 + p.sp * 0.32;   // metres per stride (two steps): longer when sprinting
+    p.ph = (p.ph + p.sp * dt / stride * 2 * Math.PI) % (2 * Math.PI); const sp = p.sp;
+    if (!p.ref && !b.owner && b.free <= 0 && b.y < 1.2 && Math.hypot(p.x - b.x, p.z - b.z) < 1.0) { b.owner = p; b.hold = 0.6 + rr() * 1.6; }
   }
 }
 

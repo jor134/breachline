@@ -134,12 +134,51 @@ P = accessor(j, B, at['POSITION']).astype(np.float64); P = (np.c_[P, np.ones(len
 lo, hi = P.min(0), P.max(0)
 if (hi - lo)[2] > (hi - lo)[1] * 1.5: P = P[:, [0, 2, 1]] * np.array([1, 1, -1])
 c = P.mean(0); P -= np.array([c[0], P[:, 1].min(), c[2]]); P *= 1.8 / P[:, 1].max()
-# it comes in a T-pose: swing the arms down to the sides (about the shoulders, blended across the armpit)
-for sd in (-1, 1):
-    a = np.radians(72) * sd; px, py = 0.2 * sd, 1.38; w = np.clip((P[:, 0] * sd - 0.16) / 0.1, 0, 1) * (P[:, 1] > 1.05)
-    dx, dy = P[:, 0] - px, P[:, 1] - py; rx, ry = px + dx * np.cos(-a) - dy * np.sin(-a), py + dx * np.sin(-a) + dy * np.cos(-a)
-    P[:, 0] = P[:, 0] * (1 - w) + rx * w; P[:, 1] = P[:, 1] * (1 - w) + ry * w
-NP, NI, orig = simplify(P, I, int(TRIS * 1.3))
+# it comes in a T-pose with no skeleton: rig it here (bones placed from its proportions, smooth weights by region) and bake a run
+# cycle: base = standing with the arms down, morph targets = RUN poses round one stride (the game blends two at a time, and scales
+# them down towards the standing base for a jog or a walk)
+lo, hi = P[:, :2].min(0), P[:, :2].max(0)
+foot = P[P[:, 1] < 0.06]; ank = P[(P[:, 1] > 0.12) & (P[:, 1] < 0.2)]
+if foot[:, 2].mean() < ank[:, 2].mean(): P[:, 0] *= -1; P[:, 2] *= -1   # toes point the way it faces: turn it to face +z
+print('player toes ahead of ankles by', round(float(foot[:, 2].mean() - ank[:, 2].mean()), 3))
+def R(axis, deg):
+    t = np.radians(deg); c, s_ = np.cos(t), np.sin(t)
+    return {'x': np.array([[1, 0, 0], [0, c, -s_], [0, s_, c]]), 'y': np.array([[c, 0, s_], [0, 1, 0], [-s_, 0, c]]), 'z': np.array([[c, -s_, 0], [s_, c, 0], [0, 0, 1]])}[axis]
+sm = lambda v, a, b: np.clip((v - a) / (b - a), 0, 1)
+X, Y = P[:, 0], P[:, 1]; ax = np.abs(X); side = np.sign(X)
+HIP, KNEE, SH_Y, SH_X, ELB_X = 0.93, 0.5, 1.4, 0.19, 0.5
+arm = (Y > 1.12) & (ax > 0.15)
+w_ua = np.where(arm, sm(ax, 0.15, 0.25), 0.0); w_fa = np.where(arm, sm(ax, ELB_X - 0.04, ELB_X + 0.04), 0.0)   # upper arm, forearm (of the upper)
+leg = (Y < HIP + 0.08) & ~arm
+w_th = np.where(leg, 1 - sm(Y, HIP - 0.06, HIP + 0.06), 0.0) * np.where(Y > 0.8, sm(ax, 0.0, 0.06), 1.0)   # thigh (blends into the pelvis at the crotch)
+w_sh = np.where(leg, 1 - sm(Y, KNEE - 0.05, KNEE + 0.05), 0.0)
+def pose(phase=None, amp=1.0):
+    out = P.copy()
+    if phase is None: th = {1: 0.0, -1: 0.0}; kn = {1: 3.0, -1: 3.0}; sw = {1: 0.0, -1: 0.0}; el = 12.0; lean = 0.0; bob = 0.0
+    else:
+        th, kn, sw = {}, {}, {}
+        for sd, ph in ((1, phase), (-1, phase + np.pi)):   # x>0 leg leads at phase 0
+            th[sd] = 10 + 30 * np.sin(ph); kn[sd] = 16 + 80 * (0.5 + 0.5 * np.cos(ph - 0.5)) ** 2.2; sw[sd] = -30 * np.sin(ph)
+        el = 85.0; lean = 9.0; bob = 0.045 * np.cos(2 * phase)
+    # legs: thigh about the hip, shin about the knee
+    for sd in (1, -1):
+        m = side == sd; hip = np.array([0.1 * sd, HIP, 0]); Rt = R('x', -th[sd]); knee = hip + Rt @ (np.array([0.1 * sd, KNEE, 0]) - hip); Rs = Rt @ R('x', kn[sd])
+        p0 = P[m]; pt = hip + (p0 - hip) @ Rt.T; ps = knee + (p0 - np.array([0.1 * sd, KNEE, 0])) @ Rs.T
+        wt, ws = w_th[m][:, None], w_sh[m][:, None]; legp = pt * (1 - ws) + ps * ws; out[m] = P[m] * (1 - wt) + legp * wt
+    # arms: down from the T (about z at the shoulder), swing about x, elbow bent forwards
+    for sd in (1, -1):
+        m = (side == sd) & arm; shp = np.array([SH_X * sd, SH_Y, 0]); Ru = R('x', -sw[sd]) @ R('z', -80 * sd); elb0 = np.array([ELB_X * sd, SH_Y, 0]); elb = shp + Ru @ (elb0 - shp)
+        Rf = Ru @ R('y', -el * sd)
+        p0 = P[m]; pu = shp + (p0 - shp) @ Ru.T; pf = elb + (p0 - elb0) @ Rf.T
+        wu, wf = w_ua[m][:, None], w_fa[m][:, None]; ap = pu * (1 - wf) + pf * wf; out[m] = P[m] * (1 - wu) + ap * wu
+    # the trunk leans forward from the hips, the whole body bobs
+    up = Y > HIP; piv = np.array([0, HIP, 0]); Rl = R('x', lean); wl = sm(Y, HIP - 0.05, HIP + 0.15)[:, None]
+    out = out * (1 - wl) + (piv + (out - piv) @ Rl.T) * wl
+    out[:, 1] += bob
+    return out
+RUN = 12
+frames = [pose(2 * np.pi * k / RUN) for k in range(RUN)]; P = pose()   # (pose() reads the T-pose in P: the frames first)
+NP, NI, orig = simplify(P, I, int(TRIS * 1.3)); targets = [f[orig] - NP for f in frames]
 # two kits (invented: the home side in navy, the visitors in white); the source's red kit is recoloured, its lettering left as it is
 im = j['images'][j['textures'][j['materials'][pr['material']]['pbrMetallicRoughness']['baseColorTexture']['index']]['source']]; bv = j['bufferViews'][im['bufferView']]
 src = Image.open(io.BytesIO(B[bv.get('byteOffset', 0):bv.get('byteOffset', 0) + bv['byteLength']])).convert('RGB').resize((512, 512), Image.LANCZOS)
@@ -148,7 +187,7 @@ for name, col in (('player_home', (0.16, 0.24, 0.55)), ('player_away', (0.93, 0.
     O = A.copy(); lum = (r * 0.6 + g * 0.2 + b * 0.2) / 140.0
     for c in range(3): O[..., c] = np.where(red, np.clip(lum * col[c] * 255 * (1.6 if col[0] > 0.5 else 1.0), 0, 255), A[..., c])
     buf = io.BytesIO(); Image.fromarray(O.astype(np.uint8)).save(buf, 'JPEG', quality=85)
-    add_mesh(name, NP, normals(NP, NI), UV[orig], NI, buf.getvalue())
+    add_mesh(name, NP, normals(NP, NI), UV[orig], NI, buf.getvalue(), targets)
 
 while len(out_bin) % 4: out_bin.append(0)
 g = {'asset': {'version': '2.0', 'generator': 'tools/crowd_glb.py'}, 'scene': 0, 'scenes': [{'nodes': list(range(len(gnodes)))}], 'nodes': gnodes, 'meshes': meshes, 'materials': mats,
