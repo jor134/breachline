@@ -73,7 +73,8 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       lines.push(clip('   by ' + c.by + ', ' + c.lic + (c.chg ? ', ' + c.chg : '')));
     }
     lines.push('', 'Full list with links: breachline credits page.');
-    U.prev = S.panel === 'start' || (S.panel === 'credits' && U.prev) ? 'start' : null; if (U.prev) { S.panel = 'credits'; placeBoard(); }
+    U.prev = S.panel === 'start' || ((S.panel === 'credits' || S.panel === 'tpad') && U.prev) ? 'start' : null;
+    if (U.prev) { S.panel = 'credits'; placeBoard(); }   // (the test-mode pad, tpad, opens from these credits and comes back here)
     panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages + (DBG.on ? '   ·   build ' + DBG.build + (social.acct ? '   ·   account ' + social.acct : '') : ''), lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['DEBUG: ' + (DBG.on ? 'ON' : 'OFF'), 'st:debug'], ...(DBG.on ? [['TEST MODE: ' + (!TEST.ok ? 'ENTER CODE' : TEST.off ? 'OFF' : 'ON'), 'st:tester']] : []), U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
   }
 
