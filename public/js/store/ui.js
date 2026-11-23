@@ -25,7 +25,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   saveCall();
   const humans = () => [...S.officers.entries()].filter(([id, o]) => !o.bot && id !== S.me.id);
 
-  U.menuButtons = () => [...(S.net === 'online' ? [['PLAYERS', 'st:players']] : []), ['CREDITS', 'st:credits:0']];
+  U.menuButtons = () => [...(S.net === 'online' ? [['PLAYERS', 'st:players']] : [])];   // credits live on the main menu
 
   const nameOf = id => (S.officers.get(id) || {}).name || 'PLAYER';
   const isStranger = id => (U.mmIds.includes(id) || U.mmIds.includes(S.me.id)) && U.rel[id] !== 'friend';
@@ -85,10 +85,11 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     S.panel = 'start'; placeBoard(); panel.mesh.visible = true;
     panel.draw("YOU CAN'T HIDE", 'Callsign ' + call + '   ·   ' + U.edition(), [
       'Clear buildings, save hostages, disarm bombs.',
-      'SOLO: lead three AI officers.   ONLINE: up to four players.',
+      'START MISSION: play solo with three AI officers, online',
+      '   with up to four players, or a friend\'s map.',
       'Voice chat with your squad: ' + (voice.on ? 'ON' : 'OFF') + (voice.on && voice.err ? '  (' + voice.err.split(':')[0] + ')' : ''),
       'Point at a button and pull the trigger.',
-    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['TUTORIAL', 'st:tut'], ['PLAY ONLINE' + (social.requests.length ? '  (' + social.requests.length + ' FRIEND REQUEST' + (social.requests.length > 1 ? 'S' : '') + ')' : ''), 'st:online'], ['CREDITS', 'st:credits:0'], ['MUSIC: ' + (S.music === false ? 'OFF' : 'ON'), 'st:music'], ['PLAY SOLO', 'st:solo']]);
+    ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['MUSIC: ' + (S.music === false ? 'OFF' : 'ON'), 'st:music'], ...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['TUTORIAL', 'st:tut'], ['CREDITS', 'st:credits:0'], ['START MISSION' + (social.requests.length ? '  (' + social.requests.length + ' FRIEND REQUEST' + (social.requests.length > 1 ? 'S' : '') + ')' : ''), 'st:mode']]);
   };
   // ---- the full game: what the demo leaves out, and Meta's purchase dialog ----
   function showBuy(why, from) {
@@ -105,8 +106,8 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   U.gate = what => { if (what === 'editor' ? unlock.full() : unlock.mapOk(what)) return false; showBuy(what === 'editor' ? 'editor' : 'map', 'board'); return true; };
   U.lockTag = id => unlock.mapOk(id) ? '' : '   [FULL GAME]';
   // the game redraws its own panels twice a second; while the start menu is up it redraws this instead
-  U.redraw = () => { if (S.panel === 'tpad') showTestPad(); else if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); else if (S.panel === 'online') showOnline(); else if (S.panel === 'friends') showFriends(); else if (S.panel === 'friend1') showFriend1(); else if (S.panel === 'mm') showMatch(); };
-  U.holdsPanel = () => ['start', 'keypad', 'friend', 'buy', 'online', 'friends', 'friend1', 'mm', 'tpad'].includes(S.panel) || (S.panel === 'credits' && U.prev);
+  U.redraw = () => { if (S.panel === 'mode') showMode(); else if (S.panel === 'tpad') showTestPad(); else if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); else if (S.panel === 'online') showOnline(); else if (S.panel === 'friends') showFriends(); else if (S.panel === 'friend1') showFriend1(); else if (S.panel === 'mm') showMatch(); };
+  U.holdsPanel = () => ['start', 'mode', 'keypad', 'friend', 'buy', 'online', 'friends', 'friend1', 'mm', 'tpad'].includes(S.panel) || (S.panel === 'credits' && U.prev);
 
   // a 6-character room code typed on an on-panel keyboard (no system keyboard inside VR)
   function showKeypad(msg) {
@@ -124,6 +125,12 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold ' + (b.text.length > 8 ? 30 : 38) + 'px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     panel.btns = B; panel.key = 'keypad' + U.code + (msg || ''); panel.tex.needsUpdate = true;
   }
+  // ---- START MISSION: solo, online or a friend's map ----
+  function showMode() {
+    S.panel = 'mode'; placeBoard(); panel.mesh.visible = true;
+    panel.draw('START MISSION', 'Callsign ' + call + '   ·   ' + U.edition(), ['PLAY SOLO: you lead three AI officers.', 'PLAY ONLINE: quick match, friends or a room code.', 'FRIEND\'S MAP: a map a friend shared from the map editor.', '', 'Then pick the mission, weather and time on the board.'],
+      [['PLAY ONLINE' + (social.requests.length ? '  (' + social.requests.length + ' NEW)' : ''), 'st:online'], ["FRIEND'S MAP", 'st:fmain'], ['BACK', 'st:back'], ['PLAY SOLO', 'st:solo']]);
+  }
   // ---- PLAY ONLINE: quick match, friends, room code ----
   const reqN = () => social.requests.length;
   function showOnline(msg) {
@@ -136,7 +143,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       'Rooms you make: ' + (U.hostOpen ? 'OPEN to terrorist players from QUICK MATCH.' : 'friends and room code only.'),
       'Strangers start muted. MENU > PLAYERS: mute, block, add friend.',
       ...(U.omsg ? ['', U.omsg] : []),
-    ], [['QUICK MATCH: TERRORIST', 'st:qm'], ['FRIENDS' + (reqN() ? '  (' + reqN() + ' NEW)' : n ? '  (' + n + ' ONLINE)' : ''), 'st:fl:0'], ['ROOM CODE', 'st:code'], ['MY ROOMS: ' + (U.hostOpen ? 'OPEN' : 'FRIENDS ONLY'), 'st:hostopen'], ['BACK', 'st:back']]);
+    ], [['QUICK MATCH: TERRORIST', 'st:qm'], ['FRIENDS' + (reqN() ? '  (' + reqN() + ' NEW)' : n ? '  (' + n + ' ONLINE)' : ''), 'st:fl:0'], ['ROOM CODE', 'st:code'], ['MY ROOMS: ' + (U.hostOpen ? 'OPEN' : 'FRIENDS ONLY'), 'st:hostopen'], ['BACK', 'st:mode']]);
   }
   const PERF = 4;   // friends per page
   const entries = () => [...social.requests.map(r => ({ ...r, kind: 'req' })), ...social.friends.map(f => ({ ...f, kind: 'friend' }))];
@@ -246,6 +253,8 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'solo') go(true, false);
     else if (what === 'tut') go(true, true);
     else if (what === 'online' && !unlock.full()) showBuy('online', 'start');
+    else if (what === 'mode') showMode();
+    else if (what === 'fmain') { if (!unlock.full()) return showBuy('editor', 'start'), true; U.fromMain = true; U.fcode = ''; showFriendPad(''); }
     else if (what === 'online') { U.omsg = ''; showOnline(); hello(); }
     else if (what === 'ohome') { clearTimeout(U.mmTimer); U.fmsg = ''; showOnline(''); }
     else if (what === 'code') { U.msg = ''; try { const c = localStorage.getItem('bl_room') || ''; U.code = isRoomCode(c) ? c : ''; } catch (e) { U.code = ''; } showKeypad(); }
@@ -279,9 +288,11 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'fkey') { if (U.fcode.length < 8) U.fcode += arg; showFriendPad(''); }
     else if (what === 'fdel') { U.fcode = U.fcode.slice(0, -1); showFriendPad(''); }
     else if (what === 'fclr') { U.fcode = ''; showFriendPad(''); }
-    else if (what === 'fback') { S.panel = null; back2(); }
+    else if (what === 'fback') { if (U.fromMain) { U.fromMain = false; return showMode(), true; } S.panel = null; back2(); }
     else if (what === 'fgo') { if (U.fcode.length !== 8) return showFriendPad('The code has eight digits.'), true; const c = U.fcode; showFriendPad('Loading...');
-      (U.friendMap ? U.friendMap(c) : Promise.resolve(false)).then(ok => { if (ok) { S.panel = null; back2(); } else showFriendPad('No map has that code (or it was reported).'); }); }
+      (U.friendMap ? U.friendMap(c) : Promise.resolve(false)).then(ok => { if (!ok) return showFriendPad('No map has that code (or it was reported).');
+        if (U.fromMain) { U.fromMain = false; go(true, false); let n = 0; const t = setInterval(() => { if (U.started() || ++n > 40) { clearInterval(t); if (U.started()) U.friendMap(c); } }, 300); return; }   // from START MISSION: solo, with that map picked
+        S.panel = null; back2(); }); }
     else if (what === 'freport') { U.reportMap && U.reportMap(); }
     else if (what === 'players') showPlayers();
     else if (what === 'pl') showPlayer(+arg);
@@ -312,6 +323,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   // extra WebSocket query for a room: my ticket (account), a QUICK MATCH join (1; 2 when rejoining after a drop), and whether a
   // room I made is open to strangers
   U.specIds = () => U.specs;
+  U.isOwner = () => !U.owner || U.owner === S.me.id || S.net !== 'online';   // online, the room owner picks the mission
   U.wsExtra = (room, rejoin) => social.wsParam() + TEST.wsParam() + (U.watchCode === room ? '&spec=1' : '') + (U.mmJoin && U.mmCode === room ? '&mm=' + (rejoin ? 2 : 1) : '') + (U.created === room && U.hostOpen ? '&open=1' : '');
   U.store = store;
   U.back = back;

@@ -445,7 +445,7 @@ class Panel {
     // up to three buttons stack full width; more than that, the settings go two to a row and the last (START) runs full width
     if (btns.length <= 3) this.btns = btns.map(([text, act], i) => ({ x: 232, y: 676 - (btns.length - 1 - i) * 86, w: 560, h: 74, text, act }));
     else { const n = btns.length - 1, cols = n > 8 ? 3 : 2, rows = Math.ceil(n / cols), bw = cols === 3 ? 292 : 447; this.btns = btns.slice(0, n).map(([text, act], i) => ({ x: 60 + (i % cols) * (bw + (cols === 3 ? 14 : 10)), y: 676 - 86 * (rows - Math.floor(i / cols)), w: bw, h: 74, text, act })); const [t, a] = btns[n]; this.btns.push({ x: 60, y: 676, w: 904, h: 74, text: t, act: a }); }   // more than 8 settings: three to a row
-    for (const b of this.btns) { g.fillStyle = b.act === 'close' || b.act === 'wx' || b.act === 'gfx' || b.act === 'tod' || b.act === 'home' ? '#39424e' : b.act === 'team' ? (S.me.team === 'tango' ? '#8a2a1f' : '#1f4a8a') : '#1f7a3d'; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; let f = 38; g.font = 'bold ' + f + 'px sans-serif'; while (f > 18 && g.measureText(b.text).width > b.w - 24) { f -= 2; g.font = 'bold ' + f + 'px sans-serif'; } g.textAlign = 'center'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
+    for (const b of this.btns) { g.fillStyle = b.act === 'close' || b.act === 'wx' || b.act === 'gfx' || b.act === 'tod' || b.act === 'home' || /back$/.test(b.act) ? '#39424e' : b.act === 'team' ? (S.me.team === 'tango' ? '#8a2a1f' : '#1f4a8a') : '#1f7a3d'; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; let f = 38; g.font = 'bold ' + f + 'px sans-serif'; while (f > 18 && g.measureText(b.text).width > b.w - 24) { f -= 2; g.font = 'bold ' + f + 'px sans-serif'; } g.textAlign = 'center'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     this.tex.needsUpdate = true;
   }
   place(x, y, z, tx, tz, k) { if (k) this.mesh.scale.setScalar(k); this.mesh.position.set(x, y, z); this.mesh.lookAt(tx, y, tz); this.mesh.updateMatrixWorld(true); }
@@ -480,13 +480,27 @@ function showLobbyPanel() {
     [squadLine(), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, tap B/Y = SHOUT, hold = SQUAD. Helmet = NVG.',
       'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.hint ? M.hint : M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name + (M.test ? ' (TEST)' : ''), 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ...(storeUI.store ? [['MAIN MENU', 'home']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
-function showBoard() {   // the mission board in the training lobby: pick where the squad goes next, see how the range went
+// the mission board in the training room, in two steps (quest-store, 22 Nov): 1. pick the mission (built-in, published, a friend's
+// map, or the map editor); 2. its options (weather, time where the map has it, team) and START MISSION. Online, the room owner picks;
+// everyone else sees the choice. BODY FIT and TUTORIAL are on the main menu.
+const BOARD_PAGE = 6;
+function showBoard() {
   S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz, BOARD_K); const T = trainLine(), cu = S.customList.find(c => c.id === S.nextMap), nx = MAPS[S.nextMap] || (cu ? { name: cu.name + ' (LOADING)', op: cu.name + '  (by ' + cu.creator + ')' } : MAPS[MISSION_IDS[0]]);
-  panel.draw('MISSION BOARD', 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo (not connected)' : 'connecting'),
-    [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')' + storeUI.lockTag(S.nextMap), 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)  no-shoot hits ' + T.ns,
-      'Kill house (east): ' + T.run + '   best ' + T.best + '   +5s per no-shoot hit', ...(S.mode === 'vr' ? [] : ['Skill bay: pick, kick and a rigged door; dummy bomb on the bench.',
-      'Red = armed, shoot.  Blue = no-shoot.', 'Free hand: grip/trigger = doors, stick click = KICK, HOLD A/X = TOOLS.'])],
-    [...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['MISSION: ' + nx.name + (nx.test ? ' (TEST)' : ''), 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['TUTORIAL', 'tut'], ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : []), S.nextMap.startsWith('s_') ? ['REPORT THIS MAP', 'st:freport'] : ["FRIEND'S MAP", 'st:friend'], ...(storeUI.store ? [['MAIN MENU', 'home']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+  const sub = 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo' : 'connecting'), range = 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)   kill house ' + T.run + ' (best ' + T.best + ')';
+  const label = (id, m) => (m ? m.name + (m.test ? ' (TEST)' : '') : id) + storeUI.lockTag(id).replace('   [FULL GAME]', ' [FULL]');
+  if (!storeUI.isOwner()) return panel.draw('MISSION BOARD', sub, [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Weather ' + S.wxPick.toUpperCase() + (nx.tods ? ', time ' + S.todPick.toUpperCase() : ''), '', 'The room owner picks the mission and starts it.', range], [teamBtn(), ['MAP EDITOR', 'edit']]);
+  if (S.bstep !== 'opts') {   // step 1: which mission
+    const ids = [...missions(), ...S.customList.map(c => c.id).filter(id => !MISSION_IDS.includes(id))], pages = Math.max(1, Math.ceil(ids.length / BOARD_PAGE)); S.bpage = ((S.bpage | 0) % pages + pages) % pages;
+    const page = ids.slice(S.bpage * BOARD_PAGE, S.bpage * BOARD_PAGE + BOARD_PAGE).map(id => [label(id, MAPS[id] || (S.customList.find(c => c.id === id) || {})), 'pick:' + id]);
+    return panel.draw('PICK A MISSION', sub + (pages > 1 ? '   ·   page ' + (S.bpage + 1) + ' of ' + pages : ''), [squadLine(), range], [...page, ["FRIEND'S MAP", 'st:friend'], ...(pages > 1 ? [['MORE MISSIONS', 'bpage']] : []), ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : [])]);
+  }
+  // step 2: its options, then go
+  panel.draw('MISSION OPTIONS', sub, [squadLine(), 'Mission: ' + nx.op + '  (' + nx.name + ')' + storeUI.lockTag(S.nextMap), range],
+    [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['CHANGE MISSION', 'bmaps'], ...(S.nextMap.startsWith('s_') ? [['REPORT THIS MAP', 'st:freport']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
+}
+function pickMission(id) {
+  sfx.click(); S.nextMap = id; S.bstep = 'opts'; showLobbyPanel();
+  ensureCustom(id).then(ok => { if (ok && S.nextMap === id) { net.send({ t: 'choose', m: id }); showLobbyPanel(); } });
 }
 // BODY FIT (training board, VR): slide your own body forward/back and up/down under the headset; kept on this device
 const FIT0 = { d: SELF_BACK.d, up: 0, gear: 0, gup: 0 };
@@ -514,7 +528,7 @@ function frontOfHead(d) { const f = v1.copy(head.fwd).setY(0).normalize(); panel
 // training facility, the microphone is kept (asking for it again would take the headset out of VR).
 function backToStart() {
   sfx.click(); try { voice.stop(true); } catch (e) { } try { tut.stop(); } catch (e) { } TUT = false;
-  net.leave(); connecting = null; S.net = 'offline'; S.watch = false; voice.listenOnly = false; S.phase = 'lobby'; S.rope = null; S.fly = null; S.tmenu = false; S.me.down = false; S.me.hp = 100;
+  net.leave(); connecting = null; S.net = 'offline'; S.watch = false; S.bstep = 'maps'; S.bpage = 0; voice.listenOnly = false; S.phase = 'lobby'; S.rope = null; S.fly = null; S.tmenu = false; S.me.down = false; S.me.hp = 100;
   for (const o of S.officers.values()) scene.remove(o.g); S.officers.clear();
   applyInit({ map: 'training', npcs: [], bombs: [], ph: 'lobby' });
   begin('vr'); storeUI.showStart(); status('Back at the start menu.');
@@ -523,8 +537,8 @@ function goHome() { if (renderer.xr.isPresenting && !DRAFT) return backToStart()
 function toggleMenu(open = !S.menu) {
   S.menu = open; sfx.beep(null, open ? 900 : 600);
   if (open && S.watch) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('SPECTATING', 'Room ' + S.room, ['You are watching: nobody sees or hears you.', 'Left stick: fly where you look (push all the way: faster).', 'Right stick: up / down, and turn.', 'Point at a button and pull the trigger.'], [[gfxLabel(), 'gfx'], ['MAIN MENU', 'home'], ['CLOSE', 'close']]); return; }
-  if (open) { panel.mesh.visible = true; frontOfHead(1.3); const mb = [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ['SUPPRESSOR: ' + (SUPP.on ? 'ON' : 'OFF'), 'supp'], ...(S.net === 'online' && voice.on && DBG.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], [gfxLabel(), 'gfx'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']];
-    const ml = ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'Now: power ' + (S.night ? 'OFF' : 'ON') + ', weather ' + S.wx.toUpperCase(), 'End Mission scores what is done now. Or walk out the gate.'];
+  if (open) { panel.mesh.visible = true; frontOfHead(1.3); const mb = [['SUPPRESSOR: ' + (SUPP.on ? 'ON' : 'OFF'), 'supp'], ...(S.net === 'online' && voice.on && DBG.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], [gfxLabel(), 'gfx'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']];
+    const ml = ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'End Mission scores what is done now. Or walk out the gate.'];
     panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + (DBG.on ? '   ·   ' + perf.report() : ''), ml, mb); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
@@ -540,10 +554,13 @@ function tryPanel(o, d) {
   if (act === 'gfx') { toggleGfx(); perf.fov = gfxMode() === 'quality' ? 0.35 : 1; applyGfx(world, renderer); toggleMenu(true); return true; }
   if (act === 'wx') { cycleWx(); if (S.menu) toggleMenu(true); else showLobbyPanel(); return true; }
   if (act === 'tod') { cycleTod(); showLobbyPanel(); return true; }
-  if (act.startsWith('fit:')) { const k = act.slice(4); if (k === 'done') { sfx.click(); S.panel = 'lobby'; showLobbyPanel(); } else { if (k !== 'open') fitStep(k); showFit(k === 'open'); } return true; }
+  if (act.startsWith('fit:')) { const k = act.slice(4); if (k === 'done') { sfx.click(); if (storeUI.store && !storeUI.started()) storeUI.showStart(); else { S.panel = 'lobby'; showLobbyPanel(); } } else { if (k !== 'open') fitStep(k); showFit(k === 'open'); } return true; }
   if (act === 'team') { pickTeam(); return true; }
   if (act === 'supp') { setSuppressor(!SUPP.on); sfx.click(); toggleMenu(true); return true; }   // quest-store: the pistol's suppressor
   if (act === 'map') { cycleMap(); return true; }
+  if (act.startsWith('pick:')) { pickMission(act.slice(5)); return true; }
+  if (act === 'bmaps') { sfx.click(); S.bstep = 'maps'; showLobbyPanel(); return true; }
+  if (act === 'bpage') { sfx.click(); S.bpage = (S.bpage | 0) + 1; showLobbyPanel(); return true; }
   if (act === 'end') { net.send({ t: 'end' }); toggleMenu(false); return true; }
   if (act === 'train') { net.send({ t: 'restart', wx: S.wxPick, map: 'training' }); sfx.beep(null, 900); return true; }
   if (act === 'close') toggleMenu(false); else { net.send({ t: 'restart', wx: S.wxPick, tod: S.todPick, map: nextMission() }); if (S.menu) toggleMenu(false); else sfx.beep(null, 900); }
@@ -607,7 +624,7 @@ S.customList = [];
 function loadCustomList() { return fetch('api/maps', { cache: 'no-store' }).then(r => r.ok ? r.json() : { maps: [] }).then(j => { S.customList = (j.maps || []).map(m => ({ id: 'u_' + m.id, name: String(m.name || '').toUpperCase(), creator: m.creator })); }).catch(() => { }); }
 loadCustomList();
 // quest-store: maps players share with friends (8-digit codes; js/store/ui.js has the keypad, src/worker.js the library)
-storeUI.friendMap = code => ensureCustom('s_' + code).then(ok => { if (!ok) return false; S.nextMap = 's_' + code; net.send({ t: 'choose', m: S.nextMap }); showLobbyPanel(); return true; });
+storeUI.friendMap = code => ensureCustom('s_' + code).then(ok => { if (!ok) return false; S.nextMap = 's_' + code; S.bstep = 'opts'; net.send({ t: 'choose', m: S.nextMap }); showLobbyPanel(); return true; });
 storeUI.reportMap = () => { const id = S.nextMap; if (!id.startsWith('s_')) return; fetch('api/share/' + id.slice(2) + '/report', { method: 'POST' }).catch(() => { });
   S.nextMap = MISSION_IDS[0]; net.send({ t: 'choose', m: S.nextMap }); status('Map reported. It is hidden from everyone until it has been looked at.'); showLobbyPanel(); };
 // a message about a map we have not got yet waits (with everything after it) until the map has arrived
@@ -622,7 +639,7 @@ function onMsg2(m) {
   if (m.t === 'sig') { voice.signal(m.from, m.data); return; }
   if (storeUI.onMsg(m)) return;
   if (m.t === 'welcome' && m.spec) { S.watch = true; S.me.id = m.id; applyInit(m.init); placeWatch(); showLobbyPanel(); status('Spectating room ' + S.room + '. Left stick flies, right stick up and down; B or Y: menu.'); return; }   // quest-store: spectate
-  if (m.t === 'welcome') { S.watch = false; const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && (m.ph !== 'active' || m.init.map === 'training') && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
+  if (m.t === 'welcome') { S.watch = false; S.bstep = 'maps'; S.bpage = 0; const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && (m.ph !== 'active' || m.init.map === 'training') && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
   else if (m.t === 'init') { applyInit(m.init); if (S.phase !== 'active' || M.training) showLobbyPanel(); }
   else if (m.t === 'full') status('That room is full (4 officers). Try another code.');
   else if (m.t === 's') applySnap(m);
@@ -1270,10 +1287,10 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q48';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q49';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
 setTimeout(checkBuild, 3000);
-window.__bl = { perf, storeUI, voice, drawBody, onMsg: m => onMsg(m), cycleMap: () => cycleMap(), showLobbyPanel: () => showLobbyPanel(), toggleMenu, goHome, ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
+window.__bl = { perf, storeUI, voice, drawBody, panelAct: a => { const pr = panel.probe; panel.probe = () => a; try { return tryPanel(v1.set(0, 0, 0), v2.set(0, 0, -1)); } finally { panel.probe = pr; } }, onMsg: m => onMsg(m), cycleMap: () => cycleMap(), showLobbyPanel: () => showLobbyPanel(), toggleMenu, goHome, ropes, ED, openEditor, get wheel() { return wheel; }, rifleMesh: guns.rifle.mesh, coach, tut, OW, orderTag, orderMark, showFit, fitStep, tryPanel, HOLSTER_ROT, camera, myBody, loadMap, get level() { return level; }, get M() { return M; }, get world() { return world; }, dcam, zoneFor, breaker, weather, initTouch, useMed, S, hands, guns, net, rig, camera, head, panel, renderer, begin, connect, keys, deskKey, bodyPt, HOLSTER, myBody, toggleMenu, toggleNVG, wheel, THREE, setMouse: v => { mouseL = v; } };
 if (Q.get('auto')) { connect(true); begin(Q.get('auto') === 'touch' ? 'desktop' : Q.get('auto')); if (Q.get('auto') === 'touch') initTouch(); }
