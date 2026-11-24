@@ -12,6 +12,7 @@ import { setVenueMusic, setVenueMix, venueLevel } from '../audio.js';
 import { H, FOOT, HALL, BALC, STAGE, FLOOR, DJ, ROOMS, FURNITURE, VAN, inHall, inFoot } from '../core/maps/club.js';
 import { makeDancers } from './club-crowd.js';
 
+const VAN_TURN = Math.PI;   // the model's nose is at its -z end: turned to face the club
 let glows = [], matGlows = [], dancers = null, beams = [], hallLamps = null, ledMats = [], root0 = null, kitReady = false;
 const LAMPS = [
   // the hall (coloured by tick): over the floor, the stage, the bar, the booths, the balcony
@@ -24,7 +25,7 @@ const LAMPS = [
   // upstairs
   [5, 6.8, 4, 6, 9], [18, 6.8, 4, 6, 10], [32, 6.8, 4, 6, 10], [42.5, 6.8, 6, 5, 8], [42.5, 6.8, 16, 5, 8], [51, 6.8, 5, 7, 10], [51, 6.8, 15, 7, 10],
   // the lot and the alleys: street lights
-  [10, 6, -12, 14, 18], [29, 6, -26, 14, 18], [48, 6, -12, 14, 18], [61, 5, 10, 9, 14], [61, 5, 30, 9, 14], [50, 5, 45, 9, 14], [20, 5, 45, 9, 14],
+  [10, 6, -12, 14, 18], [29, 6, -26, 14, 18], [33, 5.5, -14, 10, 14], [48, 6, -12, 14, 18], [61, 5, 10, 9, 14], [61, 5, 30, 9, 14], [50, 5, 45, 9, 14], [20, 5, 45, 9, 14],
 ];
 const NIGHT = {
   sky: [[0, '#04050c'], [0.3, '#0a0d1c'], [0.45, '#161a30'], [0.5, '#2b2740'], [0.53, '#111018'], [1, '#0c0c12']], skyR: 400, moon: [-120, 130, -150],
@@ -100,7 +101,16 @@ export default {
   load() {
     setVenueMusic('sfx/club_music.blx', true);
     const kit = new Promise(res => new ObfLoader().load('models/club/kit.glb', gl => res(placeKits(gl.scene, root0)), undefined, () => res(null)));
-    return Promise.all([kit, dancers ? dancers.load() : null]).then(() => new THREE.Group());
+    // "Swat Van" by maregajavier (CC BY 4.0): long axis along z, nose to the club, 5.8 m long, on the ground at the map's van
+    const van = new Promise(res => new ObfLoader().load('models/club/van.glb', gl => {
+      const m = gl.scene; m.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(m), sz = bb.getSize(new THREE.Vector3()), long = sz.x > sz.z ? 'x' : 'z';
+      const g = new THREE.Group(), k = 5.8 / Math.max(sz.x, sz.z); m.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2); g.add(m);
+      const o = new THREE.Group(); o.add(g); g.scale.setScalar(k); g.rotation.y = (long === 'x' ? Math.PI / 2 : 0) + VAN_TURN; o.position.set(VAN.x, 0, VAN.z);
+      m.traverse(q => { if (q.isMesh) { q.castShadow = q.receiveShadow = true; const mt = q.material; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.8; if (!pbrMats.includes(mt)) pbrMats.push(mt); } });
+      root0.add(o); o.updateMatrixWorld(true); const top = new THREE.Box3().setFromObject(o).max.y; for (const b of beams) if (b.siren) { b.siren.position.y = top + 0.05; b.siren.visible = true; }
+      res(null);
+    }, undefined, () => res(null)));
+    return Promise.all([kit, van, dancers ? dancers.load() : null]).then(() => new THREE.Group());
   },
   dispose() { setVenueMusic(null, false); dancers = null; hallLamps = null; },
   noshade: { glowW: 1, glowB: 1, led: 1, neon: 1, beam: 1, cctvS: 1 },
@@ -159,11 +169,8 @@ export default {
       if (w.kind === 'fence' && w.sub === 'wall') B('fenceW', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXYzZ', 0.5);
       else if (w.kind === 'fence' && w.sub === 'glassrail') { B('glassrail', w.x0, w.x1, w.y0 + 0.05, w.y1 - 0.06, w.z0, w.z1, 'xXzZ', 1); B('chrome', w.x0 - 0.01, w.x1 + 0.01, w.y1 - 0.06, w.y1, w.z0 - 0.02, w.z1 + 0.02, 'xXYzZ', 1); }
       else if (w.kind === 'dumpster') { B('dumpster', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXYzZ', 1); B('steelD', w.x0 - 0.03, w.x1 + 0.03, w.y1, w.y1 + 0.06, w.z0 - 0.03, w.z1 + 0.03, 'xXYzZ', 1); }
-      else if (w.kind === 'van') {   // the squad's van: a tall navy box, black glass round the cab, POLICE down each side
-        B('vanB', w.x0, w.x1, 0.35, w.y1, w.z0, w.z1, 'xXYzZ', 0.5); B('vanW', w.x0 - 0.01, w.x1 + 0.01, 1.4, 2.1, w.z1 - 1.4, w.z1 - 0.3, 'xXZ', 1);
-        for (const [x, z] of [[w.x0 + 0.3, w.z0 + 0.8], [w.x1 - 0.3, w.z0 + 0.8], [w.x0 + 0.3, w.z1 - 0.9], [w.x1 - 0.3, w.z1 - 0.9]]) { const t = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.28, 14), MATS.steelD); t.rotation.z = Math.PI / 2; t.position.set(x, 0.36, z); root.add(t); }
-        for (const [x, ry] of [[w.x0 - 0.02, -Math.PI / 2], [w.x1 + 0.02, Math.PI / 2]]) plane(root, 'POLICE', 3.2, 0.55, x, 1.5, (w.z0 + w.z1) / 2 - 0.4, ry, { bg: null, fg: '#e8eef8', own: true });
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.12, 0.25), new THREE.MeshBasicMaterial({ color: 0x3060ff })); bar.position.set((w.x0 + w.x1) / 2, w.y1 + 0.06, w.z1 - 0.8); root.add(bar); beams.push({ siren: bar });
+      else if (w.kind === 'van') {   // the squad's van is the model (load); a light bar on its roof flashes red and blue
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.22), new THREE.MeshBasicMaterial({ color: 0x3060ff })); bar.position.set((w.x0 + w.x1) / 2, w.y1 + 0.05, w.z1 - 1.2); bar.visible = false; root.add(bar); beams.push({ siren: bar });
       }
     }
     // ---- the front: a canopy over the doors, the club's name in neon, posters; the box office's window ----

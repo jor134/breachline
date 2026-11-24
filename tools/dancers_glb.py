@@ -8,12 +8,16 @@
 #   - "Belly Dance" (zhuoyi0904, CC BY 4.0, a Mixamo dance): the dancer herself, in her own dance
 #   - "Dancing girl" (wk1978, CC BY 4.0, Mixamo): the DJ, in her own dance; also the second dance for the crowd
 # Output frame: metres, y up, feet on y = 0, facing +z.
-#   python3 tools/dancers_glb.py people.glb belly_dance.glb dancing_girl.glb out.glb
+#   - "Samba Dancing" (reizibarrientos, CC BY 4.0): a dancer in her own samba; the samba also for the crowd
+#   - "Gina Dancing" (Drachengeifer, CC BY 4.0, Mixamo): a dancer in her own dance; the dance also for the crowd
+#   - "Tifa dancing" (PainMcpainful, CC BY 4.0, Mixamo): ONLY its dance, for the crowd. The model is a well-known video-game
+#     character (someone else's intellectual property, whatever the uploader's licence says), so she never appears in the game
+#   python3 tools/dancers_glb.py people.glb belly_dance.glb dancing_girl.glb samba.glb tifa.glb gina.glb out.glb
 import sys, io, json, struct, subprocess, os, re, tempfile
 import numpy as np
 from PIL import Image
 
-PEOPLE, BELLY, GIRL, DST = sys.argv[1:5]
+PEOPLE, BELLY, GIRL, SAMBA, TIFA, GINA, DST = sys.argv[1:8]
 K = int(os.environ.get('K', '32')); STEP = float(os.environ.get('STEP', '0.2')); TRIS = int(os.environ.get('TRIS', '2400')); DJ_TRIS = int(os.environ.get('DJ_TRIS', '9000')); TEX = 512
 QEM = os.environ.get('QEM', '/tmp/qem')
 CT = {5126: np.float32, 5125: np.uint32, 5123: np.uint16, 5121: np.uint8}; NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}
@@ -134,8 +138,8 @@ def bake(g, ni, frames, target, height, keep=lambda name: True, name='?'):
     return P, NI, UV[orig], buf.getvalue()
 
 # ---- the source dances (Mixamo) ----
-def key(name): return re.sub(r'_\d+$', '', name.split(':')[-1])
-belly, girl, people = GLB(BELLY), GLB(GIRL), GLB(PEOPLE)
+def key(name): return re.sub(r'_Reference$', '', re.sub(r'_\d+$', '', name.split(':')[-1]))   # Mixamo 'mixamorig:LeftArm_09', mocap 'LeftArm_Reference'
+belly, girl, people, samba, tifa, gina = GLB(BELLY), GLB(GIRL), GLB(PEOPLE), GLB(SAMBA), GLB(TIFA), GLB(GINA)
 def own_frames(g, t0=0.0):
     return [g.worlds(t0 + k * STEP) for k in range(K)]
 MAP = {'Hips': 'Hip', 'Spine': 'Waist', 'Spine1': 'Spine01', 'Spine2': 'Spine02', 'Neck': 'NeckTwist01', 'Head': 'Head'}
@@ -146,7 +150,10 @@ CHILD = {'Hips': 'Spine', 'Spine': 'Spine1', 'Spine1': 'Spine2', 'Spine2': 'Neck
 for sd in ('Left', 'Right'): CHILD.update({sd + 'Shoulder': sd + 'Arm', sd + 'Arm': sd + 'ForeArm', sd + 'ForeArm': sd + 'Hand', sd + 'UpLeg': sd + 'Leg', sd + 'Leg': sd + 'Foot', sd + 'Foot': sd + 'ToeBase'})
 def retarget_frames(src, tgt, joints, t0=0.0):
     """joint-world matrices for target skeleton `joints` (node indices) following src's animation"""
-    sidx = {key(n.get('name', '')): i for i, n in enumerate(src.nodes) if 'mixamorig' in n.get('name', '')}
+    sidx = {}
+    for i, n in enumerate(src.nodes):
+        k = key(n.get('name', ''))
+        if k in MAP and k not in sidx and ('mixamorig' in n.get('name', '') or n.get('name', '').endswith('_Reference')): sidx[k] = i
     tidx = {key(tgt.nodes[i].get('name', '')).replace('CC_Base_', ''): i for i in joints}
     pairs = {m: (sidx[m], tidx[c]) for m, c in MAP.items() if m in sidx and c in tidx}
     S0, T0 = src.worlds(), tgt.worlds()
@@ -180,11 +187,12 @@ def depth(g, i):
 out = []   # (name, P, NI, UV, jpeg)
 # the four people, two dances between them
 pn = [i for i, n in enumerate(people.nodes) if 'skin' in n]
-NAMES = ['man1', 'man2', 'woman1', 'woman2']
-for k, ni in enumerate(pn[:4]):
-    src = belly if k % 2 == 0 else girl
-    frames = retarget_frames(src, people, people.j['skins'][people.nodes[ni]['skin']]['joints'], t0=2.0 + k * 1.3)
-    out.append((NAMES[k] + ('_belly' if src is belly else '_girl'),) + bake(people, ni, frames, TRIS, 1.78 if k < 2 else 1.66, name=NAMES[k]))
+NAMES = ['man1', 'man2', 'woman1', 'woman2']; DANCES = {'belly': (belly, 2.0), 'girl': (girl, 3.0), 'samba': (samba, 3.0), 'tifa': (tifa, 4.0), 'gina': (gina, 2.5)}
+PLAN = [(0, 'belly'), (0, 'samba'), (1, 'girl'), (1, 'tifa'), (2, 'gina'), (2, 'samba'), (3, 'tifa')]   # person, dance
+for k, dn in PLAN:
+    ni = pn[k]; src, t0 = DANCES[dn]
+    frames = retarget_frames(src, people, people.j['skins'][people.nodes[ni]['skin']]['joints'], t0=t0 + k * 0.7)
+    out.append((NAMES[k] + '_' + dn,) + bake(people, ni, frames, TRIS, 1.78 if k < 2 else 1.66, name=NAMES[k] + '_' + dn))
 # the belly dancer
 bn = [i for i, n in enumerate(belly.nodes) if 'skin' in n][0]
 skip = lambda m: not re.search(r'Eyebrow|Eyelash|Teeth', m)
@@ -213,6 +221,8 @@ def bake_many(g, nis, frames, target, height, keep, name):
     print(f'{name:12s} {len(NI):6d} tris {len(orig):6d} verts {len(frames)} poses  texture {img.size}')
     return Ps[:, orig], NI, UV[orig], buf.getvalue()
 out.append(('belly',) + bake_many(belly, bnodes, own_frames(belly, 1.0), TRIS, 1.68, skip, 'belly'))
+for g2, nm, sk in ((samba, 'samba', lambda m: not re.search(r'Eye_trans', m)), (gina, 'gina', lambda m: True)):
+    out.append((nm,) + bake_many(g2, [i for i, n in enumerate(g2.nodes) if 'skin' in n], own_frames(g2, 2.0), TRIS, 1.68, sk, nm))
 gnodes = [i for i, n in enumerate(girl.nodes) if 'skin' in n]
 gskip = lambda m: not re.search(r'Eyelash|Tear|Moisture|Mouth_Cavity|Teeth|nails', m)
 out.append(('dj',) + bake_many(girl, gnodes, own_frames(girl, 0.5), DJ_TRIS, 1.68, gskip, 'dj'))
