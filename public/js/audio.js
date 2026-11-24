@@ -30,6 +30,22 @@ export function setMusic(on) {
   if (on && !musicSrc) { musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(ctx.destination); musicSrc = ctx.createBufferSource(); musicSrc.buffer = musicBuf; musicSrc.loop = true; musicSrc.connect(musicGain); musicSrc.start(0); musicGain.gain.setTargetAtTime(MUSIC.gain, ctx.currentTime, 0.8); }
   else if (!on && musicSrc) { const s = musicSrc, g = musicGain; musicSrc = musicGain = null; g.gain.setTargetAtTime(0, ctx.currentTime, 0.4); setTimeout(() => { try { s.stop(); } catch (e) { } g.disconnect(); }, 2500); }
 }
+// A venue's own music (the club's DJ set): one looping track through a low-pass and a gain the map sets every frame from where you
+// stand (full in the hall, a muffled thump through the walls, fainter outside). venueLevel() is the track's bass, 0..1, for lights.
+let venue = null;
+export function setVenueMusic(url, on) {
+  if (!ctx) return;
+  if (!on) { if (venue) { const v = venue; venue = null; v.g.gain.setTargetAtTime(0, ctx.currentTime, 0.3); setTimeout(() => { try { v.s && v.s.stop(); } catch (e) { } v.g.disconnect(); }, 2000); } return; }
+  if (venue && venue.url === url) return;
+  if (venue) setVenueMusic(null, false);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 18000; f.Q.value = 0.8; const g = ctx.createGain(); g.gain.value = 0; const an = ctx.createAnalyser(); an.fftSize = 256;
+  f.connect(g); g.connect(master); const v = venue = { url, f, g, an, s: null, bins: new Uint8Array(an.frequencyBinCount) };
+  fetch(url).then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(url.endsWith('.blx') ? unpackBlx(b) : b)).then(buf => {
+    if (venue !== v) return; const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(f); src.connect(an); src.start(0); v.s = src;
+  }).catch(e => console.warn('venue music not loaded', e));
+}
+export function setVenueMix(gain, cutoff) { if (!venue || !ctx) return; const t = ctx.currentTime; venue.g.gain.setTargetAtTime(gain, t, 0.25); venue.f.frequency.setTargetAtTime(cutoff, t, 0.25); }
+export function venueLevel() { if (!venue || !venue.s) return 0; venue.an.getByteFrequencyData(venue.bins); let e = 0; for (let i = 1; i < 6; i++) e += venue.bins[i]; return e / (5 * 255); }
 // occluded(x, y, z) -> true when a solid surface lies between the listener and that point
 export function setOccluder(fn) { occluder = fn; }
 export function setListener(p, f, isInside) {

@@ -625,6 +625,18 @@ await t('casino: the lift leaves by itself once someone stands in it and comes w
   assert.ok(!ledgeNear(s.level, s.doorOpen, 30, 30, 0, 0.6) || true);
   const r = C.ROPES.find(q => q.arm); assert.ok(r.arm[0] < C.WING.z1 - 0.3, 'the davit arm reaches back over the roof');
 });
+await t('club: every spot reachable from the van; front, dock and fire exit all lead in; the hall crossable through the dancers', async () => {
+  const { buildLevel: BL, findPath: FP } = await import('../public/js/core/level.js'), C = await import('../public/js/core/maps/club.js');
+  const L = BL('club'), M = L.map, near = (p, x, z) => { const e = p && p[p.length - 1]; return !!p && Math.hypot(e[0] - x, e[1] - z) < 1.2; };
+  const go = ([f, x, z], from = [29, -19]) => near(FP(L, from[0], from[1], 0, x, z, M.yAt(f, x, z), true), x, z);
+  for (const sp of [...M.spots.s, ...M.spots.c, ...M.civMust, ...M.hvts.map(h => h.at), M.hvts[0].flee]) assert.ok(go(sp), 'reachable from the van: ' + sp);
+  assert.ok(go([0, 20, 20]) && go([0, 20, 26.5]) && go([1, 20, 11]), 'across the dance floor to the stage front; up to the balcony');
+  assert.ok(go([0, 51, 38], [51, 45]) && go([0, 3.5, 39], [3.5, 45]), 'in from the rear alley at the dock and the fire exit');
+  assert.ok(C.DANCERS.length > 60, 'a full floor'); assert.equal(L.doors.filter(d => d.exterior).length, 5, 'front doors, box office, dock side door, fire exit');
+  const s = new Sim('club'); s.addPlayer(1, 'A'); s.start(3, false, 'clear', 'club');
+  assert.ok(s.npcs.some(n => n.hvt && Math.abs(n.y - C.H) < 0.01), 'the promoter upstairs'); assert.ok(s.npcs.filter(n => n.kind === 's').length >= 12 && s.bombs.length === 3, 'crew and bombs placed');
+  assert.ok(s.bombs.some(b => Math.abs(b.x - 20) < 0.1 && Math.abs(b.z - 30.6) < 0.1), 'one in the DJ booth');
+});
 await t('stadium: the match carries on: the ball goes round both sides, every player touches it, nobody strays past the touchline', async () => {
   const { makeMatch, stepMatch } = await import('../public/js/maps/stadium-match.js'), { PITCH } = await import('../public/js/core/maps/stadium.js');
   const m = makeMatch(), touched = new Set(); let last = null, poss = 0, out = 0;

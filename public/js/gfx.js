@@ -10,8 +10,9 @@ import grandprixGfx from './maps/grandprix-gfx.js';
 import airportGfx from './maps/airport-gfx.js';
 import casinoGfx from './maps/casino-gfx.js';
 import stadiumGfx from './maps/stadium-gfx.js';
+import clubGfx from './maps/club-gfx.js';
 import { customGfx } from './maps/custom-gfx.js';
-const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx, casino: casinoGfx, stadium: stadiumGfx };
+const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx, casino: casinoGfx, stadium: stadiumGfx, club: clubGfx };
 let MAPFURN = null;   // a map's own furniture pieces (gfx.furn): sub -> builder
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
@@ -286,7 +287,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     setEnvSky(env.sunFrom, tod, cast, night);
     if (G.look) G.look(night, nvg, wx);
   };
-  const dispose = () => { scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skyT.dispose(); };
+  const dispose = () => { if (G.dispose) try { G.dispose(); } catch (e) { } scene.remove(root); root.traverse(o => { if (o.geometry) o.geometry.dispose(); }); skyT.dispose(); };
   return { root, level, map, doors, look, dispose, sun, tod, gfx: G, lampTick, setLampPool };
 }
 

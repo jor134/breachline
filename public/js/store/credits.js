@@ -16,6 +16,9 @@ export const CREDITS = [
   { use: 'Suspect voices', title: 'AAA Game Character English Henchman', by: 'Epic Stock Media', lic: 'Royalty-free licence', url: 'https://epicstockmedia.com', chg: 'trimmed and levelled' },
   { use: 'Airport jet', title: 'British Aerospace 146', by: 'helijah', lic: 'Sketchfab Standard', url: 'https://sketchfab.com/3d-models/british-aerospace-146-8ea4b2716a314fb6ad1aee15c0bd1922', chg: CHG },
   { use: 'Casino helicopter', title: 'Bell Huey helicopter', by: 'Duane\'s Mind', lic: BY, url: 'https://sketchfab.com/3d-models/bell-huey-helicopter-755d8518a06e41b19752c1b54c0da588', chg: CHG },
+  { use: 'Club furniture', title: 'Night Club', by: 'MBRODERI2', lic: BY, url: 'https://sketchfab.com/3d-models/night-club-51698a2a7171450ea40438a5dbc105f5', chg: CHG },
+  { use: 'Club dancer', title: 'Belly Dance', by: 'zhuoyi0904', lic: BY, url: 'https://sketchfab.com/3d-models/belly-dance-3a3ff40c0fa04554954d89a8febbaa9d', chg: CHG },
+  { use: 'Club DJ', title: 'Dancing girl', by: 'wk1978', lic: BY, url: 'https://sketchfab.com/3d-models/dancing-girl-735d6e8ce4944aa89a394d749d5ab6dd', chg: CHG },
   { use: 'Stadium', title: 'Modern Stadium', by: 'Razny', lic: 'Sketchfab Standard', url: 'https://sketchfab.com/3d-models/modern-stadium-21767e058e9e4df8a1c57352611756aa', chg: CHG },
   { use: 'Stadium crowd', title: 'Background People for Blender promo | Animated', by: 'Jungle Jim', lic: BY, url: 'https://sketchfab.com/3d-models/background-people-for-blender-promo-animated-ee74d352e49347658dd8675ffebf13eb', chg: CHG },
   { use: 'Footballers', title: 'Low Poly Soccer Player', by: 'PropShop\u2122', lic: BY, url: 'https://sketchfab.com/3d-models/low-poly-soccer-player-45270d99f19d45fab208a70d1929469f', chg: CHG },
@@ -27,6 +30,7 @@ export const CREDITS = [
   { use: 'Plants', title: 'low poly nature pack', by: 'flo-bit', lic: 'CC0', url: 'https://github.com/flo-bit/low-poly-asset-packs' },
   { use: 'Gun sounds', title: 'The Free Firearm Sound Library', by: 'its recordists (mirror by buddingmonkey)',lic: 'CC0', url: 'https://github.com/buddingmonkey/FreeFirearmsSFXLibrary' },
   { use: 'Doors, impacts, explosions, interface', title: 'RPG Audio, Impact Sounds, Sci-Fi Sounds, Interface Sounds', by: 'Kenney', lic: 'CC0', url: 'https://kenney.nl' },
+  { use: 'Club music', title: 'Dance (Pixabay track 518070)', by: 'atlasaudio', lic: 'Pixabay Content License', url: 'https://pixabay.com/music/' },
   { use: 'Race-car engine', title: 'grandprix', by: 'freesound_community (Pixabay)', lic: 'Pixabay Content License', url: 'https://pixabay.com' },
   { use: 'Engine', title: 'three.js', by: 'three.js authors', lic: 'MIT', url: 'https://threejs.org' },
 ];

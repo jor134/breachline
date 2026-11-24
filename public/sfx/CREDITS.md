@@ -25,3 +25,7 @@ Cut, converted to mono MP3 and level-matched by `tools/build_sfx.py`; the engine
 
 Cut and level-matched by `tools/build_hostage_vo.py`. Each take has one voice; the other version (a woman's sigh and cry when hit,
 a man's "help") is the same take pitch-shifted with its formants.
+
+## Club music (`club_music.blx`)
+
+**dance** by atlasaudio, from Pixabay (dance-518070), Pixabay Content License. Shipped as .blx (tools/obf_audio.py).

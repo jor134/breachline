@@ -2,9 +2,9 @@
 // contact sheet (drawn over the page, so the harness's screenshot is the sheet) and counts what the scene draws.
 (async () => {
   const B = window.__bl, THREE = B.THREE, wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
-  B.loadMap('stadium', window.__tod || 'night', true);
+  B.loadMap(window.__map || 'stadium', window.__tod || 'night', true);
   const until = async (f, n = 120) => { for (let i = 0; i < n && !f(); i++) await wait(250); return !!f(); };
-  const scene = B.world.root.parent; out.crowd = await until(() => { let k = 0; scene.traverse(o => { if (o.isInstancedMesh && o.count > 20) k++; }); return k >= 4; });
+  const scene = B.world.root.parent; out.crowd = await until(() => { let k = 0; scene.traverse(o => { if (o.isInstancedMesh && o.count > 10) k++; }); return k >= (window.__needInst || 4); });
   await wait(1500);
   if (window.__pre) window.__pre(scene, THREE);
   const R = B.renderer; R.setAnimationLoop(null); R.xr.enabled = false;
