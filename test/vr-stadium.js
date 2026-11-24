@@ -6,6 +6,7 @@
   const until = async (f, n = 120) => { for (let i = 0; i < n && !f(); i++) await wait(250); return !!f(); };
   const scene = B.world.root.parent; out.crowd = await until(() => { let k = 0; scene.traverse(o => { if (o.isInstancedMesh && o.count > 20) k++; }); return k >= 4; });
   await wait(1500);
+  if (window.__pre) window.__pre(scene, THREE);
   const R = B.renderer; R.setAnimationLoop(null); R.xr.enabled = false;
   let tris = 0, draws = 0; scene.traverse(o => { if ((o.isMesh) && o.visible && o.geometry) { draws++; const n = o.geometry.index ? o.geometry.index.count / 3 : o.geometry.attributes.position.count / 3; tris += n * (o.isInstancedMesh ? o.count : 1); } });
   out.tris = Math.round(tris); out.meshes = draws;
@@ -24,5 +25,7 @@
     for (let k = 0; k < 8; k++) G.tick(0.05, { S: B.S, head, officers: new Map(), level: B.level, renderer: R, scene });
     R.render(scene, cam); const c = R.domElement; g.drawImage(c, 0, c.height - H, W, H, (i % 2) * W, Math.floor(i / 2) * H, W, H); }
   const img = new Image(); img.src = cv.toDataURL('image/jpeg', 0.85); img.style.cssText = 'position:fixed;left:0;top:0;height:600px;z-index:99999;background:#000'; document.body.appendChild(img); await wait(300);
+  if (window.__legend) out.legend = window.__legend;
+  if (window.__legend) out.legend = window.__legend;
   return out;
 })()

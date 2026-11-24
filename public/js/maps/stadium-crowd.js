@@ -9,7 +9,7 @@ import { SEATS } from './stadium-seats.js';
 import { BLOCK } from '../core/maps/stadium.js';
 import { makeMatch, stepMatch } from './stadium-match.js';
 
-const FANS = 240, POSES = 24, POSE_T = 0.25, RUN = 12;   // the bake: 24 poses 0.25 s apart, played forwards then back
+const FANS = 200, POSES = 24, POSE_T = 0.25, RUN = 12;   // the bake: 24 poses 0.25 s apart, played forwards then back
 let seed = 11; const rr = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 
 // which seats get a fan: spread round the whole bowl in little groups (friends sit together), a bit thicker in the stands you can

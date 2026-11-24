@@ -249,7 +249,7 @@ await t('a suspect in a firefight turns on a nearby hostage after a few shots; y
   let [s, p, n, c] = setup(3); let threat = false, shotsBefore = 0;
   for (let i = 0; i < 15 * 20 && c.st !== 'd'; i++) { s.tick(1 / 15); for (const e of s.events) { if (e.e === 'say' && e.k === 'threat') { threat = true; shotsBefore = n.fired; } } s.events.length = 0; }
   assert.ok(threat && shotsBefore >= 3, 'warned after a few shots at the officer, fired ' + shotsBefore); assert.equal(c.st, 'd', 'killed the hostage'); assert.equal(s.log.civExecuted, 1); assert.equal(s.log.civKilled, 0, 'not counted against the officer');
-  for (let i = 0; i < 30; i++) s.tick(1 / 15); s.endMission(1); assert.ok(s.report.lines.some(l => /Hostage killed by a suspect x1/.test(l[0]) && l[1] === -10));
+  for (let i = 0; i < 30; i++) s.tick(1 / 15); s.endMission(1); assert.ok(s.report.lines.some(l => /Hostage killed by a suspect x1/.test(l[0]) && l[1] === -5));
   // stopped in the window: shoot him, flash him, or he surrenders
   for (const stop of ['shoot', 'flash', 'surrender']) { [s, p, n, c] = setup(3);
     for (let i = 0; i < 15 * 20 && !n.exec; i++) { s.tick(1 / 15); s.events.length = 0; } assert.ok(n.exec, 'threat started');

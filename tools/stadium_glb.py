@@ -93,9 +93,10 @@ out_meshes = []
 for mi, (Ps, Is, _) in groups.items():
     V, T = weld(np.vstack(Ps), np.vstack(Is)); name = j['materials'][mi]['name']
     r = RATIO * (0.5 if name.startswith('Stal_02') else 1.0)   # the roof trusses: thousands of members, the outline is what reads
-    if name == 'Color_M07': r = RATIO * 2   # the facade panels: cut as hard as the rest they break up into spikes (seen on the fly-in)
     if name.startswith('Wood_47'): r = 0.25   # the stands' stepped tiers (wood and concrete): cut hard, a step's edges join the next row's
     if name == 'Beton_16_3': r = 0.15          # into long brown shards across the seats
+    if name in ('Beton_16', 'auto_36'): r = 0.4   # the aisle steps and portals: cut harder they become grey diamonds down every aisle
+    if name.startswith('Srebro_03'): r = 0.25     # the handrails: thin bars, cut hard they become spikes
     V2, T2 = qem(V, T, max(40, int(len(T) * r)))
     V2, T2 = clean(V2, T2)
     c, glass = colour(mi); out_meshes.append((name, V2.astype(np.float32), T2.astype(np.uint32), c, glass)); print(f'{name:30s} {len(T):8d} -> {len(T2):7d}', flush=True)

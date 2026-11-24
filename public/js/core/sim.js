@@ -583,6 +583,7 @@ export class Sim {
       ['SWAT: ' + names(false), null], ['Terrorists: ' + names(true), null]] };
     this.ev({ e: 'end', result });
   }
+  // penalties halved on 23 Nov 2026 (players were getting F more often than not)
   score(result) {
     const L = this.log, sus = this.npcs.filter(n => n.kind === 's'), civ = this.npcs.filter(n => n.kind === 'c');
     const arrested = sus.filter(n => n.st === 'u' || n.st === 'j').length, killed = sus.filter(n => n.st === 'd' && n.just).length, secured = civ.filter(n => n.st === 'u').length, defused = this.bombs.filter(b => b.defused).length;
@@ -592,16 +593,16 @@ export class Sim {
       ['Hostages secured ' + secured + '/' + civ.length, Math.round(25 * secured / civ.length)],
       ['Suspects arrested ' + arrested + '/' + sus.length, Math.round(AR * arrested / sus.length)],
       ['Suspects killed (justified) ' + killed, Math.round(15 * killed / sus.length)],
-      ['Officers down ' + L.downs, L.downs ? -7 * L.downs : 15],
+      ['Officers down ' + L.downs, L.downs ? -Math.round(3.5 * L.downs) : 15],
     ];
     const hvts = sus.filter(n => n.hvt), nm = n => hvts.length > 1 && this.M.hvts ? ' (' + this.M.hvts[n.hvi].name.toLowerCase() + ')' : '';
-    for (const h of hvts) lines.push(h.st === 'u' || h.st === 'j' ? ['High-value target arrested' + nm(h), hvts.length > 1 ? 6 : 10] : h.st === 'd' ? ['High-value target killed' + nm(h), hvts.length > 1 ? -3 : -5] : ['High-value target at large' + nm(h), 0]);
-    if (L.unauth) lines.push(['Unauthorised use of force x' + L.unauth, -10 * L.unauth]);
-    if (L.execution) lines.push(['Shot a surrendered suspect x' + L.execution, -20 * L.execution]);
-    if (L.civHit) lines.push(['Civilian shot x' + L.civHit, -15 * L.civHit]);
-    if (L.civKilled) lines.push(['Civilian killed x' + L.civKilled, -15 * L.civKilled]);
-    if (L.civExecuted) lines.push(['Hostage killed by a suspect x' + L.civExecuted, -10 * L.civExecuted]);
-    if (L.ff) lines.push(['Friendly fire x' + L.ff, -5 * L.ff]);
+    for (const h of hvts) lines.push(h.st === 'u' || h.st === 'j' ? ['High-value target arrested' + nm(h), hvts.length > 1 ? 6 : 10] : h.st === 'd' ? ['High-value target killed' + nm(h), hvts.length > 1 ? -2 : -3] : ['High-value target at large' + nm(h), 0]);
+    if (L.unauth) lines.push(['Unauthorised use of force x' + L.unauth, -5 * L.unauth]);
+    if (L.execution) lines.push(['Shot a surrendered suspect x' + L.execution, -10 * L.execution]);
+    if (L.civHit) lines.push(['Civilian shot x' + L.civHit, -Math.round(7.5 * L.civHit)]);
+    if (L.civKilled) lines.push(['Civilian killed x' + L.civKilled, -Math.round(7.5 * L.civKilled)]);
+    if (L.civExecuted) lines.push(['Hostage killed by a suspect x' + L.civExecuted, -5 * L.civExecuted]);
+    if (L.ff) lines.push(['Friendly fire x' + L.ff, -Math.round(2.5 * L.ff)]);
     const loose = sus.filter(n => !SECURED[n.st]).length, unsafe = this.bombs.length - defused, left = civ.filter(n => n.st === 'w' || n.st === 'y').length;
     if (this.left) lines.push([(this.left === 'exit' ? 'Walked out' : 'Ended by radio') + (loose ? ', ' + loose + ' suspect' + (loose > 1 ? 's' : '') + ' unaccounted for' : '') + (left ? ', ' + left + ' hostage' + (left > 1 ? 's' : '') + ' left inside' : '') + (unsafe ? ', ' + unsafe + ' bomb' + (unsafe > 1 ? 's' : '') + ' live' : ''), null]);
     let total = Math.max(0, Math.min(100, lines.reduce((s, l) => s + (l[1] || 0), 0)));
