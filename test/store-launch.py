@@ -13,6 +13,7 @@ with sync_playwright() as p:
     pg.goto('http://localhost:8765/play.html?lite=1'); pg.wait_for_function('window.__bl && window.__bl.S.panel === "start"', timeout=20000)
     out['sessionMs'] = pg.evaluate('window.__tSession'); out['menuMs'] = round(pg.evaluate('performance.now() - window.__t0'))
     out['start'] = pg.evaluate(JS_STATE)
+    out['controllers'] = pg.evaluate("[0, 1].map(i => window.__bl.renderer.xr.getController(i).visible)")   # both hands there (they connected before three.js took the session)
     pg.wait_for_timeout(1200); out['startStays'] = pg.evaluate('window.__bl.S.panel')   # the game's twice-a-second redraw must not replace it
     pg.evaluate("window.__bl.storeUI.act('st:word')"); out['callsign'] = pg.evaluate("localStorage.getItem('bl_name')")
     pg.evaluate("window.__bl.storeUI.act('st:online')"); pg.evaluate("for (const k of ['4','7','2','9']) window.__bl.storeUI.act('st:key:' + k)")

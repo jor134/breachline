@@ -1,6 +1,14 @@
 // Store build start-up: take over the VR session that js/store/boot.js opened (or open one from the ENTER VR tap when the
 // automatic request was refused), then show the in-VR start menu. Nothing connects until the player picks SOLO, ONLINE
 // or TUTORIAL there (js/store/ui.js). When the session ends, the 2D page offers ENTER VR again.
+// The session is opened at the icon tap (boot.js) and only handed to three.js once the game has loaded. Controllers that connected
+// in between were announced (inputsourceschange) before three.js was listening, so it never made them, and the hands stayed missing
+// until the Quest menu was opened and closed (which announces them again). So when three.js starts listening, tell it at once
+// about the controllers already there (its handler ignores ones it already has).
+export function catchUpInputs(s) {
+  if (s.__catchUp) return; s.__catchUp = true; const add = s.addEventListener.bind(s);
+  s.addEventListener = (type, fn, opt) => { add(type, fn, opt); if (type === 'inputsourceschange' && s.inputSources && s.inputSources.length) try { (fn.handleEvent ? fn.handleEvent.bind(fn) : fn)({ type, session: s, added: [...s.inputSources], removed: [] }); } catch (e) { } };
+}
 export function storeLaunch({ renderer, begin, resume, storeUI, voice, perf, initAudio, status, $ }) {
   const B = window.__boot; if (!B || !B.store) return false;
   let busy = false;
@@ -8,7 +16,7 @@ export function storeLaunch({ renderer, begin, resume, storeUI, voice, perf, ini
     if (busy || renderer.xr.isPresenting) return; const s = B.take(); if (!s) return; busy = true;
     try {
       try { initAudio(); } catch (e) { }
-      perf.beforeSession(); await renderer.xr.setSession(s); perf.onSession(s);
+      catchUpInputs(s); perf.beforeSession(); await renderer.xr.setSession(s); perf.onSession(s);
       if (storeUI.started()) resume(); else { begin('vr'); storeUI.showStart(); }   // back from a system prompt: carry on in the same room
       // VR can end without the player quitting: the headset leaves VR to show a permission prompt (the microphone). Keep the room,
       // the mission and the connection; the 2D page offers ENTER VR to come straight back.
