@@ -93,7 +93,8 @@ function placeKits(kitScene, root) {
 }
 const KIT_NAMES = new Set(['bar', 'barcorner', 'barend', 'barstool', 'table', 'shelf', 'bench', 'djstand', 'speaker', 'screen', 'swivel', 'spot', 'ceilspeaker', 'lightbar', 'pole', 'steps', 'dancefloor']);
 const roomAt = (f, x, z) => { for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return r[1]; return null; };
-let mix = { g: -1, c: -1 };
+let mix = { g: -1, c: -1 }, mood = { base: null, nvg: false, k: 0, hemi: null };   // the hall's haze and darkness (tick)
+const HAZE = new THREE.Color(0x140a20), HAZE_D = 0.045, HALL_HEMI = 0.4;
 export default {
   get env() { return NIGHT; },
   envs: { night: NIGHT },
@@ -155,6 +156,7 @@ export default {
     M.beam = new THREE.MeshBasicMaterial({ color: 0x6aa0ff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
   },
   look(night, nvg) {
+    mood.base = null; mood.nvg = nvg;   // the light was just set: tick takes it as the outside's and works the hall's from it
     for (const m of [...glows, ...matGlows]) m.color.set(nvg ? (night ? 0x0c3a12 : 0x9cff9c) : night ? 0x0d0c0a : m.userData.c);
   },
   scenery({ b, root, hills, level, MATS }) {
@@ -198,7 +200,7 @@ export default {
       for (let k = 0; k < 36; k++) { const a = k * 6.283 / 36 + rr() * 0.1, r = 110 + rr() * 90, o = new THREE.Mesh(geo, m); o.position.set(29 + Math.cos(a) * r, 0, 10 + Math.sin(a) * r); o.scale.set(14 + rr() * 22, 10 + rr() * 50, 14 + rr() * 22); hills.add(o); } }
     dancers = makeDancers(root);
   },
-  tick(dt, { S, head }) {
+  tick(dt, { S, head, scene }) {
     const p = head.pos, t = performance.now() / 1000, lv = venueLevel();
     // the music: where you stand decides how loud and how muffled
     const f = p.y > H - 0.6 ? 1 : 0, room = inFoot(p.x, p.z) ? roomAt(f, p.x, p.z) : null;
@@ -207,13 +209,21 @@ export default {
     if (Math.abs(g - mix.g) > 0.01 || Math.abs(c - mix.c) > 5) { mix = { g, c }; setVenueMix(g, c); }
     // the hall's lamps: a slow wash round the colour wheel, pulsing on the bass (the building's own lamps keep their warm white)
     if (!hallLamps && root0) { hallLamps = []; root0.traverse(o => { if (o.isPointLight && o.userData.d) hallLamps.push(o); }); }
-    for (const l of hallLamps || []) { const q = l.userData.d.p; if (inHall(q.x, q.z) && q.y > 3) { const hue = (t * 0.05 + q.x * 0.02 + q.z * 0.015) % 1; l.color.setHSL(hue, 0.85, 0.3 + lv * 0.35); } else l.color.set(0xffd9a8); }
+    for (const l of hallLamps || []) { const q = l.userData.d.p; if (inHall(q.x, q.z) && q.y > 3) { const hue = (t * 0.05 + q.x * 0.02 + q.z * 0.015) % 1; l.color.setHSL(hue, 0.9, 0.2 + lv * 0.28); } else l.color.set(0xffd9a8); }
     for (const bm of beams) {
       if (bm.siren) { bm.siren.material.color.set(Math.floor(t * 3) % 2 ? 0x3060ff : 0xff2020); continue; }
       const a = Math.sin(t * 0.6 + bm.ph) * 0.55, k = Math.cos(t * 0.45 + bm.ph * 1.3) * 0.35; bm.m.rotation.set(-0.35 + k, 0, a);
-      bm.c.setHSL((t * 0.08 + bm.ph * 0.1) % 1, 0.9, 0.6); bm.m.material.color.copy(bm.c); bm.m.material.opacity = 0.05 + lv * 0.12;
+      bm.c.setHSL((t * 0.08 + bm.ph * 0.1) % 1, 0.9, 0.6); bm.m.material.color.copy(bm.c); bm.m.material.opacity = 0.07 + lv * 0.16;   // the haze shows the beams
     }
     for (const m of ledMats) m.emissive.copy(m.userData.em).multiplyScalar(0.6 + lv * 0.8);
+    // the hall is darker than the rest of the building and hazy (smoke machines): fog thickens and turns purple, the sky light dims,
+    // as you walk in; out again, back to what the rest of the map has (night vision keeps its own green)
+    if (scene && scene.fog) {
+      if (!mood.base) { mood.base = { d: scene.fog.density, c: scene.fog.color.clone() }; mood.hemi = null; root0 && root0.traverse(o => { if (!mood.hemi && o.isHemisphereLight) mood.hemi = { l: o, i: o.intensity }; }); mood.k = -1; }
+      const want = inHall(p.x, p.z) && p.y < 2 * H ? 1 : 0, k = Math.max(0, Math.min(1, (mood.k < 0 ? want : mood.k + Math.sign(want - mood.k) * dt * 1.5)));
+      if (k !== mood.k) { mood.k = k; scene.fog.density = mood.base.d + (HAZE_D - mood.base.d) * k; if (!mood.nvg) scene.fog.color.copy(mood.base.c).lerp(HAZE, k);
+        if (mood.hemi) mood.hemi.l.intensity = mood.hemi.i * (1 - (1 - HALL_HEMI) * k); }
+    }
     if (dancers) dancers.tick(dt, p);
   },
 };
