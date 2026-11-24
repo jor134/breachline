@@ -632,6 +632,11 @@ await t('club: every spot reachable from the van; front, dock and fire exit all 
   for (const sp of [...M.spots.s, ...M.spots.c, ...M.civMust, ...M.hvts.map(h => h.at), M.hvts[0].flee]) assert.ok(go(sp), 'reachable from the van: ' + sp);
   assert.ok(go([0, 20, 20]) && go([0, 20, 26.5]) && go([1, 20, 11]), 'across the dance floor to the stage front; up to the balcony');
   assert.ok(go([0, 51, 38], [51, 45]) && go([0, 3.5, 39], [3.5, 45]), 'in from the rear alley at the dock and the fire exit');
+  const onTop = FP(L, 20, 20, 0, 24, 31, C.STAGE.h, true); assert.ok(near(onTop, 24, 31) && onTop.some(([x, z]) => C.onSteps(x, z)), 'up the stage steps to the DJ');
+  assert.ok(go([0, 42, 30], [20, 20]) && go([0, 50, 30], [42, 30]) && go([0, 42, 20], [42, 30]), 'the hall door, the dock passage, the dock and the staff corridor joined');
+  assert.ok(C.ROOMS.every(a => C.ROOMS.every(b => a === b || a[0] !== b[0] || a[6] === 'void' || b[6] === 'void' || !(a[2] < b[4] - 0.01 && b[2] < a[4] - 0.01 && a[3] < b[5] - 0.01 && b[3] < a[5] - 0.01))), 'no two rooms overlap');
+  for (const d of L.doors) { const x = (d.x0 + d.x1) / 2, z = (d.z0 + d.z1) / 2, hz = Math.abs(d.z1 - d.z0) < 0.01;
+    for (const e of [-0.45, 0.45]) { const px = hz ? x : x + e, pz = hz ? z + e : z; assert.ok(!M.furniture.some(f => f[0] === d.f && f[6] !== 'dancer' && px > f[1] - 0.25 && px < f[3] + 0.25 && pz > f[2] - 0.25 && pz < f[4] + 0.25), 'door ' + [d.f, x, z] + ' blocked by furniture'); } }
   assert.ok(C.DANCERS.length > 60, 'a full floor'); assert.equal(L.doors.filter(d => d.exterior).length, 5, 'front doors, box office, dock side door, fire exit');
   const s = new Sim('club'); s.addPlayer(1, 'A'); s.start(3, false, 'clear', 'club');
   assert.ok(s.npcs.some(n => n.hvt && Math.abs(n.y - C.H) < 0.01), 'the promoter upstairs'); assert.ok(s.npcs.filter(n => n.kind === 's').length >= 12 && s.bombs.length === 3, 'crew and bombs placed');
@@ -666,5 +671,13 @@ await t('stadium: bots fast-rope to the catwalk, rappel down past the suites and
   s.pose(1, { h: [12, C.YC + 1.65, 13.5, 0, 0, 0, 1] }); s.players.get(1).y = C.YC;
   run(s, 120, () => s.bots().every(p => Math.abs(p.bot.y - C.YC) < 0.3));
   for (const p of s.bots()) assert.ok(Math.abs(p.bot.y - C.YC) < 0.3, p.name + ' down the stair in the club: ' + [p.bot.x, p.bot.y, p.bot.z].map(v => v.toFixed(1)));
+});
+await t('a pose left over from the training room does not arm the walk-out at the spawn', () => {
+  for (const map of ['mansion', 'terminal', 'grandprix', 'airport', 'club']) {
+    const s = new Sim(3); s.addPlayer('a', 'A'); s.start(5, false, 'clear', 'training'); s.pose('a', { h: [3, 1.65, 3, 0, 0, 0, 1] }); for (let i = 0; i < 10; i++) s.tick(0.05);
+    s.start(6, false, 'clear', map); for (let i = 0; i < 3; i++) s.tick(0.05);
+    const [x, z] = s.M.spawn[0]; for (let i = 0; i < 160; i++) { s.pose('a', { h: [x, 1.65, z, 0, 0, 0, 1] }); s.tick(0.05); }
+    assert.equal(s.phase, 'active', map + ': walked out from the spawn without going in');
+  }
 });
 console.log(n + ' tests passed');

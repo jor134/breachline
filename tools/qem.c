@@ -5,7 +5,10 @@
    collapse that would flip a triangle over is refused, so the outline and the panel edges survive.
    build: gcc -O2 -o qem tools/qem.c -lm      usage: ./qem in.bin out.bin target [keep]
    keep: only collapse an edge onto one of its two ends (no new points), and append int32[nv] = each output vertex's input
-   index, so a caller can carry the vertices' other attributes (texture coordinates, skin weights) across. */
+   index, so a caller can carry the vertices' other attributes (texture coordinates, skin weights) across.
+   lock (with keep: ./qem in.bin out.bin target keep lock): in.bin carries uint8[nv] after the indices, 1 = never remove that vertex.
+   Lock the vertices on a seam (one point split in two for two textures or two parts): both sides then keep every seam point, so
+   the seam cannot open into a crack when the two sides are simplified differently. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +19,7 @@ typedef struct { int *f; int n, cap; } List;
 typedef struct { double cost; int a, b, sa, sb; double p[3]; } Item;
 
 static int nv, nt; static double *P; static int *T; static char *dead; static char *vdead; static int *stamp;
-static Quad *Q; static List *adj; static Item *heap; static int hn, hcap; static int KEEP = 0;
+static Quad *Q; static List *adj; static Item *heap; static int hn, hcap; static int KEEP = 0; static unsigned char *lock = NULL;
 
 static void ladd(List *l, int f) { if (l->n == l->cap) { l->cap = l->cap ? l->cap * 2 : 8; l->f = realloc(l->f, l->cap * sizeof(int)); } l->f[l->n++] = f; }
 static void qplane(Quad *o, double a, double b, double c, double d, double w) {
@@ -40,6 +43,7 @@ static void evaluate(int a, int b) {
   double det = A[0]*(A[4]*A[8]-A[5]*A[7]) - A[1]*(A[3]*A[8]-A[5]*A[6]) + A[2]*(A[3]*A[7]-A[4]*A[6]);
   double best[3], bc = 1e300, cand[4][3]; int nc = 0;
   double *pa = P + 3*a, *pb = P + 3*b;
+  if (lock && lock[a] && lock[b]) return;   /* a seam's own edge: never collapsed */
   if (!KEEP && fabs(det) > 1e-12) { double x[3];
     x[0] = (rhs[0]*(A[4]*A[8]-A[5]*A[7]) - A[1]*(rhs[1]*A[8]-A[5]*rhs[2]) + A[2]*(rhs[1]*A[7]-A[4]*rhs[2])) / det;
     x[1] = (A[0]*(rhs[1]*A[8]-A[5]*rhs[2]) - rhs[0]*(A[3]*A[8]-A[5]*A[6]) + A[2]*(A[3]*rhs[2]-rhs[1]*A[6])) / det;
@@ -48,7 +52,7 @@ static void evaluate(int a, int b) {
     double ex = pb[0]-pa[0], ey = pb[1]-pa[1], ez = pb[2]-pa[2], L2 = ex*ex+ey*ey+ez*ez;
     double mx = (pa[0]+pb[0])/2, my = (pa[1]+pb[1])/2, mz = (pa[2]+pb[2])/2, dx = x[0]-mx, dy = x[1]-my, dz = x[2]-mz;
     if (dx*dx+dy*dy+dz*dz < L2) { memcpy(cand[nc++], x, sizeof x); } }
-  memcpy(cand[nc++], pa, 3*sizeof(double)); memcpy(cand[nc++], pb, 3*sizeof(double));
+  if (!(lock && lock[b])) memcpy(cand[nc++], pa, 3*sizeof(double)); if (!(lock && lock[a])) memcpy(cand[nc++], pb, 3*sizeof(double));   /* a locked end stays where it is */
   if (!KEEP) { cand[nc][0] = (pa[0]+pb[0])/2; cand[nc][1] = (pa[1]+pb[1])/2; cand[nc][2] = (pa[2]+pb[2])/2; nc++; }
   for (int i = 0; i < nc; i++) { double e = qerr(q, cand[i]); if (e < bc) { bc = e; memcpy(best, cand[i], sizeof best); } }
   Item it; it.cost = bc < 0 ? 0 : bc; it.a = a; it.b = b; it.sa = stamp[a]; it.sb = stamp[b]; memcpy(it.p, best, sizeof best); hpush(it); }
@@ -67,7 +71,8 @@ int main(int argc, char **argv) {
   FILE *fi = fopen(argv[1], "rb"); int target = atoi(argv[3]); KEEP = argc > 4 && !strcmp(argv[4], "keep");
   if (fread(&nv, 4, 1, fi) != 1 || fread(&nt, 4, 1, fi) != 1) return 1;
   P = malloc(nv*3*sizeof(double)); T = malloc(nt*3*sizeof(int));
-  if (fread(P, sizeof(double), nv*3, fi) != (size_t)nv*3 || fread(T, 4, nt*3, fi) != (size_t)nt*3) return 1; fclose(fi);
+  if (fread(P, sizeof(double), nv*3, fi) != (size_t)nv*3 || fread(T, 4, nt*3, fi) != (size_t)nt*3) return 1;
+  if (argc > 5 && !strcmp(argv[5], "lock")) { lock = calloc(nv, 1); if (fread(lock, 1, nv, fi) != (size_t)nv) return 1; } fclose(fi);
   dead = calloc(nt, 1); vdead = calloc(nv, 1); stamp = calloc(nv, sizeof(int)); Q = calloc(nv, sizeof(Quad)); adj = calloc(nv, sizeof(List));
   for (int f = 0; f < nt; f++) { double n[3]; fnormal(f, NULL, -1, n); double l = sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);
     if (l < 1e-18) { dead[f] = 1; continue; } double a = n[0]/l, b = n[1]/l, c = n[2]/l, d = -(a*P[3*T[f*3]] + b*P[3*T[f*3]+1] + c*P[3*T[f*3]+2]);

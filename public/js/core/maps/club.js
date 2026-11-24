@@ -10,7 +10,8 @@ export const H = 3.6, DOOR_H = 2.2;
 export const FOOT = { x0: 0, x1: 58, z0: 0, z1: 42 };               // the building
 export const HALL = { x0: 0, x1: 40, z0: 8, z1: 34 };               // the main hall (two storeys)
 export const BALC = { x0: 0, x1: 40, z0: 8, z1: 13 };               // the VIP balcony over its front
-export const STAGE = { x0: 8, x1: 32, z0: 27.5, z1: 34, h: 1.0 };   // the stage (not walkable: you go round it, through the wings)
+export const STAGE = { x0: 8, x1: 32, z0: 27.5, z1: 34, h: 1.0 };   // the stage: walk up its steps (or climb its lip), or round it through the wings
+export const STEPS = { x0: 28.6, x1: 30.6, z0: 25.3, z1: 27.5 };     // the steps up its front, at the east end, climbing toward +z
 export const FLOOR = { x0: 6, x1: 34, z0: 13.5, z1: 26 };           // the dance floor
 export const UPPER = [{ x0: 0, x1: 40, z0: 0, z1: 13 }, { x0: 40, x1: 58, z0: 0, z1: 20 }];   // where there is an upstairs
 export const STAIRS = [{ x0: 1, x1: 4, z0: 1, z1: 7.6 }, { x0: 42.2, x1: 45, z0: 12.4, z1: 20 }];   // west (lobby side) and staff (east); both climb toward -z
@@ -30,7 +31,7 @@ export const ROOMS = [
   // back of house: the corridor behind the stage, dressing rooms, the green room, production; the staff corridor, storage, keg cooler, dock
   [0, 'Backstage', 0, 34, 44, 36, 'concrete'], [0, 'Dressing room 1', 0, 36, 7, 42, 'tileW'], [0, 'Dressing room 2', 7, 36, 14, 42, 'tileW'],
   [0, 'Green room', 14, 36, 30, 42, 'carpetG'], [0, 'Production', 30, 36, 40, 42, 'concrete'],
-  [0, 'Staff corridor', 40, 8, 45, 34, 'concrete'], [0, 'Storage', 45, 8, 58, 18, 'concrete'], [0, 'Keg cooler', 45, 18, 52, 26, 'steelfloor'],
+  [0, 'Staff corridor', 40, 8, 45, 26, 'concrete'], [0, 'Dock passage', 40, 26, 44, 34, 'concrete'], [0, 'Storage', 45, 8, 58, 18, 'concrete'], [0, 'Keg cooler', 45, 18, 52, 26, 'steelfloor'],
   [0, 'Loading dock', 44, 26, 58, 42, 'concrete'], [0, 'Dock office', 40, 36, 44, 42, 'concrete'],
   // upstairs: the VIP lounge over the lobby, its balcony over the hall, the landing; the offices
   [1, 'Upper landing', 0, 0, 10, 8, 'carpetR'], [1, 'VIP lounge', 10, 0, 40, 8, 'carpetR'], [1, 'VIP balcony', 0, 8, 40, 13, 'carpetR'], [1, 'hall', 0, 13, 40, 34, 'void'],
@@ -41,13 +42,13 @@ export const OPENINGS = [
   [0, 26.4, 0, 27.6, 0, 'door', 'ext'], [0, 30.4, 0, 31.6, 0, 'door', 'ext'],                            // front doors
   [0, 18, 3, 18, 6, 'gap'], [0, 10, 4, 10, 6, 'gap'],                                                     // coat check counter; stair hall
   [0, 40, 1.4, 40, 2.6, 'door'], [0, 40, 5.4, 40, 6.6, 'door'],                                          // men's, women's
-  [0, 54, 8, 55.2, 8, 'door'], [0, 58, 3, 58, 4.2, 'door', 'ext'],                                         // the box office: from storage, and its street door
+  [0, 48.6, 8, 49.8, 8, 'door'], [0, 58, 3, 58, 4.2, 'door', 'ext'],                                         // the box office: from storage, and its street door
   [0, 24, 8, 34, 8, 'gap'], [0, 3, 8, 6, 8, 'gap'],                                                       // into the hall from the lobby and from the stair hall
-  [0, 40, 22, 40, 23.2, 'door'],                                                                           // hall to the staff corridor (behind the east booths)
+  [0, 40, 27.6, 40, 28.8, 'door'],                                                                         // hall to the dock passage (past the east booths, clear of them)
   [0, 3, 34, 4.2, 34, 'door'], [0, 35, 34, 36.2, 34, 'door'],                                             // stage wings: hall to backstage
   [0, 4, 36, 5.2, 36, 'door'], [0, 10, 36, 11.2, 36, 'door'], [0, 21, 36, 23, 36, 'door'], [0, 34, 36, 35.2, 36, 'door'],   // dressing rooms, green room, production
-  [0, 40, 34, 44, 34, 'gap'],                                                                              // backstage meets the staff corridor
-  [0, 45, 12, 45, 13.2, 'door'], [0, 45, 21, 45, 22.2, 'door'], [0, 44.4, 26, 45, 26, 'gap'], [0, 44, 30, 44, 34, 'gap'], [0, 42, 36, 43.2, 36, 'door'],   // storage, keg cooler, dock, dock office
+  [0, 40, 34, 44, 34, 'gap'], [0, 40, 26, 44, 26, 'gap'],                                                  // backstage, the passage, the staff corridor
+  [0, 45, 12, 45, 13.2, 'door'], [0, 45, 21, 45, 22.2, 'door'], [0, 44, 28, 44, 33, 'gap'], [0, 42, 36, 43.2, 36, 'door'],   // storage, keg cooler, dock, dock office
   [0, 49, 42, 53, 42, 'gap', 'ext'], [0, 58, 30, 58, 31.2, 'door', 'ext'], [0, 3, 42, 4.2, 42, 'door', 'ext'],   // the dock's open shutter, its side door, the fire exit
   [1, 4.2, 0.6, 4.2, 7.4, 'gap'], [1, 10, 2, 10, 6, 'gap'], [1, 10, 8, 40, 8, 'gap'], [1, 0, 8, 10, 8, 'gap'], [1, 0, 13, 40, 13, 'gap'],   // landing, lounge, balcony open over the hall
   [1, 40, 2, 40, 3.2, 'door'], [1, 45, 4, 45, 5.2, 'door'], [1, 45, 10.6, 45, 11.8, 'door'],                // lounge to the offices; manager's office; security
@@ -69,6 +70,7 @@ let seed = 3; const rr = () => { seed = (seed * 16807) % 2147483647; return seed
 export const DANCERS = [];
 for (let z = FLOOR.z0 + 0.8; z < FLOOR.z1 - 0.4; z += 1.25) for (let x = FLOOR.x0 + 0.7; x < FLOOR.x1 - 0.4; x += 1.25) {
   if (Math.abs(x - 20) < 1.3 || Math.abs(z - 19.5) < 0.7) continue;                     // two lanes kept clear: up the middle and across
+  if (x > STEPS.x0 - 0.9 && x < STEPS.x1 + 0.9 && z > STEPS.z0 - 1.2) continue;        // and the foot of the stage steps
   if (rr() < 0.42) continue;
   DANCERS.push([+(x + (rr() - 0.5) * 0.6).toFixed(2), +(z + (rr() - 0.5) * 0.6).toFixed(2), +((rr() - 0.5) * 1.8).toFixed(2)]);   // [x, z, facing (0 = +z, the stage)]
 }
@@ -78,11 +80,11 @@ F.push([0, 10.3, 5.6, 17.7, 6.4, 1.05, 'counter', '-z'], [0, 10.2, 0.3, 17.8, 0.
 F.push([0, 47.2, 0.3, 47.9, 3.6, 0.9, 'counter', '-x'], [0, 47.2, 4.4, 47.9, 7.7, 0.9, 'counter', '-x']);   // the restrooms' basins
 for (const x of [22, 36]) F.push([0, x - 1.2, 2, x + 1.2, 3, 0.8, 'sofa', '+z']);
 // backstage: dressing tables and mirrors, the green room's sofas and drinks, production's flight cases
-for (const x of [0.3, 7.3]) F.push([0, x, 40.6, x + 6.4, 41.6, 0.8, 'mirrordesk', '-z'], [0, x + 0.3, 36.3, x + 1.0, 39, 1.9, 'locker', '+x']);
+for (const [x, x1] of [[0.3, 2.8], [7.3, 13.7]]) F.push([0, x, 40.6, x1, 41.6, 0.8, 'mirrordesk', '-z'], [0, x + 0.3, 36.3, x + 1.0, 39, 1.9, 'locker', '+x']);   // the first stops short of the fire exit
 F.push([0, 16, 40.7, 22, 41.7, 0.8, 'sofa', '-z'], [0, 23, 40.7, 29, 41.7, 0.8, 'sofa', '-z'], [0, 18, 38.4, 21, 39.4, 0.42, 'table'], [0, 24, 38.4, 27, 39.4, 0.42, 'table'], [0, 14.3, 37, 15.1, 40, 1.05, 'counter', '+x']);
 F.push([0, 31, 37, 33, 38.4, 1.1, 'case'], [0, 34, 37, 36, 38.4, 1.1, 'case'], [0, 31, 40, 34, 41.6, 1.4, 'case'], [0, 37, 38, 39.6, 41.6, 1.9, 'shelf', '-x']);
 // storage, keg cooler, dock, dock office
-F.push([0, 46, 8.3, 57.7, 9.0, 2.2, 'shelf', '+z'], [0, 46, 12, 52, 13.2, 1.8, 'shelf', '+z'], [0, 46, 15.5, 52, 16.7, 1.8, 'shelf', '+z'], [0, 54, 11, 56, 13, 1.1, 'crate'], [0, 54.5, 15, 57, 17, 0.9, 'crate']);
+F.push([0, 50.6, 8.3, 57.7, 9.0, 2.2, 'shelf', '+z'], [0, 46, 12, 52, 13.2, 1.8, 'shelf', '+z'], [0, 46, 15.5, 52, 16.7, 1.8, 'shelf', '+z'], [0, 54, 11, 56, 13, 1.1, 'crate'], [0, 54.5, 15, 57, 17, 0.9, 'crate']);
 for (const z of [19, 21.5, 24]) F.push([0, 46, z, 47.6, z + 1.6, 1.0, 'keg'], [0, 49.4, z, 51, z + 1.6, 1.0, 'keg']);
 F.push([0, 46, 31, 49, 33, 1.4, 'crate'], [0, 53, 34, 57, 36.5, 1.8, 'case'], [0, 54, 27, 57.6, 28.6, 1.2, 'crate'], [0, 40.3, 39.4, 41.2, 41.7, 1.9, 'cabinet', '+x'], [0, 42, 40.8, 43.8, 41.7, 0.76, 'desk', '-z']);
 // upstairs: the VIP lounge (sofas, a small bar), the balcony's tables at its rail; the manager's office (desk, safe), the security room (CCTV desk)
@@ -115,8 +117,13 @@ export const inHall = (x, z) => x > HALL.x0 && x < HALL.x1 && z > HALL.z0 && z <
 export const stairOf = (x, z) => STAIRS.find(s => x > s.x0 && x < s.x1 && z > s.z0 && z < s.z1);
 const stairT = (s, z) => (s.z1 - z) / (s.z1 - s.z0);
 const stairUp = (s, z) => Math.min(1, stairT(s, z) / 0.85) * H;   // the flight; its top 15% is the landing upstairs
+export const onStage = (x, z) => x > STAGE.x0 && x < STAGE.x1 && z > STAGE.z0 && z < STAGE.z1;
+export const onSteps = (x, z) => x > STEPS.x0 && x < STEPS.x1 && z > STEPS.z0 && z < STEPS.z1;
+const stepsY = z => Math.min(STAGE.h, Math.max(0, Math.ceil((z - STEPS.z0) / (STEPS.z1 - STEPS.z0) * 5 - 0.001) * STAGE.h / 5));   // five risers of 0.2
 // Every walkable surface over (x, z) as [height, nav layer].
 function surfaces(x, z) {
+  if (onStage(x, z)) return [[STAGE.h, 0]];
+  if (onSteps(x, z)) return [[stepsY(z), 0]];
   const s = stairOf(x, z); if (s) return stairT(s, z) > 0.85 ? [[0, 0], [H, 1]] : [[stairUp(s, z), 0]];
   if (inUpper(x, z) && !(inHall(x, z) && z > BALC.z1)) return [[0, 0], [H, 1]];
   return [[0, 0]];
@@ -147,6 +154,7 @@ function extra({ boxes }) {
   box('fence', BALC.x0, BALC.x1, H, H + 1.05, BALC.z1 - 0.05, BALC.z1 + 0.05, { sub: 'glassrail', f: 1 });
   box('fence', 4.2, 4.3, H, H + 1.05, 0.6, 7.4, { sub: 'glassrail', f: 1 });                              // the west stair's well, upstairs
   box('fence', 42.1, 42.2, H, H + 1.05, 12.4, 18.9, { sub: 'glassrail', f: 1 });                          // the staff stair's well, upstairs
+  for (const x of [STEPS.x0 - 0.08, STEPS.x1]) box('fence', x, x + 0.08, 0, STAGE.h + 0.9, STEPS.z0 + 0.3, STEPS.z1, { sub: 'steprail' });   // the steps' handrails
   const v = VAN; box('van', v.x - 1.05, v.x + 1.05, 0, 2.6, v.z - 2.9, v.z + 2.9);
   box('fence', -1, -0.9, 0, 2.4, -34, 48, { sub: 'wall' }); box('fence', 58, 64, 0, 2.4, 47.9, 48, { sub: 'wall' }); box('fence', -1, 58, 0, 2.4, 47.9, 48, { sub: 'wall' });
   box('fence', 63.9, 64, 0, 2.4, -34, 48, { sub: 'wall' });

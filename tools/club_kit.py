@@ -37,6 +37,7 @@ KITS = {
   'bench': (r'^Curved_Bench_5_', 'all'), 'djstand': (r'^(DJ_Stand|DJ_Sound_Controller|Laptop|DJ_Table_Ornament)', 'all'),
   'speaker': (r'^Large_Speaker_', 'all'), 'screen': (r'^BigScreen_', 'all'), 'swivel': (r'^SwivelLightGlow1_', 'all'), 'spot': (r'^Spot_light_10_', 'all'),
   'ceilspeaker': (r'^Speaker_Ceiling1?_', 'first'), 'lightbar': (r'^LightBar86_', 'all'), 'pole': (r'^Support_pole_1_', 'all'), 'steps': (r'^Steps_', 'all'), 'dancefloor': (r'^DanceFloor_', 'all'),
+  'laptop': (r'^Laptop', 'first'),   # the DJ's laptop on its own, for the office desks
 }
 used_mats = {}; kits = {}
 for kit, (pat, which) in KITS.items():

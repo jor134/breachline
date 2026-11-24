@@ -86,7 +86,7 @@ export class Sim {
       return { x: bx, z: bz, y: fy + h, yaw, wires, order, n: 0, cut: [false, false, false, false], defused: false };
     });
     if (M.training) this.setupTraining();
-    for (const p of this.players.values()) { p.entered = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; p.spawn = null; p.hold = 0; p.locks = 2; p.traps = 2; }
+    this.runT = 0; for (const p of this.players.values()) { p.entered = false; p.has = false; p.hp = 100; p.down = false; p.y = 0; p.lastShot = -9; p.lastShout = -9; p.w = 0; p.med = false; p.fl = 2; p.sm = 1; p.spawn = null; p.hold = 0; p.locks = 2; p.traps = 2; }
     // PvP: as soon as one player has picked the terrorist side. Terrorist players start inside, at suspect posts far from the squad's way in.
     const tangos = [...this.players.values()].filter(p => p.team === 'tango'); this.pvp = !M.training && tangos.length > 0;
     if (this.pvp) {
@@ -568,7 +568,8 @@ export class Sim {
     else if (sus.every(n => SECURED[n.st]) && civ.every(n => n.st === 'u' || n.st === 'd') && this.bombs.every(b => b.defused)) result = 'MISSION COMPLETE';
     if (result) { this.phase = 'ended'; this.report = this.score(result); this.ev({ e: 'end', result }); return; }
     // walk out: once someone has been inside, every officer still standing at the front gate for 5 seconds ends the mission
-    const EX = this.M.exit; for (const p of ps) if (p.has && this.level.objective(p.hx, p.hz)) p.entered = true;
+    // a pose from the old map can arrive just after the start: positions only count once the squad has had 2 s to reach the spawn
+    const EX = this.M.exit; this.runT = (this.runT || 0) + dt; if (this.runT > 2) for (const p of ps) if (p.has && this.level.objective(p.hx, p.hz)) p.entered = true;
     const up = ps.filter(p => !p.down && p.has && !p.bot), atGate = p => p.hx > EX.x0 && p.hx < EX.x1 && p.hz > EX.z0 && p.hz < EX.z1 && Math.abs(p.y - (EX.y || 0)) < 0.5;
     if (up.length && ps.some(p => p.entered && !p.bot) && up.every(atGate)) { if ((this.extractT += dt) >= 5) this.endMission(up[0].id, 'exit'); } else this.extractT = 0;
   }

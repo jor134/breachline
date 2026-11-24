@@ -9,7 +9,7 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { ObfLoader } from '../store/obf.js';
 import { setVenueMusic, setVenueMix, venueLevel } from '../audio.js';
-import { H, FOOT, HALL, BALC, STAGE, FLOOR, DJ, ROOMS, FURNITURE, VAN, inHall, inFoot } from '../core/maps/club.js';
+import { H, FOOT, HALL, BALC, STAGE, STEPS, FLOOR, DJ, ROOMS, FURNITURE, VAN, inHall, inFoot } from '../core/maps/club.js';
 import { makeDancers } from './club-crowd.js';
 
 const VAN_TURN = Math.PI;   // the model's nose is at its -z end: turned to face the club
@@ -37,21 +37,26 @@ let seed = 9; const rr = () => { seed = (seed * 16807) % 2147483647; return seed
 function sign(text, bg, fg, w = 512, h = 96, font = 'bold') {
   return cvs(w, h, (g) => { if (bg) { g.fillStyle = bg; g.fillRect(0, 0, w, h); } g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle'; let f = Math.round(h * 0.66); g.font = `${font} ${f}px sans-serif`; while (g.measureText(text).width > w * 0.92 && f > 10) { f -= 2; g.font = `${font} ${f}px sans-serif`; } if (!bg) { g.shadowColor = fg; g.shadowBlur = h * 0.18; } g.fillText(text, w / 2, h / 2 + 2); });
 }
-const plane = (root, text, w, h, x, y, z, ry, o = {}) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: sign(text, o.bg === undefined ? '#16181c' : o.bg, o.fg || '#f2f2ee', o.pw, o.ph), transparent: o.bg === null, depthWrite: o.bg !== null })); m.position.set(x, y, z); m.rotation.y = ry; root.add(m); if (!o.own) { glows.push(m.material); m.material.userData.c = 0xffffff; } return m; };
+// a sign: a lettered panel in a dark metal frame (neon lettering, bg null, has none). (x, y, z) is the panel's face; the frame sits just behind it,
+// so the panel goes 0.045 m off a wall's face (walls are 0.2 thick: 0.145 off the wall's line)
+let frameMat = null;
+const plane = (root, text, w, h, x, y, z, ry, o = {}) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: sign(text, o.bg === undefined ? '#16181c' : o.bg, o.fg || '#f2f2ee', o.pw, o.ph), transparent: o.bg === null, depthWrite: o.bg !== null })); m.position.set(x, y, z); m.rotation.y = ry; root.add(m); if (!o.own) { glows.push(m.material); m.material.userData.c = 0xffffff; }
+  if (o.bg !== null) { frameMat = frameMat || sheen({ color: 0x2c2f34 }, 'metal'); const fr = new THREE.Mesh(new THREE.BoxGeometry(w + 0.08, h + 0.08, 0.04), frameMat); fr.position.set(x - Math.sin(ry) * 0.026, y, z - Math.cos(ry) * 0.026); fr.rotation.y = ry; fr.castShadow = false; fr.receiveShadow = true; root.add(fr); }
+  return m; };
 const panelTex = (base, line, step = 64) => cvs(256, 256, (g, w, h) => { g.fillStyle = base; g.fillRect(0, 0, w, h); g.fillStyle = line; for (let x = 0; x < w; x += step) g.fillRect(x, 0, 3, h); });
 const brickTex = () => cvs(256, 256, (g, w, h) => { for (let y = 0; y < h; y += 16) for (let x = -((y / 16) % 2) * 24; x < w; x += 48) { const n = rr() * 26; g.fillStyle = `rgb(${52 + n},${40 + n * 0.6},${40 + n * 0.5})`; g.fillRect(x + 1, y + 1, 46, 14); } g.fillStyle = 'rgba(0,0,0,0.0)'; });
 const lotTex = () => cvs(512, 512, (g, w, h) => { g.fillStyle = '#2a2b2f'; g.fillRect(0, 0, w, h); for (let i = 0; i < 4000; i++) { const n = rr() * 40; g.fillStyle = `rgba(${90 + n},${90 + n},${95 + n},0.25)`; g.fillRect(rr() * w, rr() * h, 2, 2); } });
 // ---------- furniture the map draws itself (the bar, booths, stools, DJ desk and speakers are the model's kits, placed in load()) ----------
 const furn = {
-  stage({ P, len, dep, h }) { P('stageblk', 0, len, 0, dep, 0, h - 0.04); P('stagetop', 0, len, 0, dep, h - 0.04, h); P('led', 0, len, dep - 0.02, dep, h - 0.14, h - 0.08, 'Z'); },
+  stage({ P, len, dep, h }) { P('stageblk', 0, len, 0, dep, 0, h - 0.04); P('stagetop', 0, len, 0, dep, h - 0.04, h); P('led', 0, len, dep, dep + 0.012, h - 0.14, h - 0.08, 'Z'); },
   djbooth() { },   // the kit's DJ stand (load)
   speaker() { }, clubbar() { }, backbar({ P, len, dep, h }) { P('glowB', 0, len, dep - 0.03, dep, 0.95, 0.99, 'Y'); }, stool() { }, booth() { }, dancer() { },
   hightable({ P, len, dep, h }) { P('chrome', len / 2 - 0.04, len / 2 + 0.04, dep / 2 - 0.04, dep / 2 + 0.04, 0, h - 0.04); P('stoneD', 0, len, 0, dep, h - 0.04, h); P('chrome', 0.1, len - 0.1, 0.1, dep - 0.1, 0, 0.03); },
   rack({ P, len, dep, h }) { P('chrome', 0, len, dep / 2 - 0.02, dep / 2 + 0.02, h - 0.05, h); for (let u = 0.15; u < len - 0.1; u += 0.22) P(u % 0.66 < 0.22 ? 'coatA' : 'coatB', u, u + 0.12, 0.05, dep - 0.05, h - 1.05, h - 0.1); },
-  desk({ P, len, dep, h }) { P('oakD', 0, len, 0, dep, h - 0.04, h); P('oakD', 0, 0.05, 0, dep, 0, h - 0.04); P('oakD', len - 0.05, len, 0, dep, 0, h - 0.04); P('oakD', 0.05, len - 0.05, 0, 0.04, 0.3, h - 0.04); P('screenK', len / 2 - 0.3, len / 2 + 0.3, 0.1, 0.14, h, h + 0.36); },
+  desk({ P, len, dep, h }) { P('oakD', 0, len, 0, dep, h - 0.04, h); P('oakD', 0, 0.05, 0, dep, 0, h - 0.04); P('oakD', len - 0.05, len, 0, dep, 0, h - 0.04); P('oakD', 0.05, len - 0.05, 0, 0.04, 0.3, h - 0.04); },   // its laptop is a kit (kitPlacements)
   mirrordesk({ P, len, dep, h }) { P('oakD', 0, len, 0, dep, h - 0.05, h); P('oakD', 0, len, 0, 0.05, 0, h - 0.05); P('mirror', 0.1, len - 0.1, 0, 0.02, h + 0.1, h + 1.1, 'Z'); for (let u = 0.2; u < len; u += 0.5) P('glowW', u, u + 0.08, 0.02, 0.06, h + 1.12, h + 1.18); },
   locker({ P, len, dep, h }) { P('steelG', 0, len, 0, dep, 0, h); for (let u = 0; u < len - 0.1; u += 0.45) P('steelD', u + 0.02, u + 0.43, dep, dep + 0.01, 0.1, h - 0.1, 'Z'); },
-  case({ P, len, dep, h }) { P('flight', 0, len, 0, dep, 0, h); P('chrome', 0, len, 0, dep, h * 0.5 - 0.02, h * 0.5 + 0.02); },
+  case({ P, len, dep, h }) { P('flight', 0, len, 0, dep, 0, h); P('chrome', -0.012, len + 0.012, -0.012, dep + 0.012, h * 0.5 - 0.02, h * 0.5 + 0.02); },   // the band stands proud of the case's sides
   keg({ P, len, dep, h }) { const n = 2; for (let i = 0; i < n; i++) for (let k = 0; k < 2; k++) P('steelG', i * len / n + 0.05, (i + 1) * len / n - 0.05, k * dep / 2 + 0.05, (k + 1) * dep / 2 - 0.05, 0, h); },
   safe({ P, len, dep, h }) { P('steelD', 0, len, 0, dep, 0, h); P('chrome', len / 2 - 0.1, len / 2 + 0.1, dep, dep + 0.03, h / 2 - 0.1, h / 2 + 0.1, 'Z'); },
   cctv({ P, len, dep, h }) { P('oakD', 0, len, 0, dep, h - 0.04, h); P('steelD', 0, 0.05, 0, dep, 0, h); P('steelD', len - 0.05, len, 0, dep, 0, h);
@@ -67,6 +72,11 @@ function kitPlacements() {
     else if (kind === 'backbar') { const L = z1 - z0, n = Math.max(1, Math.round(L / 0.92)); for (let i = 0; i < n; i++) put('shelf', cx, y, z0 + (i + 0.5) * L / n, 0, 1, h / 2.2, L / (n * 0.92)); }
     else if (kind === 'booth') { const L = z1 - z0, n = Math.max(1, Math.round(L / 1.83)); for (let i = 0; i < n; i++) put('bench', cx, y, z0 + (i + 0.5) * L / n, 0, (x1 - x0) / 2.01, h / 1.08, L / (n * 1.83)); }
     else if (kind === 'stool') put('barstool', cx, y, cz, rr() * 6.28, 1, h / 0.71, 1);
+    else if (kind === 'desk' || kind === 'cctv') {   // a laptop, open toward the side the desk faces (the kit's laptop opens toward -z)
+      const face = f[7] || '+z', d = { '+z': [0, 1], '-z': [0, -1], '+x': [1, 0], '-x': [-1, 0] }[face], len = face[1] === 'z' ? x1 - x0 : z1 - z0, dep = face[1] === 'z' ? z1 - z0 : x1 - x0;
+      const u = kind === 'cctv' ? len * 0.8 : len * 0.5, v = dep * 0.55, ax = face[1] === 'z' ? [1, 0] : [0, 1];
+      put('laptop', cx + ax[0] * (u - len / 2) + d[0] * (v - dep / 2), y + h, cz + ax[1] * (u - len / 2) + d[1] * (v - dep / 2), Math.atan2(-d[0], -d[1]));
+    }
     else if (kind === 'speaker') { const w = x1 - x0; for (const u of [-0.25, 0.25]) put('speaker', cx + u * w, y, cz, Math.PI, w / 2 / 0.78, h / 1.99, (z1 - z0) / 0.86); }
   }
   put('djstand', DJ.x, STAGE.h, DJ.z - 0.35, Math.PI, 1.2, 1, 1);
@@ -91,7 +101,7 @@ function placeKits(kitScene, root) {
   }
   root.add(g); kitReady = true; return g;
 }
-const KIT_NAMES = new Set(['bar', 'barcorner', 'barend', 'barstool', 'table', 'shelf', 'bench', 'djstand', 'speaker', 'screen', 'swivel', 'spot', 'ceilspeaker', 'lightbar', 'pole', 'steps', 'dancefloor']);
+const KIT_NAMES = new Set(['bar', 'barcorner', 'barend', 'barstool', 'table', 'shelf', 'bench', 'djstand', 'speaker', 'screen', 'swivel', 'spot', 'ceilspeaker', 'lightbar', 'pole', 'steps', 'dancefloor', 'laptop']);
 const roomAt = (f, x, z) => { for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return r[1]; return null; };
 let mix = { g: -1, c: -1 }, mood = { base: null, nvg: false, k: 0, hemi: null };   // the hall's haze and darkness (tick)
 const HAZE = new THREE.Color(0x140a20), HAZE_D = 0.045, HALL_HEMI = 0.4;
@@ -170,6 +180,7 @@ export default {
     for (const w of level.boxes) {
       if (w.kind === 'fence' && w.sub === 'wall') B('fenceW', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXYzZ', 0.5);
       else if (w.kind === 'fence' && w.sub === 'glassrail') { B('glassrail', w.x0, w.x1, w.y0 + 0.05, w.y1 - 0.06, w.z0, w.z1, 'xXzZ', 1); B('chrome', w.x0 - 0.01, w.x1 + 0.01, w.y1 - 0.06, w.y1, w.z0 - 0.02, w.z1 + 0.02, 'xXYzZ', 1); }
+      else if (w.kind === 'fence' && w.sub === 'steprail') { B('chrome', w.x0, w.x1, w.y1 - 0.05, w.y1, w.z0, w.z1, 'xXyYzZ', 1); for (const z of [w.z0 + 0.05, w.z1 - 0.05]) B('chrome', w.x0 + 0.01, w.x1 - 0.01, z < STEPS.z1 - 0.1 ? 0.2 : STAGE.h, w.y1 - 0.05, z - 0.03, z + 0.03, 'xXzZ', 1); }
       else if (w.kind === 'dumpster') { B('dumpster', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXYzZ', 1); B('steelD', w.x0 - 0.03, w.x1 + 0.03, w.y1, w.y1 + 0.06, w.z0 - 0.03, w.z1 + 0.03, 'xXYzZ', 1); }
       else if (w.kind === 'van') {   // the squad's van is the model (load); a light bar on its roof flashes red and blue
         const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.22), new THREE.MeshBasicMaterial({ color: 0x3060ff })); bar.position.set((w.x0 + w.x1) / 2, w.y1 + 0.05, w.z1 - 1.2); bar.visible = false; root.add(bar); beams.push({ siren: bar });
@@ -185,16 +196,20 @@ export default {
     // ---- the hall: the lighting truss over the stage, a balcony fascia, LED strips along the walls, the stage's lip, the DJ's name ----
     B('steelD', STAGE.x0, STAGE.x1, 6.2, 6.4, STAGE.z0 + 0.4, STAGE.z0 + 0.8, 'xXyYzZ', 1); B('steelD', STAGE.x0, STAGE.x1, 6.2, 6.4, STAGE.z1 - 1.2, STAGE.z1 - 0.8, 'xXyYzZ', 1);
     B('stageblk', BALC.x0, BALC.x1, H - 0.45, H, BALC.z1 - 0.05, BALC.z1 + 0.05, 'yZ', 0.5); B('led', BALC.x0, BALC.x1, H - 0.42, H - 0.38, BALC.z1 + 0.05, BALC.z1 + 0.06, 'Z', 1);
-    for (const [x0, x1, z0, z1] of [[0.02, 0.06, 8, 34], [39.94, 39.98, 8, 34]]) B('led', x0, x1, 2.6, 2.66, z0, z1, x0 < 1 ? 'X' : 'x', 1);
-    B('led', 0, 40, 2.6, 2.66, 33.94, 33.98, 'z', 1);
+    for (const [x0, x1, z0, z1] of [[0.1, 0.13, 8.1, 33.9], [39.87, 39.9, 8.1, 33.9]]) B('led', x0, x1, 2.6, 2.66, z0, z1, x0 < 1 ? 'X' : 'x', 1);
+    B('led', 0.1, 39.9, 2.6, 2.66, 33.87, 33.9, 'z', 1);
+    // the balcony's underside: the hall is two storeys, so it has no ceiling of its own, and the balcony floor had no face from below
+    b('stageblk').quad([BALC.x0, H - 0.012, BALC.z0], [BALC.x1, H - 0.012, BALC.z0], [BALC.x1, H - 0.012, BALC.z1], [BALC.x0, H - 0.012, BALC.z1], [0, -1, 0], 0.5);
+    // the stage steps: five risers up its front at the east end, a handrail each side
+    for (let i = 0; i < 5; i++) { const d = (STEPS.z1 - STEPS.z0) / 5, z0 = STEPS.z0 + i * d; B('stagetop', STEPS.x0, STEPS.x1, 0, (i + 1) * STAGE.h / 5, z0, z0 + d, 'xXyz', 1); B('led', STEPS.x0 + 0.05, STEPS.x1 - 0.05, (i + 1) * STAGE.h / 5 - 0.03, (i + 1) * STAGE.h / 5 - 0.01, z0 - 0.012, z0, 'z', 1); }
     plane(root, 'DJ  NOVA', 3.4, 0.6, DJ.x, STAGE.h + 1.0, DJ.z - 1.23, Math.PI, { bg: null, fg: '#7ad8ff', pw: 512, ph: 96, own: true });
     // beams from the moving heads on the truss: cones of faint light that swing over the floor
     const cone = new THREE.ConeGeometry(1.3, 9, 16, 1, true); cone.translate(0, -4.5, 0);
     for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(cone, MATS.beam.clone()); const x = STAGE.x0 + 1.5 + i * (STAGE.x1 - STAGE.x0 - 3) / 7; m.position.set(x, 6.0, STAGE.z0 + 0.6); m.renderOrder = 6; root.add(m); beams.push({ m, x, ph: i * 0.8, c: new THREE.Color() }); }
     // ---- signs inside ----
-    plane(root, 'BACKSTAGE  ·  STAFF ONLY', 2.6, 0.32, 3.6, 2.5, 33.93, Math.PI, { bg: '#16181c', fg: '#ff5050' }); plane(root, 'STAFF ONLY', 1.4, 0.3, 39.93, 2.5, 22.6, -Math.PI / 2, { bg: '#16181c', fg: '#ff5050' });
-    plane(root, 'VIP  ▲', 1.2, 0.3, 4.5, 2.6, 7.93, Math.PI, { bg: '#2a1240', fg: '#ffd23a' }); plane(root, 'GREEN ROOM', 1.6, 0.3, 22, 2.5, 36.07, Math.PI, { bg: '#16181c', fg: '#d8c08a' });
-    plane(root, 'COAT CHECK', 2, 0.36, 14, 2.6, 6.45, 0, { bg: '#2a1240', fg: '#ffd23a' }); plane(root, 'MANAGER', 1.2, 0.26, 44.93, H + 2.4, 4.6, -Math.PI / 2, { bg: '#16181c', fg: '#d8c08a' });
+    plane(root, 'BACKSTAGE  ·  STAFF ONLY', 2.6, 0.32, 3.6, 2.5, 33.855, Math.PI, { bg: '#16181c', fg: '#ff5050' }); plane(root, 'STAFF ONLY', 1.4, 0.3, 39.855, 2.5, 28.2, -Math.PI / 2, { bg: '#16181c', fg: '#ff5050' });
+    plane(root, 'VIP  ▲', 1.2, 0.3, 4.5, 2.6, 7.855, Math.PI, { bg: '#2a1240', fg: '#ffd23a' }); plane(root, 'GREEN ROOM', 1.6, 0.3, 22, 2.5, 36.145, Math.PI, { bg: '#16181c', fg: '#d8c08a' });
+    plane(root, 'COAT CHECK', 2, 0.36, 14, 2.6, 6.45, 0, { bg: '#2a1240', fg: '#ffd23a' }); plane(root, 'MANAGER', 1.2, 0.26, 44.855, H + 2.4, 4.6, -Math.PI / 2, { bg: '#16181c', fg: '#d8c08a' });
     // ---- the city round the block: dark buildings with a few lit windows ----
     { const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0); const m = new THREE.MeshBasicMaterial({ color: 0x101219 });
       for (let k = 0; k < 36; k++) { const a = k * 6.283 / 36 + rr() * 0.1, r = 110 + rr() * 90, o = new THREE.Mesh(geo, m); o.position.set(29 + Math.cos(a) * r, 0, 10 + Math.sin(a) * r); o.scale.set(14 + rr() * 22, 10 + rr() * 50, 14 + rr() * 22); hills.add(o); } }

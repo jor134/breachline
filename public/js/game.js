@@ -645,7 +645,7 @@ function onMsg2(m) {
   else if (m.t === 's') applySnap(m);
 }
 function applySnap(m) {
-  const prev = S.phase; S.phase = m.ph; S.timer = m.tm; S.extract = m.X || 0; if (S.mode && level.objective(head.pos.x, head.pos.z)) S.everInside = true; if (m.ph !== 'active') S.everInside = false; let sec = 0;
+  const prev = S.phase; S.phase = m.ph; S.timer = m.tm; S.extract = m.X || 0; if (S.mode && performance.now() - (S.startAt || 0) > 2000 && level.objective(head.pos.x, head.pos.z)) S.everInside = true; if (m.ph !== 'active') S.everInside = false; let sec = 0;
   S.hvt = ''; for (const [id, x, y, z, yaw, st, armed] of m.N) { const a = S.actors.get(id); if (a) a.target(x, y, z, yaw, st, armed); if (id > 100 && st === 'u') sec++; if (S.hvtIds.length === 1 && id === S.hvtId) S.hvt = st === 'u' || st === 'j' ? 'ARRESTED' : st === 'd' ? 'DOWN' : 'AT LARGE'; }
   if (S.hvtIds.length > 1) { const done = m.N.filter(r => S.hvtIds.includes(r[0]) && (r[5] === 'u' || r[5] === 'j' || r[5] === 'd')).length; S.hvt = done + '/' + S.hvtIds.length; }
   for (const a of S.actors.values()) a.g.visible = a.blob.visible = m.ph !== 'lobby'; for (const b of S.bombs) b.g.visible = m.ph !== 'lobby';
@@ -675,7 +675,7 @@ function onEvent(e) {
   tut.event(e, S.me.id);
   const a = e.n != null ? S.actors.get(e.n) : null;
   switch (e.e) {
-    case 'start': if (!S.watch) { resetLoadout(); placeAtSpawn(); flyIn(); } S.report = null; S.menu = false; S.panel = null; panel.mesh.visible = false; if (M.training) showLobbyPanel(); sfx.ok(); break;
+    case 'start': S.startAt = performance.now(); if (!S.watch) { resetLoadout(); placeAtSpawn(); flyIn(); } S.report = null; S.menu = false; S.panel = null; panel.mesh.visible = false; if (M.training) showLobbyPanel(); sfx.ok(); break;
     case 'th': { const t = targets[e.t]; if (t) { const p = t.g.position; if (e.ns) sayAt(p.x, p.y + t.d.h + 0.4, p.z, 'NO-SHOOT!', '#6fa8ff'); if (e.p === S.me.id) sfx.beep(p, e.ns ? 300 : 1400); } break; }
     case 'house': sfx.ok(); sayAt(head.pos.x, head.pos.y + 0.5, head.pos.z - 1.5, 'HOUSE CLEAR ' + e.time + 's' + (e.ns ? '  (' + e.ns + ' no-shoot)' : '') + (e.time <= e.best ? '  BEST' : ''), '#80ff9a'); break;
     case 'bombreset': { const o = S.bombs[e.b]; if (o) { const b = new Bomb(o.g.position.x, o.g.position.y, o.g.position.z, e.wires, e.order, o.g.rotation.y); b.order = e.order; b.n = 0; scene.remove(o.g); scene.add(b.g); S.bombs[e.b] = b; sayAt(b.g.position.x, b.g.position.y + 0.5, b.g.position.z, 'BOMB RESET', '#ffb060'); } break; }
@@ -1304,7 +1304,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q62';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q63';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

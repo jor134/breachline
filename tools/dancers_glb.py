@@ -92,12 +92,19 @@ def skin_pose(g, ni, W):
         out.append((p.get('material', 0), S[:, :3], g.acc(at['TEXCOORD_0']) if 'TEXCOORD_0' in at else np.zeros((len(P), 2)), g.acc(p['indices']).reshape(-1, 3)))
     return out
 
-def simplify(P, I, target):
+def simplify(P, I, target, UV=None):
     if target >= len(I): return I, np.arange(len(P))
+    # true duplicates (same point, same texture spot: a mesh exported with split faces) are welded first, so they simplify as one
+    if UV is not None:
+        key = np.c_[np.round(P / 1e-5), np.round(UV / 1e-5)].astype(np.int64); _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
+        inv = inv.reshape(-1); NI, o = simplify(P[first], inv[I], target); return NI, first[o]
     with tempfile.TemporaryDirectory() as t:
         fi, fo = os.path.join(t, 'i.bin'), os.path.join(t, 'o.bin')
-        with open(fi, 'wb') as f: f.write(struct.pack('<ii', len(P), len(I))); f.write(P.astype(np.float64).tobytes()); f.write(I.astype(np.int32).tobytes())
-        subprocess.run([QEM, fi, fo, str(target), 'keep'], check=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        # seams: a point split into two vertices (two textures, two parts, a UV cut) is locked, so neither side can pull away from it
+        # and open a crack (the holes in the dancers); everything else is simplified as before
+        key = np.round(P / 1e-5).astype(np.int64); _, inv, cnt = np.unique(key, axis=0, return_inverse=True, return_counts=True); lock = (cnt[inv.reshape(-1)] > 1).astype(np.uint8)
+        with open(fi, 'wb') as f: f.write(struct.pack('<ii', len(P), len(I))); f.write(P.astype(np.float64).tobytes()); f.write(I.astype(np.int32).tobytes()); f.write(lock.tobytes())
+        subprocess.run([QEM, fi, fo, str(target), 'keep', 'lock'], check=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         o = open(fo, 'rb').read(); mv, mt = struct.unpack('<ii', o[:8]); q = 8 + mv * 24; NI = np.frombuffer(o, np.int32, mt * 3, q).reshape(mt, 3); q += mt * 12; orig = np.frombuffer(o, np.int32, mv, q)
         return NI, orig
 def normals(P, I):
@@ -132,7 +139,7 @@ def bake(g, ni, frames, target, height, keep=lambda name: True, name='?'):
     if (hi - lo)[2] > (hi - lo)[1] * 1.5: poses = poses[:, :, [0, 2, 1]] * np.array([1, 1, -1])
     c = poses[0].mean(0); poses -= np.array([c[0], poses[0][:, 1].min(), c[2]]); poses *= height / poses[0][:, 1].max()
     # weld coincident vertices for the simplifier (UV seams), keep the first of each
-    NI, orig = simplify(poses[0], I, target)
+    NI, orig = simplify(poses[0], I, target, UV)
     buf = io.BytesIO(); img.save(buf, 'JPEG', quality=85)
     P = poses[:, orig]; print(f'{name:12s} {len(NI):6d} tris {len(orig):6d} verts {len(frames)} poses  texture {img.size}')
     return P, NI, UV[orig], buf.getvalue()
@@ -217,7 +224,7 @@ def bake_many(g, nis, frames, target, height, keep, name):
     lo, hi = Ps[0].min(0), Ps[0].max(0)
     if (hi - lo)[2] > (hi - lo)[1] * 1.5: Ps = Ps[:, :, [0, 2, 1]] * np.array([1, 1, -1])
     c = Ps[0].mean(0); Ps = Ps - np.array([c[0], Ps[0][:, 1].min(), c[2]]); Ps *= height / Ps[0][:, 1].max()
-    NI, orig = simplify(Ps[0], I, target); buf = io.BytesIO(); img.save(buf, 'JPEG', quality=85)
+    NI, orig = simplify(Ps[0], I, target, UV); buf = io.BytesIO(); img.save(buf, 'JPEG', quality=85)
     print(f'{name:12s} {len(NI):6d} tris {len(orig):6d} verts {len(frames)} poses  texture {img.size}')
     return Ps[:, orig], NI, UV[orig], buf.getvalue()
 out.append(('belly',) + bake_many(belly, bnodes, own_frames(belly, 1.0), TRIS, 1.68, skip, 'belly'))
