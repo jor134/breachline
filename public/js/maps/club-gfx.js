@@ -30,7 +30,7 @@ const LAMPS = [
 const NIGHT = {
   sky: [[0, '#04050c'], [0.3, '#0a0d1c'], [0.45, '#161a30'], [0.5, '#2b2740'], [0.53, '#111018'], [1, '#0c0c12']], skyR: 400, moon: [-120, 130, -150],
   fog: [0x0e1018], fogD: [0.006, 0.01], sunAt: [29, 18], sunFrom: [-40, 90, -70], shadow: 45, sunCol: 0xb8c8ff, sunK: 0.55, hemi: 0.6, hemiSky: 0x8a90c0, hemiGround: 0x3a3440,
-  hillColor: 0x06070b, lamps: LAMPS,
+  hillColor: 0x06070b, lamps: LAMPS, lampCap: 8,   // 45 lamps: quality mode lends 8 lights round them, not one each
 };
 const cvs = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; return t; };
 let seed = 9; const rr = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };

@@ -256,7 +256,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   let LAMP_POOL = 4; const lampDefs = env.lamps.map(([x, y, z, i = 10, r = 11]) => ({ p: new THREE.Vector3(x, y, z), i, r, k: 1 }));
   const mkLamp = d => { const l = new THREE.PointLight(0xffd9a8, d.i, d.r, 1.8); l.position.copy(d.p); l.userData.i = d.i; l.userData.d = d; l.userData.f = 1; l.userData.want = d; root.add(l); return l; };
   const lamps = lampDefs.slice(0, LAMP_POOL).map(mkLamp);
-  const setLampPool = n => { n = Math.min(lampDefs.length, n); if (n === LAMP_POOL && lamps.length === n) return; LAMP_POOL = n;
+  const setLampPool = n => { n = Math.min(lampDefs.length, n, env.lampCap || 99);   // a map with many lamps caps quality mode's lights (each light costs every lit pixel) if (n === LAMP_POOL && lamps.length === n) return; LAMP_POOL = n;
     while (lamps.length > n) root.remove(lamps.pop());
     for (const l of lamps) { const u = l.userData; u.want = u.d; u.f = 1; u.i = u.d.i; l.position.copy(u.d.p); l.distance = u.d.r; l.intensity = u.i * lampK; }
     for (const d of lampDefs) { if (lamps.length >= n) break; if (!lamps.some(l => l.userData.d === d)) { const l = mkLamp(d); l.intensity = d.i * lampK; lamps.push(l); } } };
