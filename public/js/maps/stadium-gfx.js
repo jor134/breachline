@@ -11,7 +11,7 @@ import { setRotor } from '../audio.js';
 import { H, XC, ZC, PITCH, BLOCK, TERR, DECK, HELI, SHAFT, SUITES, WINX, ROPES, YC, YS, ROOF, FLY, inHeli } from '../core/maps/stadium.js';
 import { makeCrowd } from './stadium-crowd.js';
 
-let tod = 'night', glows = [], heli = null, screens = null, crowd = null, inner = null, flood = [];
+let outside = [], outsideOn = true, tod = 'night', glows = [], heli = null, screens = null, crowd = null, inner = null, flood = [];
 // lamps: [x, y, z, intensity, range] — the club, the suites, the terrace and the concourse
 const LAMPS = [[24, YC + 3.2, 16.5, 12, 16], [12, YC + 3.2, 23, 8, 12], [36, YC + 3.2, 23, 8, 12], [30, YC + 3.2, 8, 7, 12], [49, YC + 3.0, 15, 7, 11],
   [11, YS + 3.0, 19, 6, 10], [21, YS + 3.0, 19, 6, 10], [31, YS + 3.0, 19, 7, 10], [41, YS + 3.0, 19, 6, 10], [51, YS + 3.0, 19, 6, 10], [30, YS + 3.0, 8, 5, 12], [3, YS + 3.0, 22, 5, 10]];
@@ -96,7 +96,7 @@ export default {
   // the stadium model, the helicopter model and the crowd load after the scene is up
   load() {
     const shell = new Promise((res) => new ObfLoader().load('models/stadium/stadium.glb', gl => {
-      gl.scene.traverse(o => { if (!o.isMesh) return; const m = o.material; m.side = THREE.DoubleSide; if (m.transparent) { m.depthWrite = false; o.renderOrder = 4; } else { o.receiveShadow = true; }
+      outside = []; gl.scene.traverse(o => { if (!o.isMesh) return; if (/_ext$/.test(o.name)) outside.push(o); const m = o.material; m.side = THREE.DoubleSide; if (m.transparent) { m.depthWrite = false; o.renderOrder = 4; } else { o.receiveShadow = true; }
         m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.25; if (!pbrMats.includes(m)) pbrMats.push(m); o.matrixAutoUpdate = false; o.updateMatrix(); });
       res(gl.scene);
     }, undefined, () => res(null)));
@@ -248,6 +248,10 @@ export default {
       if (showC !== inner.showC) { inner.showC = showC; for (const m of Z.club || []) m.visible = showC; }
       if (showS !== inner.showS) { inner.showS = showS; for (const m of Z.suites || []) m.visible = showS; }
     }
+    // the stadium's outside (facades, ramps, the backs of the stands: about a third of the model) is drawn only until the squad is
+    // off the helicopter: from the VIP block and the roof none of it can be seen
+    const showOut = !(S.mode && S.phase === 'active' && !S.fly) && !window.__hideOutside;
+    if (showOut !== outsideOn) { outsideOn = showOut; for (const o of outside) o.visible = showOut; }
     if (screens) { screens.min += dt / 60; const sec = Math.floor(screens.min * 60) % (90 * 60); if (sec !== screens.last) { screens.last = sec; screens.paint(sec); } }
     if (crowd) crowd.tick(dt, head.pos);
     if (heli) { const h = heli; h.rotor.rotation.y += dt * 7; h.tail.rotation[h.tailAx || 'z'] += dt * 30; h.beacon.visible = (performance.now() % 1200) < 150;
