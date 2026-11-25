@@ -13,7 +13,7 @@ import { H, FOOT, WEST, EAST, TERR, PAV, VOID, FLIGHTS, LANDINGS, YARD, DRIVE, P
 import { makeDancers } from './club-crowd.js';
 
 const VAN_TURN = Math.PI;   // the van model's nose is at its -z end: turned to face the winery
-let tod = 'dusk', glows = [], matGlows = [], dancers = null, beams = [], ledMats = [], root0 = null, andes = [], bulbs = null, sunGlow = null, mix = { g: -1, c: -1 };
+let MATS1 = null, BAR = null, barT = 0, tod = 'dusk', glows = [], matGlows = [], dancers = null, beams = [], ledMats = [], root0 = null, andes = [], bulbs = null, sunGlow = null, mix = { g: -1, c: -1 };
 const LAMPS = [
   // ground: west wing, visitor centre, cellar, east wing
   [6, 3.9, 5, 6, 9], [16, 3.9, 5, 6, 9], [23, 3.9, 5, 5, 8], [8, 8.2, 18, 9, 14], [18, 8.2, 18, 9, 14], [8, 8.2, 28, 9, 14], [18, 8.2, 28, 9, 14],
@@ -124,6 +124,9 @@ function sign(text, bg, fg, w = 512, h = 96, font = 'bold') {
 const plane = (root, text, w, h, x, y, z, ry, o = {}) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: sign(text, o.bg === undefined ? '#16181c' : o.bg, o.fg || '#f2f2ee', o.pw, o.ph), transparent: o.bg === null, depthWrite: o.bg !== null })); m.position.set(x, y, z); m.rotation.y = ry; root.add(m); if (!o.lit) { glows.push(m.material); m.material.userData.c = 0xffffff; } return m; };
 
 // ---------- furniture the map draws ----------
+// the bottles and glasses are the kit's models, instanced once it loads: the furniture leaves their places here
+const PROPS = { bottle: [], glass: [] };
+const prop = (k, W, u, v, y) => PROPS[k].push(W(u + (k === 'glass' ? 0.035 : 0.04), v + (k === 'glass' ? 0.035 : 0.04), y));
 const ff = fn => fn[0] > 0 ? 'X' : fn[0] < 0 ? 'x' : fn[2] > 0 ? 'Z' : 'z';   // the world face letter of a piece's front
 const furn = {
   tank() { }, dancer() { }, stool() { }, tspeaker() { },   // instanced or kit (scenery / load)
@@ -132,30 +135,30 @@ const furn = {
   destemmer({ P, len, dep, h }) { for (const [u, v] of [[0.1, 0.1], [len - 0.2, 0.1], [0.1, dep - 0.2], [len - 0.2, dep - 0.2]]) P('steelD', u, u + 0.1, v, v + 0.1, 0, 0.5); P('steelG', 0, len, 0.2, dep - 0.2, 0.5, h - 0.5); P('steelG', 0.3, len - 0.3, 0, dep, h - 0.5, h); P('grapes', 0.4, len - 0.4, 0.1, dep - 0.1, h - 0.06, h + 0.005, 'Y'); },
   sorttable({ P, len, dep, h }) { P('steelG', 0, len, 0, dep, h - 0.12, h - 0.04); P('beltM', 0.05, len - 0.05, 0.1, dep - 0.1, h - 0.04, h); P('grapes', 0.8, len - 1.2, 0.25, dep - 0.25, h, h + 0.04); for (const u of [0.1, len - 0.2]) for (const v of [0.05, dep - 0.15]) P('steelD', u, u + 0.1, v, v + 0.1, 0, h - 0.12); },
   bin({ P, len, dep, h }) { P('binM', 0, len, 0, dep, 0, h - 0.02, 'xXzZY'); P('grapes', 0.06, len - 0.06, 0.06, dep - 0.06, h - 0.02, h, 'Y'); },
-  labbench({ P, len, dep, h }) { P('lacquer', 0.02, len - 0.02, 0, dep - 0.04, 0, h - 0.04); P('labtop', 0, len, 0, dep, h - 0.04, h); for (let u = 0.4; u < len - 0.3; u += 0.9 + rr()) P('glassware', u, u + 0.08, dep * 0.3, dep * 0.3 + 0.08, h, h + 0.18 + rr() * 0.1); },
+  labbench({ P, W, len, dep, h }) { P('lacquer', 0.02, len - 0.02, 0, dep - 0.04, 0, h - 0.04); P('labtop', 0, len, 0, dep, h - 0.04, h); for (let u = 0.4; u < len - 0.3; u += 0.9 + rr()) P('glassware', u, u + 0.08, dep * 0.3, dep * 0.3 + 0.08, h, h + 0.18 + rr() * 0.1); },   // (lab beakers: boxes)
   pump({ P, len, dep, h }) { P('steelD', 0, len, 0, dep, 0, 0.15); P('steelG', 0.15, len - 0.15, 0.2, dep - 0.2, 0.15, h); P('redM', 0.3, len - 0.3, 0.3, dep - 0.3, h - 0.25, h + 0.02); },
   wineshelf({ P, len, dep, h, fn }) { P('oakD', 0, len, 0, dep - 0.02, 0, h); P('rack', 0.04, len - 0.04, dep - 0.02, dep, 0.06, h - 0.06, ff(fn), 1); },
-  display({ P, len, dep, h }) { P('oakD', 0, len, 0, dep, 0, h); for (let u = 0.15; u < len - 0.1; u += 0.22) P(u % 0.66 < 0.22 ? 'bottleR' : 'bottleW', u, u + 0.08, dep / 2 - 0.04, dep / 2 + 0.04, h, h + 0.32); },
-  ttable({ P, len, dep, h }) { P('oakL', 0, len, 0, dep, h - 0.05, h); for (const u of [0.15, len - 0.25]) P('steelD', u, u + 0.1, 0.15, dep - 0.15, 0, h - 0.05); for (let u = 0.4; u < len - 0.3; u += 0.6) { P('glassware', u, u + 0.07, 0.25, 0.32, h, h + 0.17); P('glassware', u + 0.2, u + 0.27, dep - 0.32, dep - 0.25, h, h + 0.17); } P('bottleR', len / 2 - 0.04, len / 2 + 0.04, dep / 2 - 0.04, dep / 2 + 0.04, h, h + 0.32); },
+  display({ P, W, len, dep, h }) { P('oakD', 0, len, 0, dep, 0, h); for (let u = 0.15; u < len - 0.1; u += 0.22) prop('bottle', W, u, dep / 2 - 0.04, h); },
+  ttable({ P, W, len, dep, h }) { P('oakL', 0, len, 0, dep, h - 0.05, h); for (const u of [0.15, len - 0.25]) P('steelD', u, u + 0.1, 0.15, dep - 0.15, 0, h - 0.05); for (let u = 0.4; u < len - 0.3; u += 0.6) { prop('glass', W, u, 0.25, h); prop('glass', W, u + 0.2, dep - 0.32, h); } prop('bottle', W, len / 2 - 0.04, dep / 2 - 0.04, h); },
   pallet({ P, len, dep, h }) { P('palletW', 0, len, 0, dep, 0, 0.14); P('cases', 0.03, len - 0.03, 0.03, dep - 0.03, 0.14, h, 'xXzZY', 1); P('wrap', -0.005, len + 0.005, -0.005, dep + 0.005, 0.3, h - 0.1, 'xXzZ', 1); },
-  conveyor({ P, len, dep, h }) { for (let u = 0.2; u < len; u += 2) P('steelD', u, u + 0.08, 0.1, dep - 0.1, 0, h - 0.1); P('steelG', 0, len, 0, dep, h - 0.1, h - 0.03); P('beltM', 0.05, len - 0.05, 0.1, dep - 0.1, h - 0.03, h); for (let u = 0.3; u < len - 0.2; u += 0.3) P('bottleR', u, u + 0.08, dep / 2 - 0.04, dep / 2 + 0.04, h, h + 0.3); },
+  conveyor({ P, W, len, dep, h }) { for (let u = 0.2; u < len; u += 2) P('steelD', u, u + 0.08, 0.1, dep - 0.1, 0, h - 0.1); P('steelG', 0, len, 0, dep, h - 0.1, h - 0.03); P('beltM', 0.05, len - 0.05, 0.1, dep - 0.1, h - 0.03, h); for (let u = 0.3; u < len - 0.2; u += 0.3) prop('bottle', W, u, dep / 2 - 0.04, h); },
   filler({ P, len, dep, h }) { P('steelG', 0, len, 0, dep, 0, h * 0.55); P('glassM', 0.05, len - 0.05, 0.05, dep - 0.05, h * 0.55, h - 0.12, 'xXzZ'); P('steelD', 0, len, 0, dep, h - 0.12, h); },
   desk({ P, len, dep, h }) { P('oakD', 0, len, 0, dep, h - 0.04, h); P('oakD', 0, 0.05, 0, dep, 0, h - 0.04); P('oakD', len - 0.05, len, 0, dep, 0, h - 0.04); P('oakD', 0.05, len - 0.05, 0, 0.04, 0.3, h - 0.04); },   // its laptop is a kit
   safe({ P, len, dep, h, fn }) { P('steelD', 0, len, 0, dep, 0, h); P('chrome', len / 2 - 0.1, len / 2 + 0.1, dep, dep + 0.03, h / 2 - 0.1, h / 2 + 0.1, ff(fn)); },
-  dtable({ P, len, dep, h }) {   // a table for four, laid: cloth, a candle, glasses; a chair each side
+  dtable({ P, W, len, dep, h }) {   // a table for four, laid: cloth, a candle, glasses; a chair each side
     P('linen', 0.1, len - 0.1, 0.45, dep - 0.45, h - 0.04, h); P('linen', 0.12, len - 0.12, 0.47, dep - 0.47, h - 0.3, h - 0.04, 'xXzZ'); P('steelD', len / 2 - 0.05, len / 2 + 0.05, dep / 2 - 0.05, dep / 2 + 0.05, 0, h - 0.3);
-    P('glowW', len / 2 - 0.025, len / 2 + 0.025, dep / 2 - 0.025, dep / 2 + 0.025, h, h + 0.08); for (const u of [0.45, len - 0.55]) for (const v of [0.6, dep - 0.7]) P('glassware', u, u + 0.07, v, v + 0.07, h, h + 0.17);
+    P('glowW', len / 2 - 0.025, len / 2 + 0.025, dep / 2 - 0.025, dep / 2 + 0.025, h, h + 0.08); for (const u of [0.45, len - 0.55]) for (const v of [0.6, dep - 0.7]) prop('glass', W, u, v, h);
     for (const u of [0.25, len - 0.7]) { P('chairM', u, u + 0.45, 0.05, 0.45, 0.42, 0.47); P('chairM', u, u + 0.45, 0.05, 0.1, 0.47, 0.95); P('chairM', u, u + 0.45, dep - 0.45, dep - 0.05, 0.42, 0.47); P('chairM', u, u + 0.45, dep - 0.1, dep - 0.05, 0.47, 0.95);
       for (const v of [0.07, 0.38, dep - 0.43, dep - 0.12]) for (const du of [0.02, 0.39]) P('steelD', u + du, u + du + 0.04, v, v + 0.04, 0, 0.42); } },
   stove({ P, len, dep, h }) { P('steelG', 0, len, 0, dep, 0, h - 0.04); P('steelD', 0, len, 0, dep, h - 0.04, h); for (const u of [0.3, len - 0.7]) for (const v of [0.4, dep - 0.8]) P('redM', u, u + 0.4, v, v + 0.4, h, h + 0.01, 'Y'); },
   boardtable({ P, len, dep, h }) { P('walnut', 0.5, len - 0.5, 0.6, dep - 0.6, h - 0.05, h); P('steelD', len / 2 - 0.6, len / 2 + 0.6, dep / 2 - 0.3, dep / 2 + 0.3, 0, h - 0.05);
     for (let u = 0.9; u < len - 0.8; u += 1.2) for (const v of [0.05, dep - 0.5]) { P('chairM', u, u + 0.5, v, v + 0.45, 0.45, 0.52); P('chairM', u, u + 0.5, v < 1 ? v : v + 0.38, v < 1 ? v + 0.07 : v + 0.45, 0.52, 1.0); P('steelD', u + 0.22, u + 0.28, v + 0.2, v + 0.26, 0, 0.45); } },
   djbooth({ P, len, dep, h, fn }) { P('stageblk', 0, len, 0, dep, 0, h - 0.06); P('led', 0.05, len - 0.05, dep, dep + 0.01, 0.12, 0.16, ff(fn)); P('led', 0.05, len - 0.05, dep, dep + 0.01, h - 0.24, h - 0.2, ff(fn)); },
-  tbar({ P, len, dep, h, fn }) { P('corten', 0, len, 0, dep, 0, h - 0.05); P('stoneD', -0.03, len + 0.03, -0.03, dep + 0.06, h - 0.05, h); P('ledW', 0.05, len - 0.05, dep, dep + 0.008, h - 0.14, h - 0.1, ff(fn));
-    for (let u = 0.3; u < len - 0.2; u += 0.55) P(rr() < 0.5 ? 'bottleR' : 'bottleW', u, u + 0.08, 0.15, 0.23, h, h + 0.32); },
+  tbar({ P, W, len, dep, h, fn }) { P('corten', 0, len, 0, dep, 0, h - 0.05); P('stoneD', -0.03, len + 0.03, -0.03, dep + 0.06, h - 0.05, h); P('ledW', 0.05, len - 0.05, dep, dep + 0.008, h - 0.14, h - 0.1, ff(fn));
+    for (let u = 0.3; u < len - 0.2; u += 0.55) prop('bottle', W, u, 0.15, h); },
   lounge({ P, len, dep, h }) { P('loungeB', 0, len, 0, dep, 0, 0.32); P('linen', 0.04, len - 0.04, 0.04, dep - 0.04, 0.32, 0.44); P('loungeB', 0, len, 0, 0.22, 0.32, h); P('loungeB', 0, 0.2, 0.22, dep, 0.32, 0.58); P('loungeB', len - 0.2, len, 0.22, dep, 0.32, 0.58); },
-  ltable({ P, len, dep, h }) { P('oakL', 0, len, 0, dep, 0, h); P('glassware', 0.3, 0.37, 0.3, 0.37, h, h + 0.17); P('bottleR', 0.6, 0.68, 0.55, 0.63, h, h + 0.32); },
-  hightable({ P, len, dep, h }) { P('chrome', len / 2 - 0.04, len / 2 + 0.04, dep / 2 - 0.04, dep / 2 + 0.04, 0, h - 0.04); P('oakL', 0, len, 0, dep, h - 0.04, h); P('chrome', 0.1, len - 0.1, 0.1, dep - 0.1, 0, 0.03); P('glassware', 0.2, 0.27, 0.3, 0.37, h, h + 0.17); },
+  ltable({ P, W, len, dep, h }) { P('oakL', 0, len, 0, dep, 0, h); prop('glass', W, 0.3, 0.3, h); prop('bottle', W, 0.6, 0.55, h); },
+  hightable({ P, W, len, dep, h }) { P('chrome', len / 2 - 0.04, len / 2 + 0.04, dep / 2 - 0.04, dep / 2 + 0.04, 0, h - 0.04); P('oakL', 0, len, 0, dep, h - 0.04, h); P('chrome', 0.1, len - 0.1, 0.1, dep - 0.1, 0, 0.03); prop('glass', W, 0.2, 0.3, h); },
   planter({ P, len, dep, h }) { P('corten', 0, len, 0, dep, 0, h); P('soil', 0.05, len - 0.05, 0.05, dep - 0.05, h - 0.06, h - 0.05, 'Y'); P('shrub', 0.12, len - 0.12, 0.12, dep - 0.12, h - 0.05, h + 0.45); P('shrub', 0.25, len - 0.25, 0.25, dep - 0.25, h + 0.45, h + 0.7); },
 };
 // ---------- the club's kits ----------
@@ -202,12 +205,34 @@ const hills = a => Math.max(4, 10 + 5 * Math.sin(a * 9 + 0.5) + 3 * Math.sin(a *
 // tint of each range (multiplies its vertex colours) by time of day, power and night vision
 const TINT = { dusk: [0xffd0c0, 0xe0b8a8], night: [0x55637e, 0x2c3242] };
 
+// ---- the winery kit (tools/winery_kit.py): photo textures onto the building's materials, bottles, glasses and barrels instanced ----
+function useKit(scene) {
+  if (!root0 || !MATS1) return null; const M = MATS1, meshes = n => { const o = scene.getObjectByName(n), r = []; if (o) o.traverse(q => { if (q.isMesh) r.push(q); }); return r; };
+  const set = (m, src, rep, o = {}) => { if (!m || !src) return; const tex = (t, cs) => { const c = t.clone(); c.repeat.set(rep[0], rep[1]); c.wrapS = c.wrapT = o.mirror ? THREE.MirroredRepeatWrapping : THREE.RepeatWrapping; c.anisotropy = 4; if (cs) c.colorSpace = cs; c.needsUpdate = true; return c; };
+    m.map = tex(src.map, THREE.SRGBColorSpace); if (src.normalMap) { m.normalMap = tex(src.normalMap); m.normalScale = new THREE.Vector2(o.ns || 1, o.ns || 1); } m.color.set(o.color || 0xffffff); m.needsUpdate = true; };
+  const T = n => (meshes('tex_' + n)[0] || {}).material;
+  // the stone: 2 m wide, 4 m tall a repeat (outside walls run 1 UV a metre; the cellar's inside walls 2 m a UV); concrete 2 m, tinted
+  // ochre outside and pale inside; corten 2 m, mirrored (its photo has seams)
+  set(M.pirca, T('stone'), [0.5, 0.25], { ns: 1.2, color: 0xf4dcc0 }); set(M.pircaIn, T('stone'), [1, 0.5], { ns: 1.2, color: 0xf4dcc0 });   // (warmed: the scan's stone is grey-blue, Mendoza's is brown) set(M.ochre, T('concrete'), [0.5, 0.5], { color: 0xffd89a });
+  set(M.stairTop, T('concrete'), [0.5, 0.5], { color: 0xf2dcb4 }); set(M.concW, T('concrete'), [1, 1], { color: 0xf0ece6, ns: 0.5 });
+  set(M.corten, T('corten'), [0.5, 0.5], { mirror: true });
+  const g = new THREE.Group(); g.name = 'winerykit2'; root0.add(g); const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  const inst = (name, n) => meshes(name).map(src => { const mt = src.material; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.6; if (!pbrMats.includes(mt)) pbrMats.push(mt); const im = new THREE.InstancedMesh(src.geometry, mt, n); im.castShadow = !mt.transparent; im.receiveShadow = true; im.frustumCulled = false; g.add(im); return im; });
+  for (const k of ['bottle', 'glass']) { const list = PROPS[k]; if (!list.length) continue; const ims = inst(k, list.length);
+    list.forEach(([x, y, z], i) => { e.set(0, rr() * 6.28, 0); q.setFromEuler(e); m4.compose(p.set(x, y, z), q, one); for (const im of ims) im.setMatrixAt(i, m4); }); }
+  // barrels: the near ones (up to 72 within 8 m of you) the full model, the rest the light one; on their sides in the racks
+  if (BAR && BAR.list.length) { const n = BAR.list.length; BAR.hi = inst('barrel', n); BAR.lo = inst('barrel_lo', n);
+    BAR.mats = BAR.list.map(([x, y, z, rx]) => { e.set(rx, 0, 0); q.setFromEuler(e); return m4.clone().compose(p.set(x, rx ? y : 0, rx ? z - 0.475 : z), q, one); });
+    if (BAR.hi.length && BAR.lo.length) { BAR.old.visible = false; barT = 99; } }
+  return g;
+}
 export default {
   get env() { return tod === 'night' ? NIGHT : DUSK; },
   envs: { dusk: DUSK, night: NIGHT },
   setTod(t) { tod = t === 'night' ? 'night' : 'dusk'; },
   load() {
-    setVenueMusic('sfx/club_music.blx', true);
+    setVenueMusic('sfx/winery_music.blx', true);   // "EDM short" by djdoblina (Pixabay licence)
+    const wkit = new Promise(res => new ObfLoader().load('models/winery/kit.glb', gl => res(useKit(gl.scene)), undefined, () => res(null)));
     const kit = new Promise(res => new ObfLoader().load('models/club/kit.glb', gl => res(placeKits(gl.scene, root0)), undefined, () => res(null)));
     // "Swat Van" by maregajavier (CC BY 4.0), as at the club: nose to the winery at the head of the drive, its light bar on its roof
     const van = new Promise(res => new ObfLoader().load('models/club/van.glb', gl => {
@@ -224,9 +249,9 @@ export default {
       for (const b of beams) if (b.siren) { b.siren.position.set(VAN.x, roofY + 0.05, front[0] - 0.2); b.siren.visible = true; }
       res(null);
     }, undefined, () => res(null)));
-    return Promise.all([kit, van, dancers ? dancers.load() : null]).then(() => new THREE.Group());
+    return Promise.all([kit, wkit, van, dancers ? dancers.load() : null]).then(() => new THREE.Group());
   },
-  dispose() { setVenueMusic(null, false); dancers = null; bulbs = null; andes = []; sunGlow = null; },
+  dispose() { setVenueMusic(null, false); BAR = null; MATS1 = null; dancers = null; bulbs = null; andes = []; sunGlow = null; },
   noshade: { glowW: 1, led: 1, ledW: 1, bulb: 1 },
   noCast: ['concrete', 'stoneF', 'oak', 'labtile', 'epoxy', 'tileK', 'carpetG', 'cellar', 'steelfloor', 'rows', 'gravel', 'dirt', 'plain', 'paverT', 'paverP', 'trunks', 'stairTop'],
   tread: 'stairTop',
@@ -235,7 +260,7 @@ export default {
   innerAt: (f, x, z) => {
     let r = ''; for (const q of ROOMS) if (q[0] === f && x >= q[2] && x <= q[4] && z >= q[3] && z <= q[5]) { r = q[1]; break; }
     if (/Laboratory|Sample|Kitchen/.test(r)) return 'tileW';
-    if (/Barrel/.test(r)) return 'pirca';
+    if (/Barrel/.test(r)) return 'pircaIn';
     if (/shop|Reception|Tasting|Gallery|Restaurant/.test(r)) return 'ochreIn';
     if (/office|Boardroom|Private|corridor/.test(r)) return 'officeW';
     return 'concW';
@@ -243,10 +268,10 @@ export default {
   door: d => d.exterior ? 'steelDoor' : 'door',
   furn,
   mats(M) {
-    if (M.pirca) return;
+    PROPS.bottle = []; PROPS.glass = []; if (M.pirca) return;
     const S = (t, gl) => sheen({ map: t }, gl);
     Object.assign(M, {
-      pirca: S(pircaTex(), 'stone'), ochre: S(ochreTex(), 'stone'), ochreIn: S(ochreTex('#d9c39a'), 'matte'), corten: S(cortenTex(), 'stone'),
+      pirca: S(pircaTex(), 'stone'), pircaIn: S(pircaTex(), 'stone'), ochre: S(ochreTex(), 'stone'), ochreIn: S(ochreTex('#d9c39a'), 'matte'), corten: S(cortenTex(), 'stone'),
       concrete: M.concrete || S(tex('#8d8a84', 4000, grid(2, 2, 'rgba(40,38,34,0.35)')), 'stone'), concW: S(tex('#a8a49c', 1500, grid(1, 4, 'rgba(0,0,0,0.08)')), 'matte'),
       stoneF: S(tex('#a89c88', 3000, grid(2, 2, 'rgba(60,50,40,0.4)')), 'satin'), oak: M.oak || S(tex('#7a5638', 6000, grid(8, 1, 'rgba(40,25,12,0.3)')), 'satin'),
       labtile: S(tex('#dfe2e2', 1500, grid(6, 6, 'rgba(80,90,95,0.35)')), 'polished'), epoxy: S(tex('#6f7a74', 3000), 'polished'), tileK: M.tileK || S(tex('#c9cdd0', 2000, grid(4, 4, 'rgba(60,64,68,0.4)')), 'polished'),
@@ -278,7 +303,7 @@ export default {
     for (const m of [...glows, ...matGlows]) m.color.set(nvg ? (night ? 0x0c3a12 : 0x9cff9c) : night ? 0x14110c : m.userData.c);
   },
   scenery({ b, root, hills: far, level, MATS }) {
-    glows = []; seed = 13; beams = []; ledMats = []; root0 = root; andes = []; mix = { g: -1, c: -1 };
+    MATS1 = MATS; BAR = null; glows = []; seed = 13; beams = []; ledMats = []; root0 = root; andes = []; mix = { g: -1, c: -1 };
     const B = (m, x0, x1, y0, y1, z0, z1, f = 'xXyYzZ', s = 1) => b(m).box(x0, x1, y0, y1, z0, z1, f, s);
     const flat = (m, x0, x1, z0, z1, y = 0, s = 0.25) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
     const UVQ = [[0, 0], [1, 0], [1, 1], [0, 1]];
@@ -355,7 +380,7 @@ export default {
       for (const f of FURNITURE) { if (f[6] === 'barrels') { const len = f[3] - f[1], n = Math.floor(len / 0.76), cz = (f[2] + f[4]) / 2; for (let i = 0; i < n; i++) for (const y of [0.5, 1.2]) list.push([f[1] + (i + 0.5) * len / n, y, cz, Math.PI / 2]); }
         else if (f[6] === 'barreltable') list.push([(f[1] + f[3]) / 2, 0.475, (f[2] + f[4]) / 2, 0]); }
       const BR = new THREE.InstancedMesh(geo, [side, head, head], list.length); BR.castShadow = BR.receiveShadow = true; const e = new THREE.Euler();
-      list.forEach(([x, y, z, rx], i) => { e.set(rx, 0, 0); q.setFromEuler(e); BR.setMatrixAt(i, m4.compose(p.set(x, y, z), q, s1)); }); root.add(BR); }
+      list.forEach(([x, y, z, rx], i) => { e.set(rx, 0, 0); q.setFromEuler(e); BR.setMatrixAt(i, m4.compose(p.set(x, y, z), q, s1)); }); root.add(BR); BAR = { list, old: BR, hi: null, lo: null }; }   // (until the kit's barrel arrives)
     // ---- the party's string lights: from the pavilion's band out to poles at the south rail ----
     { const poles = [32, 36, 40, 44.6, 48, 52], pts = [], wire = [];
       for (const x of poles) { B('steelD', x - 0.05, x + 0.05, H, H + 4.0, 33.6, 33.7, 'xXzZY'); const a = new THREE.Vector3(x, 2 * H - 0.9, PAV.z1 + 0.15), c = new THREE.Vector3(x, H + 3.95, 33.6);
@@ -384,5 +409,8 @@ export default {
     for (const bm of beams) if (bm.siren) bm.siren.material.color.set(Math.floor(t * 3) % 2 ? 0x3060ff : 0xff2020);
     const lv = venueLevel(); for (const m of ledMats) m.emissive.copy(m.userData.em).multiplyScalar(0.6 + lv * 0.8);
     if (dancers) dancers.tick(dt, p);
+    if (BAR && BAR.mats && (barT += dt) > 0.25) { barT = 0; const near = BAR.list.map(([x, y, z], i) => [(x - p.x) ** 2 + (y - p.y) ** 2 + (z - p.z) ** 2, i]).filter(d => d[0] < 64).sort((a, b) => a[0] - b[0]).slice(0, 72), isNear = new Set(near.map(d => d[1]));
+      let h = 0, l = 0; BAR.mats.forEach((m, i) => { if (isNear.has(i)) { for (const im of BAR.hi) im.setMatrixAt(h, m); h++; } else { for (const im of BAR.lo) im.setMatrixAt(l, m); l++; } });
+      for (const im of BAR.hi) { im.count = h; im.instanceMatrix.needsUpdate = true; } for (const im of BAR.lo) { im.count = l; im.instanceMatrix.needsUpdate = true; } }
   },
 };
