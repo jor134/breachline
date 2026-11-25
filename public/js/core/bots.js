@@ -93,7 +93,7 @@ export const BotMixin = {
     for (const n of this.npcs) {
       if (n.kind !== 's' || DONE[n.st] || n.st === 's' || n.st === 'k' || n.st === 'i' || !n.armed) continue;
       const d = Math.hypot(n.x - b.x, n.z - b.z), hot = n.st === 'c' || n.exec; if (d >= bd || (!hot && (d > 11 || !this.clear(b.x, ey, b.z, n.x, n.y + 1.3, n.z, true))) || !view(n.x, n.y + 1.3, n.z, d, hot && n.tgt === p.id)) continue;   // an unaware one is only worth stopping for within shouting range
-      bd = d; best = { n, hot, x: n.x, y: n.y + 1.25, z: n.z, d };
+      bd = d; best = { n, hot, x: n.x, y: n.y + (n.shield ? 1.62 : 1.25), z: n.z, d };   // one holding a hostage: only his head is a clean target
     }
     for (const q of this.players.values()) { if (q.team !== 'tango' || q.down || !q.has) continue; const d = Math.hypot(q.hx - b.x, q.hz - b.z); const heard = b.heard && this.t - b.heard[3] < 3 && Math.hypot(b.heard[0] - q.hx, b.heard[1] - q.hz) < 4; if (d < bd && view(q.hx, q.hy - 0.3, q.hz, d, heard)) { bd = d; best = { q, hot: true, x: q.hx, y: q.hy - 0.35, z: q.hz, d }; } }
     return best;
@@ -107,14 +107,15 @@ export const BotMixin = {
     }
     if (f.n && f.n.st === 'c' && f.n.tgt === p.id) b.crouch = true;   // under fire: get low
     if (b.foe !== (f.n || f.q)) { b.foe = f.n || f.q; b.aim = 0; this.bsay(p, 'contact'); }
-    b.aim += dt; if (Math.abs(off) > 0.12 || b.aim < (f.q ? 0.75 : 0.45)) return;
+    const careful = f.n && f.n.shield; if (careful && f.d > 7) { b.aim = Math.min(b.aim, 0.3); return; }   // a head past a hostage: close in first, then take time over it
+    b.aim += dt; if (Math.abs(off) > 0.12 || b.aim < (careful ? 1.3 : f.q ? 0.75 : 0.45)) return;
     if (b.rl > 0) { if ((b.rl -= dt) <= 0) { b.rl = 0; b.mag = 30; } return; }   // changing magazines
     if ((b.cool -= dt) > 0) return;
     // a clean line? no hostage, held shield or officer in front of the target
     const ey = b.y + (b.crouch ? 1.0 : 1.6), dx0 = f.x - b.x, dy0 = f.y - ey, dz0 = f.z - b.z, dl = Math.hypot(dx0, dy0, dz0);
     for (const n of this.npcs) { if (n.kind !== 'c' || n.st === 'd') continue; if (raySphere(b.x, ey, b.z, dx0 / dl, dy0 / dl, dz0 / dl, n.x, n.y + 1.0, n.z, 0.45) >= 0 && Math.hypot(n.x - b.x, n.z - b.z) < f.d + 0.3) { b.cool = 0.3; return; } }
     for (const q of this.players.values()) { if (q === p || q.team === 'tango' || q.down) continue; if (raySphere(b.x, ey, b.z, dx0 / dl, dy0 / dl, dz0 / dl, q.hx, q.hy - 0.4, q.hz, 0.4) >= 0 && Math.hypot(q.hx - b.x, q.hz - b.z) < f.d) { b.cool = 0.3; return; } }
-    const sp = 0.025 + 0.004 * f.d + (f.q ? 0.03 : 0), rn = () => (this.rnd() - 0.5) * 2 * sp;
+    const sp = (0.025 + 0.004 * f.d + (f.q ? 0.03 : 0)) * (careful ? 0.3 : 1), rn = () => (this.rnd() - 0.5) * 2 * sp;
     const tx = f.x + rn() * f.d, ty = f.y + rn() * f.d * 0.8, tz = f.z + rn() * f.d, dx = tx - b.x, dy = ty - ey, dz = tz - b.z, l = Math.hypot(dx, dy, dz);
     p.lastShot = -9; this.shot(p.id, { o: [b.x + dx / l * 0.3, ey, b.z + dz / l * 0.3], d: [dx / l, dy / l, dz / l], w: 'rifle' });
     if (b.mag === undefined) b.mag = 30; if (--b.mag <= 0) { b.rl = 2.4; this.bsay(p, 'reload'); }

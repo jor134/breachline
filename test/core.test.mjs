@@ -243,20 +243,24 @@ await t('cover: a suspect under fire moves out of the line of fire and shoots fr
     if (hid) covered++; if (hid && shot) fired++; }
   assert.ok(covered >= runs * 0.7, `took cover in ${covered}/${runs}`); assert.ok(fired >= covered * 0.7, `fired from cover in ${fired}/${covered}`);
 });
-await t('a suspect in a firefight turns on a nearby hostage after a few shots; you get a window to stop him', () => {
-  const setup = seed => { const [s, p] = mkSim(seed); const n = s.npcs[0], c = s.npcs.find(q => q.kind === 'c'); for (const o of s.npcs) if (o !== n && o !== c) o.st = 'u';
-    Object.assign(n, { x: 4.5, z: 10, y: 0, ruthless: true, execAfter: 3, fired: 0, wantCover: false }); Object.assign(c, { x: 6.5, z: 11.6, y: 0, st: 'w' }); put(s, p, 6, 1.65, 14.6); p.hp = 1e6; s.engage(n, p, 0.2); n.wantCover = false; return [s, p, n, c]; };
+await t('a suspect in a firefight grabs a nearby hostage as a shield; a hit, a flash or talking him down frees her', () => {
+  const setup = (seed, cx = 6.5, cz = 11.6) => { const [s, p] = mkSim(seed); const n = s.npcs[0], c = s.npcs.find(q => q.kind === 'c'); for (const o of s.npcs) if (o !== n && o !== c) o.st = 'u';
+    Object.assign(n, { x: 4.5, z: 10, y: 0, ruthless: true, execAfter: 3, fired: 0, wantCover: false }); Object.assign(c, { x: cx, z: cz, y: 0, st: 'w' }); put(s, p, 6, 1.65, 14.6); p.hp = 1e6; s.engage(n, p, 0.2); n.wantCover = false; return [s, p, n, c]; };
+  const until = (s, f, sec = 20) => { for (let i = 0; i < 15 * sec && !f(); i++) { s.tick(1 / 15); s.events.length = 0; } return f(); };
   let [s, p, n, c] = setup(3); let threat = false, shotsBefore = 0;
-  for (let i = 0; i < 15 * 20 && c.st !== 'd'; i++) { s.tick(1 / 15); for (const e of s.events) { if (e.e === 'say' && e.k === 'threat') { threat = true; shotsBefore = n.fired; } } s.events.length = 0; }
-  assert.ok(threat && shotsBefore >= 3, 'warned after a few shots at the officer, fired ' + shotsBefore); assert.equal(c.st, 'd', 'killed the hostage'); assert.equal(s.log.civExecuted, 1); assert.equal(s.log.civKilled, 0, 'not counted against the officer');
-  for (let i = 0; i < 30; i++) s.tick(1 / 15); s.endMission(1); assert.ok(s.report.lines.some(l => /Hostage killed by a suspect x1/.test(l[0]) && l[1] === -5));
-  // stopped in the window: shoot him, flash him, or he surrenders
-  for (const stop of ['shoot', 'flash', 'surrender']) { [s, p, n, c] = setup(3);
-    for (let i = 0; i < 15 * 20 && !n.exec; i++) { s.tick(1 / 15); s.events.length = 0; } assert.ok(n.exec, 'threat started');
-    if (stop === 'shoot') { for (let k = 0; k < 3 && n.st === 'c'; k++) { s.t += 1; aimAt(s, p, n, 1.3); } } else if (stop === 'flash') s.flash({ x: n.x, y: 0.1, z: n.z + 1, by: 1 }); else s.surrender(n);
-    for (let i = 0; i < 15 * 3; i++) s.tick(1 / 15); assert.notEqual(c.st, 'd', stop + ' should save the hostage'); assert.equal(s.log.unauth, 0, 'shooting him mid-threat is justified'); }
+  for (let i = 0; i < 15 * 20 && !n.shield; i++) { s.tick(1 / 15); for (const e of s.events) if (e.e === 'say' && e.k === 'threat') { threat = true; shotsBefore = n.fired; } s.events.length = 0; }
+  assert.ok(threat && shotsBefore >= 3, 'turned on her after a few shots, fired ' + shotsBefore); assert.equal(n.shield, c.id, 'took her as a shield'); assert.equal(c.st, 'x');
+  const f0 = n.fired; for (let i = 0; i < 15 * 3; i++) { s.tick(1 / 15); s.events.length = 0; } assert.ok(n.fired > f0, 'fires while holding her');
+  assert.ok(Math.hypot(c.x - n.x, c.z - n.z) < 0.6, 'she stays in front of him'); assert.equal(c.st === 'd' ? 1 : 0, 0);
+  for (const stop of ['shoot', 'flash', 'surrender']) { [s, p, n, c] = setup(3); assert.ok(until(s, () => n.shield), 'grabbed');
+    if (stop === 'shoot') { n.hp -= 10; s.hitNpc(n, 10, p, 'head'); } else if (stop === 'flash') s.flash({ x: (n.x + c.x) / 2, y: 0.1, z: (n.z + c.z) / 2, by: 1 }); else s.surrender(n);
+    for (let i = 0; i < 15 * 3; i++) { s.tick(1 / 15); s.events.length = 0; } assert.ok(!n.shield && c.st === 'w', stop + ' should free her (' + c.st + ')'); assert.equal(s.log.unauth, 0, 'shooting him while he holds her is justified'); }
+  // no hostage within reach: he shoots her instead, after a warning you can still answer
+  [s, p, n, c] = setup(3); n.ruthless = true; const reach = s.goto.bind(s); s.goto = (q, ...a) => q === n && n.fired >= n.execAfter && !n.exec && !n.grab ? false : reach(q, ...a);
+  assert.ok(until(s, () => n.exec || n.shield), 'turned on her'); assert.ok(n.exec && !n.shield, 'no way to her: a threat to shoot');
+  assert.ok(until(s, () => c.st === 'd', 5)); assert.equal(s.log.civExecuted, 1); assert.equal(s.log.civKilled, 0, 'not counted against the officer');
   // no hostage in sight, or already secured: he just keeps fighting
-  [s, p, n, c] = setup(3); c.st = 'u'; for (let i = 0; i < 15 * 15; i++) { s.tick(1 / 15); s.events.length = 0; } assert.ok(!n.exec && c.st === 'u');
+  [s, p, n, c] = setup(3); c.st = 'u'; for (let i = 0; i < 15 * 15; i++) { s.tick(1 / 15); s.events.length = 0; } assert.ok(!n.exec && !n.shield && c.st === 'u');
 });
 await t('end mission by radio or by walking out; scored on what was done', () => {
   let [s, p] = mkSim(4); for (const o of s.npcs) o.st = o.kind === 'c' ? 'u' : o.st; for (const b of s.bombs) b.defused = true; s.npcs[0].st = 'i';

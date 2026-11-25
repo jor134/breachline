@@ -145,6 +145,7 @@ export class Sim {
     n.hp -= dmg; const dead = n.hp <= 0;
     if (n.kind === 'c') { if (!n.flagged) { n.flagged = true; this.log.civHit++; } if (dead) { n.st = 'd'; this.log.civKilled++; } this.ev({ e: 'hit', n: n.id, dead }); return; }
     const justified = n.st === 'c', wasDown = n.st === 'i' || n.st === 'j';
+    if (n.shield) { n.exec = null; this.unshield(n, 'shot'); }   // hit anywhere, he lets her go
     if (!justified && !n.flagged) { n.flagged = true; if (n.st === 's' || n.st === 'k' || n.st === 'u' || wasDown) this.log.execution++; else this.log.unauth++; }
     if (wasDown) { n.st = 'd'; n.just = false; }
     else if (dead) { n.cov = null; n.crouch = false; n.stun = 0; n.st = part === 'head' || this.rnd() < 0.25 ? 'd' : 'i'; n.just = justified; n.armed = false; n.path = null; }   // most body hits incapacitate: the suspect can still be arrested
@@ -173,11 +174,12 @@ export class Sim {
       if (n.st !== 'g' && n.st !== 'a' && n.st !== 'c') continue;
       n.shouts++;
       let pr = (n.hvt ? 0.45 : 1) * ((1 - n.resolve) * (n.st === 'g' ? 1.3 : n.st === 'c' ? 0.6 : 1) * (n.hp < 60 ? 1.6 : 1) + 0.1 * (n.shouts - 1)) * (n.stun > 0 ? 2.5 : 1);   // a stunned suspect gives up far more readily
+      if (n.shield) { const close = Math.hypot(n.x - p.hx, n.z - p.hz) < 4; pr *= 0.5 * (n.hp < 60 ? 2 : 1) * (close ? 1.8 : 1); }   // with a hostage he has leverage: harder to talk down, unless hurt or cornered
       if (this.rnd() < pr) this.surrender(n);
       else if (!(n.stun > 0)) { this.ev({ e: 'say', n: n.id, k: 'defy' }); if (n.st !== 'c') this.engage(n, p, 0.5 + this.rnd() * 0.4); }
     }
   }
-  surrender(n) { n.exec = null; n.cov = null; n.crouch = false; n.stun = 0; n.st = 's'; n.tS = 0; n.path = null; n.armed = false; n.fake = n.fakeChance; n.fakeChance = false; n.fakeAt = 3.5 + this.rnd() * 4; this.ev({ e: 'say', n: n.id, k: 'surrender' }); }
+  surrender(n) { if (n.shield) this.unshield(n, 'surrender'); n.grab = null; n.exec = null; n.cov = null; n.crouch = false; n.stun = 0; n.st = 's'; n.tS = 0; n.path = null; n.armed = false; n.fake = n.fakeChance; n.fakeChance = false; n.fakeAt = 3.5 + this.rnd() * 4; this.ev({ e: 'say', n: n.id, k: 'surrender' }); }
   engage(n, p, react) { if (n.kind === 's' && n.st !== 'c' && !n.spotSaid) { n.spotSaid = true; this.ev({ e: 'say', n: n.id, k: 'spot' }); }   // quest-store: a suspect calls out when he first goes for you
     if ((n.hvt || n.guard) && !n.rally) { n.rally = true; for (const q of this.npcs) if ((q.hvt || q.guard) && q !== n && (q.st === 'g' || q.st === 'a')) this.engage(q, p, react + 0.3); n.rally = false; }   // the boss and his guards fight together
     n.wantCover = !n.cov && (this.rnd() < 0.85 || n.defend); n.crouch = false; n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
@@ -281,6 +283,7 @@ export class Sim {
     for (const n of this.npcs) {
       if (n.kind !== 's' || !(n.st === 'g' || n.st === 'a' || n.st === 'c')) continue; const d = Math.hypot(n.x - g.x, n.y + 1.2 - g.y, n.z - g.z);
       if (d > 8 || !this.clear(g.x, g.y + 0.15, g.z, n.x, this.eyeY(n), n.z)) continue;
+      if (n.shield) this.unshield(n, 'flash'); n.grab = null;
       n.stun = d < 4 ? 6 : 4.5; n.exec = null; n.cov = null; n.crouch = false; n.strafe = false; n.path = null; n.spd = 0; n.wantCover = false; n.st = 'a'; n.tA = 0; n.hold = true; n.fix = false; n.lk = [g.x, g.z, n.y];   // blind and deaf: no longer a threat until it wears off
     }
     for (const q of this.players.values()) if (q.hold && Math.hypot(q.hx - g.x, q.hy - g.y, q.hz - g.z) < 8 && this.clear(g.x, g.y + 0.15, g.z, q.hx, q.hy, q.hz)) this.drop(q, 'flash');
@@ -468,7 +471,15 @@ export class Sim {
       if (n.tA > (n.fix ? 90 : n.defend ? 60 : 25)) { n.fix = false; n.st = 'g'; n.hold = false; n.crouch = false; this.goto(n, n.post[0], n.post[1], n.post[2]); }
     } else if (n.st === 'c') {
       if (n.exec) return this.tickExec(n, dt);
-      if (n.ruthless && n.fired >= n.execAfter) { const c = this.hostageNear(n); if (c) { n.exec = { id: c.id, t: 1.4 + this.rnd() * 0.8 }; n.cov = null; n.crouch = false; n.path = null; n.strafe = false; n.spd = 0; this.ev({ e: 'say', n: n.id, k: 'threat' }); this.ev({ e: 'say', n: c.id, k: 'plead' }); return; } }
+      if (n.shield) return this.tickShield(n, dt, seen, best);
+      if (n.grab) return this.tickGrab(n, dt);
+      // A ruthless suspect turns on a hostage once the firefight has gone on: he goes for one to hold as a shield, and only shoots
+      // one if none can be reached (too far, or no way there)
+      if (n.ruthless && n.fired >= n.execAfter) { const c = this.hostageNear(n); if (c) {
+        const d = Math.hypot(c.x - n.x, c.z - n.z); n.cov = null; n.crouch = false; n.strafe = false; this.ev({ e: 'say', n: n.id, k: 'threat' }); this.ev({ e: 'say', n: c.id, k: 'plead' });
+        if (d < 1.3) { this.seize(n, c); return; }
+        if (d < 7 && this.goto(n, c.x, c.z, c.y)) { n.grab = { id: c.id, t: 5 }; return; }
+        n.exec = { id: c.id, t: 1.4 + this.rnd() * 0.8 }; n.path = null; n.spd = 0; return; } }
       if (n.wantCover) { n.wantCover = false; const p = seen || this.players.get(n.tgt); const c = p && this.findCover(n, p); if (c && this.goto(n, c.hx, c.hz, n.y)) { n.cov = c; n.strafe = false; } }
       if (n.cov) return this.tickCover(n, dt, seen, best);
       if (seen) {
@@ -517,6 +528,39 @@ export class Sim {
     let best = null, bd = 8;
     for (const c of this.npcs) { if (c.kind !== 'c' || !(c.st === 'w' || c.st === 'y') || Math.abs(c.y - n.y) > 1) continue; const d = Math.hypot(c.x - n.x, c.z - n.z); if (d < bd && this.clear(n.x, this.eyeY(n), n.z, c.x, c.y + 0.8, c.z)) { bd = d; best = c; } }
     return best;
+  }
+  // ---- human shields (AI) ----
+  // He runs to the hostage he picked; if she is gone, taken or out of reach in time, he gives up and fights on.
+  tickGrab(n, dt) {
+    const c = this.npcs.find(q => q.id === n.grab.id);
+    if (!c || !(c.st === 'w' || c.st === 'y') || c.held || (n.grab.t -= dt) <= 0) { n.grab = null; n.path = null; n.execAfter = n.fired + 3; return; }
+    if (Math.hypot(c.x - n.x, c.z - n.z) < 1.1 && Math.abs(c.y - n.y) < 0.8) { this.seize(n, c); return; }
+    if (!n.path && !this.goto(n, c.x, c.z, c.y)) { n.grab = null; return; }
+    this.walk(n, dt, 3.4);
+  }
+  seize(n, c) { n.grab = null; n.path = null; n.spd = 0; n.shield = c.id; n.shT = 0; n.retreatT = 0; c.held = 'n' + n.id; c.st = 'x'; this.ev({ e: 'say', n: c.id, k: 'plead' }); this.holdShield(n, c); }
+  // the hostage is held just in front and a little to his left, as a terrorist player holds one: his head and gun side stay open
+  holdShield(n, c) { const fx = Math.sin(n.yaw), fz = Math.cos(n.yaw); c.x = n.x + fx * 0.48 + fz * 0.14; c.z = n.z + fz * 0.48 - fx * 0.14; c.y = n.y; c.yaw = n.yaw; }
+  unshield(n, why) { const c = this.npcs.find(q => q.id === n.shield); n.shield = 0; n.grab = null; n.execAfter = (n.fired || 0) + 6 + Math.floor(this.rnd() * 5); if (c) { c.held = 0; if (c.st === 'x') c.st = 'w'; this.ev({ e: 'say', n: c.id, k: 'plead' }); } }
+  // Holding her, he faces you and fires his sidearm past her, a shot at a time, and backs away toward somewhere you are not.
+  // Cornered (you within 3 m and nowhere left to back into) he turns on her: a second and a half to drop him, flash him or talk him down.
+  tickShield(n, dt, seen, best) {
+    const c = this.npcs.find(q => q.id === n.shield);
+    if (!c || c.st === 'd' || c.st === 'u') { this.unshield(n); return; }
+    if (n.exec) { this.tickExec(n, dt); if (c.st === 'd') this.unshield(n); else this.holdShield(n, c); return; }
+    n.shT += dt;
+    if (seen) {
+      n.tgt = seen.id; n.lost = 0; n.lk = [seen.hx, seen.hz, seen.y]; this.face(n, seen.hx, seen.hz, dt, 6);
+      if ((n.retreatT -= dt) <= 0) { n.retreatT = 1.6;
+        const dx = n.x - seen.hx, dz = n.z - seen.hz, L = Math.hypot(dx, dz) || 1; let ok = false;
+        for (const a of [0, 0.6, -0.6, 1.2, -1.2]) { const ca = Math.cos(a), sa = Math.sin(a), ux = (dx * ca - dz * sa) / L, uz = (dx * sa + dz * ca) / L;
+          const path = findPath(this.level, n.x, n.z, n.y, n.x + ux * 2.5, n.z + uz * 2.5, n.y); if (path && path.length >= 2 && path.length <= 6) { n.path = path; n.pi = 1; ok = true; break; } }
+        if (!ok) { n.path = null; if (best < 3 && n.shT > 2) { n.exec = { id: c.id, t: 1.5 + this.rnd() * 0.6 }; this.ev({ e: 'say', n: n.id, k: 'threat' }); } }
+      }
+      if (n.path) this.walk(n, dt, 1.0, true);
+      if (n.react > 0) n.react -= dt; else if (!(n.rl > 0) && (n.cool -= dt) <= 0) { this.npcFire(n, seen, best + 3); n.cool = 0.9 + this.rnd() * 0.8; }   // aimed one-handed past her: less accurate
+    } else { n.lost += dt; n.path = null; n.spd = 0; this.face(n, n.lk[0], n.lk[1], dt, 3); }
+    this.holdShield(n, c);
   }
   // He has said what he will do: turn the rifle on the hostage. You have about a second and a half to drop him, flash him or make him give up.
   tickExec(n, dt) {
