@@ -1,7 +1,7 @@
 # The winery's kit: props made light enough to repeat by the hundred, and the photo textures for the building, in one glTF binary.
 #   wine bottle   "Wine Bottle" by sotocodes (Sketchfab, CC BY 4.0)
 #   wine glass    "Wine Glass" by Gamedirection (Sketchfab, CC BY 4.0)
-#   oak barrel    "Wooden Wine Barrel" by Joseph Gush (Sketchfab, CC BY 4.0)
+#   oak barrel    "Wooden Wine Barrel" by Joseph Gush (Sketchfab, CC BY 4.0): its textures, for the game's own barrel shape
 #   stone wall    "Photoscanned Old Stone Wall (2x4m)" by chrisg4919 (Sketchfab, CC BY 4.0): colour + normal, 2 m x 4 m
 #   concrete      "Concrete material" by roko (Sketchfab, CC BY 4.0): colour + normal
 #   corten steel  "Kellen Metallo Corten Steel" by Hardscape (Sketchfab, CC BY 4.0): colour
@@ -18,13 +18,12 @@ UP, DST = sys.argv[1:3]; QEM = '/tmp/qem'
 PROPS = [   # name, file, target triangles (all materials), real height (m), largest texture, keep texture seams
   ('bottle', '2532a3a8-wine_bottle.glb', 320, 0.30, 256, True),
   ('glass', '5ce25f65-wine_glass.glb', 160, 0.20, 64, False),          # untextured: welded by place alone
-  ('barrel', '9eb3e794-wooden_wine_barrel.glb', 1600, 0.95, 1024, True),   # near (the game swaps by distance)
-  ('barrel_lo', '9eb3e794-wooden_wine_barrel.glb', 240, 0.95, 1024, False),   # far: seams let go (smeared texture where they were; not seen from there)
 ]
 TEXS = [   # name, file, [(slot, image index, px)]
   ('stone', 'photoscanned_old_stone_wall_2x4m.glb', [('map', 0, (1024, 2048)), ('normalMap', 1, (512, 1024))]),
   ('concrete', 'c22b8472-concrete_material.glb', [('map', 0, (1024, 1024)), ('normalMap', 2, (512, 512))]),
   ('corten', '801885ea-kellen_metallo_corten_steel.glb', [('map', 0, (1024, 1024))]),
+  ('barrel', '9eb3e794-wooden_wine_barrel.glb', [('map', 0, (1024, 1024)), ('normalMap', 2, (512, 512))]),   # the game maps it onto its own light barrels
 ]
 CT = {5126: np.float32, 5125: np.uint32, 5123: np.uint16, 5121: np.uint8}; NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4}
 def load(f):

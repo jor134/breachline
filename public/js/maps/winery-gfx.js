@@ -13,7 +13,7 @@ import { H, FOOT, WEST, EAST, TERR, PAV, VOID, FLIGHTS, LANDINGS, YARD, DRIVE, P
 import { makeDancers } from './club-crowd.js';
 
 const VAN_TURN = Math.PI;   // the van model's nose is at its -z end: turned to face the winery
-let MATS1 = null, BAR = null, barT = 0, tod = 'dusk', glows = [], matGlows = [], dancers = null, beams = [], ledMats = [], root0 = null, andes = [], bulbs = null, sunGlow = null, mix = { g: -1, c: -1 };
+let MATS1 = null, BAR = null, tod = 'dusk', glows = [], matGlows = [], dancers = null, beams = [], ledMats = [], root0 = null, andes = [], bulbs = null, sunGlow = null, mix = { g: -1, c: -1 };
 const LAMPS = [
   // ground: west wing, visitor centre, cellar, east wing
   [6, 3.9, 5, 6, 9], [16, 3.9, 5, 6, 9], [23, 3.9, 5, 5, 8], [8, 8.2, 18, 9, 14], [18, 8.2, 18, 9, 14], [8, 8.2, 28, 9, 14], [18, 8.2, 28, 9, 14],
@@ -221,10 +221,9 @@ function useKit(scene) {
   const inst = (name, n) => meshes(name).map(src => { const mt = src.material; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.6; if (!pbrMats.includes(mt)) pbrMats.push(mt); const im = new THREE.InstancedMesh(src.geometry, mt, n); im.castShadow = !mt.transparent; im.receiveShadow = true; im.frustumCulled = false; g.add(im); return im; });
   for (const k of ['bottle', 'glass']) { const list = PROPS[k]; if (!list.length) continue; const ims = inst(k, list.length);
     list.forEach(([x, y, z], i) => { e.set(0, rr() * 6.28, 0); q.setFromEuler(e); m4.compose(p.set(x, y, z), q, one); for (const im of ims) im.setMatrixAt(i, m4); }); }
-  // barrels: the near ones (up to 72 within 8 m of you) the full model, the rest the light one; on their sides in the racks
-  if (BAR && BAR.list.length) { const n = BAR.list.length; BAR.hi = inst('barrel', n); BAR.lo = inst('barrel_lo', n);
-    BAR.mats = BAR.list.map(([x, y, z, rx]) => { e.set(rx, 0, 0); q.setFromEuler(e); return m4.clone().compose(p.set(x, rx ? y : 0, rx ? z - 0.475 : z), q, one); });
-    if (BAR.hi.length && BAR.lo.length) { BAR.old.visible = false; barT = 99; } }
+  // barrels: the game's own light barrel shape (bulged, ~100 triangles; several hundred of them) in the uploaded barrel's oak, hoops
+  // and heads: its geometry carries texture coordinates laid out for that texture (scenery)
+  const bt = T('barrel'); if (BAR && BAR.old && bt && bt.map) { const mk = () => { const m = new THREE.MeshStandardMaterial({ map: bt.map, normalMap: bt.normalMap || null, roughness: 0.75, metalness: 0, envMap, envMapIntensity: 0.35 }); m.userData.env = 0.35; pbrMats.push(m); return m; }; const m = mk(); BAR.old.material = [m, m, m]; }
   return g;
 }
 export default {
@@ -385,6 +384,13 @@ export default {
         Ha.setMatrixAt(i, m4.compose(p.set(cx, 1.4, cz - 1.24), q, s1)); [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]].forEach(([dx, dz], k) => L1.setMatrixAt(i * 4 + k, m4.compose(p.set(cx + dx, 0.35, cz + dz), q, s1))); });
       // barrels: on their sides two high in the racks (their heads to the aisle), upright under the barrel tables
       const geo = new THREE.CylinderGeometry(0.33, 0.33, 0.95, 12, 4), P = geo.attributes.position; for (let i = 0; i < P.count; i++) { const y = P.getY(i), k = 1 + 0.13 * (1 - (2 * y / 0.95) ** 2); P.setX(i, P.getX(i) * k); P.setZ(i, P.getZ(i) * k); } geo.computeVertexNormals();
+      // texture coordinates for the uploaded barrel's texture (its layout: the side unrolled as two halves across the top left, the axis
+      // running left-right; a head as a disc below): round the side the coordinate runs there and back (mirrored, no seam); the heads
+      // take the disc
+      { const UV = geo.attributes.uv, n0 = geo.groups[0].count, idx = geo.index; const sideV = new Set(); for (let k = 0; k < n0; k++) sideV.add(idx.getX(geo.groups[0].start + k));
+        for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+          if (sideV.has(i)) { let a = Math.atan2(z, x); if (a < 0) a += 2 * Math.PI; const w = a < Math.PI ? a / Math.PI : (2 * Math.PI - a) / Math.PI; UV.setXY(i, 0.012 + (y / 0.95 + 0.5) * 0.463, 0.02 + w * 0.53); }
+          else UV.setXY(i, 0.13 + x / 0.38 * 0.125, 0.713 + z / 0.38 * 0.135); } UV.needsUpdate = true; }
       const side = sheen({ map: barrelTex() }, 'satin'), head = sheen({ map: barrelHeadTex() }, 'satin'), list = [];
       for (const f of FURNITURE) { if (f[6] === 'barrels') { const len = f[3] - f[1], n = Math.floor(len / 0.76), cz = (f[2] + f[4]) / 2; for (let i = 0; i < n; i++) for (const y of [0.5, 1.2]) list.push([f[1] + (i + 0.5) * len / n, y, cz, Math.PI / 2]); }
         else if (f[6] === 'barreltable') list.push([(f[1] + f[3]) / 2, 0.475, (f[2] + f[4]) / 2, 0]); }
@@ -418,8 +424,5 @@ export default {
     for (const bm of beams) if (bm.siren) bm.siren.material.color.set(Math.floor(t * 3) % 2 ? 0x3060ff : 0xff2020);
     const lv = venueLevel(); for (const m of ledMats) m.emissive.copy(m.userData.em).multiplyScalar(0.6 + lv * 0.8);
     if (dancers) dancers.tick(dt, p);
-    if (BAR && BAR.mats && (barT += dt) > 0.25) { barT = 0; const near = BAR.list.map(([x, y, z], i) => [(x - p.x) ** 2 + (y - p.y) ** 2 + (z - p.z) ** 2, i]).filter(d => d[0] < 64).sort((a, b) => a[0] - b[0]).slice(0, 72), isNear = new Set(near.map(d => d[1]));
-      let h = 0, l = 0; BAR.mats.forEach((m, i) => { if (isNear.has(i)) { for (const im of BAR.hi) im.setMatrixAt(h, m); h++; } else { for (const im of BAR.lo) im.setMatrixAt(l, m); l++; } });
-      for (const im of BAR.hi) { im.count = h; im.instanceMatrix.needsUpdate = true; } for (const im of BAR.lo) { im.count = l; im.instanceMatrix.needsUpdate = true; } }
   },
 };
