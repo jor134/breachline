@@ -81,7 +81,7 @@ export function loadSidearm() {
     const frame = new THREE.Group(), slide = new THREE.Group(), supp = new THREE.Group(); let plate = null;
     // the red dot's glass: the model's tinted, textured lens filled the window with red; it is clear glass now, and only the
     // projected dot (the reticle) shows red
-    sc.traverse(o => { if (o.isMesh && o.name.startsWith('sight') && o.material.transparent) o.material = new THREE.MeshBasicMaterial({ color: 0xb8d4e0, transparent: true, opacity: 0.06, depthWrite: false }); });
+    sc.traverse(o => { if (o.isMesh && o.name.startsWith('sight') && o.material.transparent && o.material.emissiveMap) o.material = new THREE.MeshBasicMaterial({ color: 0xb8d4e0, transparent: true, opacity: 0.06, depthWrite: false }); });
     sc.traverse(o => { if (!o.isMesh) return; const m = o.material; m.envMap = envMap; m.userData.env = m.envMapIntensity = 0.5; if (!pbrMats.includes(m)) pbrMats.push(m);
       if (m.transparent) m.depthWrite = false;   // the red dot's glass
       const geo = o.geometry.clone().applyMatrix4(o.matrixWorld).applyMatrix4(T);

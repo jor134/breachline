@@ -34,7 +34,7 @@ export default {
     // range: firing line, lane stripes downrange, distance marks, lane numbers on the floor behind the counter
     flat('stripe', 0.2, 19.8, 14.75, 14.85, 0.012); for (const x of [4, 8, 12, 16]) flat('stripe', x - 0.03, x + 0.03, -15, 10, 0.012);
     for (const z of [7, 2, -4, -11]) flat('stripe', 0.2, 19.8, z - 0.02, z + 0.02, 0.012);
-    LANES.forEach((x, i) => b('n' + i).quad([x - 0.4, 0.014, 15.4], [x + 0.4, 0.014, 15.4], [x + 0.4, 0.014, 16.2], [x - 0.4, 0.014, 16.2], [0, 1, 0], 1, [[0, 0], [1, 0], [1, 1], [0, 1]]));
+    LANES.forEach((x, i) => b('n' + i).quad([x - 0.4, 0.014, 15.4], [x + 0.4, 0.014, 15.4], [x + 0.4, 0.014, 16.2], [x - 0.4, 0.014, 16.2], [0, 1, 0], 1, [[0, 1], [1, 1], [1, 0], [0, 0]]));   // read the right way round by a shooter at the line, facing downrange
     // ceiling baffles over the range and a target-carrier rail for each moving lane
     for (let z = -14; z < 14; z += 4) b('steelplate').box(0, 20, H - 0.6, H - 0.55, z, z + 0.6, 'yzZ', 1);
     for (const z of [-4, -6.5]) b('steelplate').box(0.5, 19.5, 1.5, 1.55, z - 0.04, z + 0.04, 'xXyYzZ', 1);
