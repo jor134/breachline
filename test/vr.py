@@ -9,7 +9,7 @@ with sync_playwright() as p:
     pg.on('pageerror', lambda e: logs.append('PAGEERROR: '+str(e)))
     pg.add_init_script(path='test/xrmock.js')
     pg.goto('http://localhost:8765/play.html?' + (os.environ.get('BL_Q0') or 'lite=1&') + 'classic=1' + (os.environ.get('BL_QS') or '')); pg.wait_for_timeout(1500)
-    pg.check('#solo'); pg.click('#vr'); pg.wait_for_timeout(1500)
+    pg.evaluate("document.getElementById('solo').checked = true"); pg.click('#vr'); pg.wait_for_timeout(1500)
     r = pg.evaluate(open(sys.argv[1]).read()); print('RESULT', json.dumps(r, indent=0)[:4000])
     pg.wait_for_timeout(400); pg.screenshot(path=sys.argv[2])
     print('\n'.join(logs[:25]) or 'no console errors')

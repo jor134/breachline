@@ -476,7 +476,7 @@ function showLobbyPanel() {
   if (S.menu) return;
   if (S.watch) { if (storeUI.holdsPanel()) return storeUI.redraw(); panel.mesh.visible = false; S.panel = null; return; }   // spectators get no boards: B or Y opens their menu
   if (storeUI.holdsPanel()) return storeUI.redraw(); if (S.panel === 'fit' && M.training) return showFit(false); if (M.training) return showBoard(); S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz, BOARD_K);
-  panel.draw("YOU CAN'T HIDE", M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo practice (not connected)' : 'connecting'),
+  panel.draw("YOU CAN'T HIDE", M.op + '  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Offline (no connection)' : 'connecting'),
     [squadLine(), ...M.brief, 'Free hand: grip/trigger = doors, stick click = KICK,', 'HOLD A/X = TOOL WHEEL, tap = light, tap B/Y = SHOUT, hold = SQUAD. Helmet = NVG.',
       'Gun hand A/X: drop mag  B/Y: bolt  stick: semi/auto. Radio: MENU', M.hint ? M.hint : M.id === 'mansion' ? 'Lights out: MAIN BREAKER in the basement plant room.' : M.id === 'grandprix' ? 'Lights out: MAIN BREAKER in the electrical room behind the garages.' : M.id === 'airport' ? 'Lights out: MAIN BREAKER in the electrical room behind airport police.' : 'Lights out: MAIN BREAKER in the operations building.'], [['MAP: ' + M.name + (M.test ? ' (TEST)' : ''), 'map'], ['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(M.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ...(storeUI.store ? [['MAIN MENU', 'home']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
@@ -486,7 +486,7 @@ function showLobbyPanel() {
 const BOARD_PAGE = 6;
 function showBoard() {
   S.panel = 'lobby'; panel.mesh.visible = true; const P = M.lobby; panel.place(P.x, P.y, P.z, P.tx, P.tz, BOARD_K); const T = trainLine(), cu = S.customList.find(c => c.id === S.nextMap), nx = MAPS[S.nextMap] || (cu ? { name: cu.name + ' (LOADING)', op: cu.name + '  (by ' + cu.creator + ')' } : MAPS[MISSION_IDS[0]]);
-  const sub = 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? 'Solo' : 'connecting'), range = 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)   kill house ' + T.run + ' (best ' + T.best + ')';
+  const sub = 'Training facility  -  ' + (S.net === 'online' ? 'Room ' + S.room : S.net === 'solo' ? (TUT ? 'Tutorial' : 'Offline') : 'connecting'), range = 'Range: hits ' + T.hits + '/' + T.shots + ' (' + T.acc + '%)   kill house ' + T.run + ' (best ' + T.best + ')';
   const label = (id, m) => (m ? m.name + (m.test ? ' (TEST)' : '') : id) + storeUI.lockTag(id).replace('   [FULL GAME]', ' [FULL]');
   if (!storeUI.isOwner()) return panel.draw('MISSION BOARD', sub, [squadLine(), 'Next: ' + nx.op + '  (' + nx.name + ')', 'Weather ' + S.wxPick.toUpperCase() + (nx.tods ? ', time ' + S.todPick.toUpperCase() : ''), '', 'The room owner picks the mission and starts it.', range], [teamBtn(), ['MAP EDITOR', 'edit']]);
   if (S.bstep !== 'opts') {   // step 1: which mission
@@ -539,7 +539,7 @@ function toggleMenu(open = !S.menu) {
   if (open && S.watch) { panel.mesh.visible = true; frontOfHead(1.3); panel.draw('SPECTATING', 'Room ' + S.room, ['You are watching: nobody sees or hears you.', 'Left stick: fly where you look (push all the way: faster).', 'Right stick: up / down, and turn.', 'Point at a button and pull the trigger.'], [[gfxLabel(), 'gfx'], ['MAIN MENU', 'home'], ['CLOSE', 'close']]); return; }
   if (open) { panel.mesh.visible = true; frontOfHead(1.3); const mb = [['SUPPRESSOR: ' + (SUPP.on ? 'ON' : 'OFF'), 'supp'], ...(S.net === 'online' && voice.on && DBG.on ? [[voice.mic ? (voice.muted ? 'MIC: MUTED' : 'MIC: ON') : 'MIC: NONE', 'mic']] : []), ...(S.phase === 'active' ? [['END MISSION', 'end']] : []), ...storeUI.menuButtons(), ['RESTART MISSION', 'start'], [gfxLabel(), 'gfx'], ...(S.edTest && S.mode === 'vr' ? [['BACK TO THE MAP EDITOR', 'edit']] : []), [DRAFT ? 'BACK TO EDITOR' : storeUI.store ? 'MAIN MENU' : 'HOME SCREEN', 'home'], ['CLOSE', 'close']];
     const ml = ['Restart deals a new mission for the whole squad:', 'new suspect, hostage and bomb positions.', 'End Mission scores what is done now. Or walk out the gate.'];
-    panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : 'Solo practice') + (DBG.on ? '   ·   ' + perf.report() : ''), ml, mb); }
+    panel.draw('MENU', (S.net === 'online' ? 'Room ' + S.room : TUT ? 'Tutorial' : 'Offline') + (DBG.on ? '   ·   ' + perf.report() : ''), ml, mb); }
   else if (S.phase === 'ended') showEndPanel(); else if (S.phase === 'lobby' || M.training) showLobbyPanel(); else { panel.mesh.visible = false; S.panel = null; }
 }
 function tryPanel(o, d) {
@@ -1265,7 +1265,7 @@ function connect(solo) {
   const name = (nameIn.value.trim() || 'Officer').slice(0, 14), typed = roomIn.value.toUpperCase().replace(/[^A-Z0-9]/g, ''), room = solo ? (typed || 'SOLO') : isRoomCode(typed) ? typed : (roomIn.value = randomRoomCode());
   localStorage.setItem('bl_name', name); localStorage.setItem('bl_room', room); S.room = room; history.replaceState(null, '', '?room=' + room);
   if (DRAFT) solo = true;
-  return connecting = net.connect(room, name, solo).then(r => { S.net = r; if (DRAFT) setTimeout(() => net.send({ t: 'start', wx: 'clear', map: 'draft', tod: DRAFT.style && DRAFT.style.night ? 'night' : 'day' }), 300); status(r === 'online' ? 'Connected to room ' + room + '. Friends join with the same code.' : solo ? 'Solo practice.' : 'Server not reachable: running solo practice on this device.'); return r; });
+  return connecting = net.connect(room, name, solo).then(r => { S.net = r; if (r === 'solo' && !solo) status('Can\'t reach the server: playing offline with AI officers.'); if (DRAFT) setTimeout(() => net.send({ t: 'start', wx: 'clear', map: 'draft', tod: DRAFT.style && DRAFT.style.night ? 'night' : 'day' }), 300); status(r === 'online' ? 'Connected to room ' + room + '. Friends join with the same code.' : solo ? 'Solo practice.' : 'Server not reachable: running solo practice on this device.'); return r; });
 }
 function begin(mode) { S.mode = mode; $('ui').style.display = 'none'; $('hud').style.display = mode === 'desktop' ? 'block' : 'none'; camera.rotation.set(0, 0, 0); camera.position.set(0, 1.66, 0); S.spawnIn = mode === 'vr' ? 4 : 0; placeAtSpawn(); resetLoadout(); showLobbyPanel(); }
 $('vr').onclick = async () => {
@@ -1310,7 +1310,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q73';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q74';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

@@ -19,7 +19,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   // mmIds: players who came in through QUICK MATCH. Strangers start muted (both ways) unless they are friends; blocked players always.
   const social = makeSocial(unlock); U.social = social;
   Object.assign(U, { rel: {}, specs: [], watchCode: '', mmIds: [], open: false, unmuted: new Set(), auto: new Set(), mmJoin: 0, mmCode: '', created: '', pview: '', fpage: 0, fsel: null, fmsg: '', mmMsg: '' });
-  try { U.hostOpen = localStorage.getItem('ych_open') === '1'; } catch (e) { U.hostOpen = false; }
+  try { U.hostOpen = localStorage.getItem('ych_open') !== '0'; } catch (e) { U.hostOpen = true; }   // rooms you make are open to terrorist players unless you turn it off
   let call = (() => { try { const c = localStorage.getItem('bl_name'); return isCallsign(c) ? c : randomCallsign(); } catch (e) { return randomCallsign(); } })();
   const saveCall = () => { try { localStorage.setItem('bl_name', call); } catch (e) { } };
   saveCall();
@@ -86,8 +86,8 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     S.panel = 'start'; placeBoard(); panel.mesh.visible = true;
     panel.draw("YOU CAN'T HIDE", 'Callsign ' + call + '   ·   ' + U.edition(), [
       'Clear buildings, save hostages, disarm bombs.',
-      'START MISSION: play solo with three AI officers, online',
-      '   with up to four players, or a friend\'s map.',
+      'START MISSION: everyone plays online. Lead SWAT with AI',
+      '   officers and friends, or join a SWAT team as a terrorist.',
       'Voice chat with your squad: ' + (voice.on ? 'ON' : 'OFF') + (voice.on && voice.err ? '  (' + voice.err.split(':')[0] + ')' : ''),
       'Point at a button and pull the trigger.',
     ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['MUSIC: ' + (S.music === false ? 'OFF' : 'ON'), 'st:music'], ...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['TUTORIAL', 'st:tut'], ['CREDITS', 'st:credits:0'], ['START MISSION' + (social.requests.length ? '  (' + social.requests.length + ' FRIEND REQUEST' + (social.requests.length > 1 ? 'S' : '') + ')' : ''), 'st:mode']]);
@@ -96,8 +96,8 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   function showBuy(why, from) {
     U.buyWhy = why; U.buyFrom = from; S.panel = 'buy'; placeBoard(); panel.mesh.visible = true;
     if (U.bought) return panel.draw('FULL GAME UNLOCKED', 'Thank you!', ['Every mission, online co-op and PvP, and the map editor', 'are yours on this account, on every headset.'], [['CONTINUE', 'st:nobuy']]);
-    const what = { online: 'Online play is part of the full game.', editor: 'The map editor is part of the full game.', map: 'This mission is part of the full game.' }[why] || '';
-    const lines = [what, '', 'The demo: the training facility and the mansion, solo.', 'The full game adds:', '   the container terminal, Grand Prix, airport and casino tower,', '   online co-op and PvP for up to four players,', '   and the map editor.'];
+    const what = { editor: 'The map editor is part of the full game.', map: 'This mission is part of the full game.' }[why] || '';
+    const lines = [what, '', 'The demo: the mansion online, with friends and AI officers,', '   and any mission as a terrorist in someone else\'s room.', 'The full game adds:', '   the container terminal, Grand Prix, airport, casino tower,', '   stadium and club to lead as SWAT, and the map editor.'];
     if (U.buyErr) lines.push('', /CANCEL/i.test(U.buyErr) ? 'The purchase was cancelled or is not available yet.' : 'The purchase did not go through: ' + clip(U.buyErr, 44));   // Meta answers RESULT_CANCELED both when you back out and when the item can't be sold yet
     if (!unlock.store) { lines.push('', 'Get You Can\'t Hide on the Meta Horizon Store to unlock it.'); return panel.draw('FULL GAME', 'Meta Horizon Store', lines, [['OK', 'st:nobuy']]); }
     panel.draw('FULL GAME', unlock.price ? 'One purchase, ' + unlock.price : 'One purchase', lines, [['BUY THE FULL GAME' + (unlock.price ? '  ' + unlock.price : ''), 'st:buy'], ['NOT NOW', 'st:nobuy']]);
@@ -126,25 +126,32 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     for (const b of B) { g.fillStyle = b.col; g.fillRect(b.x, b.y, b.w, b.h); g.fillStyle = '#fff'; g.font = 'bold ' + (b.text.length > 8 ? 30 : 38) + 'px sans-serif'; g.fillText(b.text, b.x + b.w / 2, b.y + 51); }
     panel.btns = B; panel.key = 'keypad' + U.code + (msg || ''); panel.tex.needsUpdate = true;
   }
-  // ---- START MISSION: solo, online or a friend's map ----
+  // ---- START MISSION: everyone plays online ----
+  // PLAY AS SWAT makes a room of your own (open to terrorist players unless you turned that off) and puts you in its training room:
+  // AI officers fill the squad, friends join you from FRIENDS without a code, and the mission starts from the board as before.
+  // PLAY AS TERRORIST is quick match. There is no solo mode: with no connection the game falls back to playing offline by itself.
   function showMode() {
     S.panel = 'mode'; placeBoard(); panel.mesh.visible = true;
-    panel.draw('START MISSION', 'Callsign ' + call + '   ·   ' + U.edition(), ['PLAY SOLO: you lead three AI officers.', 'PLAY ONLINE: quick match, friends or a room code.', 'FRIEND\'S MAP: a map a friend shared from the map editor.', '', 'Then pick the mission, weather and time on the board.'],
-      [['PLAY ONLINE' + (social.requests.length ? '  (' + social.requests.length + ' NEW)' : ''), 'st:online'], ["FRIEND'S MAP", 'st:fmain'], ['BACK', 'st:back'], ['PLAY SOLO', 'st:solo']]);
+    panel.draw('START MISSION', 'Callsign ' + call + '   ·   ' + U.edition(), [
+      'PLAY AS SWAT: your own room. AI officers fill the squad,',
+      '   friends join you, terrorist players may too' + (U.hostOpen ? '.' : ' (off).'),
+      'PLAY AS TERRORIST: join a SWAT team\'s mission.',
+      'JOIN A SQUAD: a friend\'s room or a room code.',
+      ...(unlock.full() ? [] : ['Demo: the mansion as SWAT; any mission as a terrorist.']),
+    ], [['PLAY AS SWAT', 'st:mine'], ['PLAY AS TERRORIST', 'st:qm'], ['JOIN A SQUAD' + (social.requests.length ? '  (' + social.requests.length + ' NEW)' : ''), 'st:online'], ["FRIEND'S MAP", 'st:fmain'], ['TERRORISTS: ' + (U.hostOpen ? 'WELCOME' : 'OFF'), 'st:hostopen'], ['BACK', 'st:back']]);
   }
+  const playMine = () => { U.code = randomRoomCode(); U.created = U.code; try { localStorage.setItem('bl_room', U.code); } catch (e) { } go(false, false); };
   // ---- PLAY ONLINE: quick match, friends, room code ----
   const reqN = () => social.requests.length;
   function showOnline(msg) {
     if (msg !== undefined) U.omsg = msg; S.panel = 'online'; placeBoard(); panel.mesh.visible = true;
     const n = social.online();
-    panel.draw('PLAY ONLINE', 'Callsign ' + call, [
-      'QUICK MATCH: join a stranger\'s SWAT game as a TERRORIST.',
+    panel.draw('JOIN A SQUAD', 'Callsign ' + call, [
       'FRIENDS: join a friend\'s room, no code needed' + (social.ticket ? ' (' + n + ' online).' : '.'),
-      'ROOM CODE: join your squad, or make a NEW room to share.',
-      'Rooms you make: ' + (U.hostOpen ? 'OPEN to terrorist players from QUICK MATCH.' : 'friends and room code only.'),
+      'ROOM CODE: join your squad by its code.',
       'Strangers start muted. MENU > PLAYERS: mute, block, add friend.',
       ...(U.omsg ? ['', U.omsg] : []),
-    ], [['QUICK MATCH: TERRORIST', 'st:qm'], ['FRIENDS' + (reqN() ? '  (' + reqN() + ' NEW)' : n ? '  (' + n + ' ONLINE)' : ''), 'st:fl:0'], ['ROOM CODE', 'st:code'], ['MY ROOMS: ' + (U.hostOpen ? 'OPEN' : 'FRIENDS ONLY'), 'st:hostopen'], ['BACK', 'st:mode']]);
+    ], [['FRIENDS' + (reqN() ? '  (' + reqN() + ' NEW)' : n ? '  (' + n + ' ONLINE)' : ''), 'st:fl:0'], ['ROOM CODE', 'st:code'], ['BACK', 'st:mode']]);
   }
   const PERF = 4;   // friends per page
   const entries = () => [...social.requests.map(r => ({ ...r, kind: 'req' })), ...social.friends.map(f => ({ ...f, kind: 'friend' }))];
@@ -175,7 +182,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   function showMatch() {
     S.panel = 'mm'; placeBoard(); panel.mesh.visible = true;
     const t = Math.round((Date.now() - U.mmStart) / 1000);
-    if (U.mmMsg) return panel.draw('QUICK MATCH', 'Terrorist', [U.mmMsg, '', 'Or open your own room to terrorist players:', 'PLAY ONLINE > MY ROOMS: OPEN, then ROOM CODE > NEW.'], [['TRY AGAIN', 'st:qm'], ['BACK', 'st:ohome']]);
+    if (U.mmMsg) return panel.draw('PLAY AS TERRORIST', 'Quick match', [U.mmMsg, '', 'Or lead SWAT yourself: START MISSION > PLAY AS SWAT.', 'Terrorist players can join your room.'], [['TRY AGAIN', 'st:qm'], ['PLAY AS SWAT', 'st:mine'], ['BACK', 'st:mode']]);
     panel.draw('QUICK MATCH', 'Terrorist   ·   ' + t + ' s', ['Looking for a SWAT team that wants terrorists...', '', 'You play a terrorist: lock and rig doors, take hostages,', 'and stop the SWAT team. Your side wins if they fail.', 'Strangers start muted. MENU > PLAYERS to unmute or block.'], [['CANCEL', 'st:mmstop']]);
   }
   function matchStep() {
@@ -183,7 +190,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     social.api('match').then(j => {
       if (S.panel !== 'mm' || U.mmMsg) return;
       if (j.room) { U.mmJoin = 1; U.mmCode = j.room; U.code = j.room; return go(false, false); }
-      if (j.error) { U.mmMsg = j.error === 'Not signed in' ? 'Quick match needs the full game on this account.' : 'Quick match is not available: ' + j.error; return showMatch(); }
+      if (j.error) { U.mmMsg = 'Quick match is not available: ' + j.error; return showMatch(); }
       if (Date.now() - U.mmStart > 120000) { U.mmMsg = 'No SWAT team is looking for terrorists right now.'; return showMatch(); }
       showMatch(); U.mmTimer = setTimeout(matchStep, 3000);
     });
@@ -251,16 +258,15 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       status('Asking for the microphone...'); U.showStart();
       voice.startMic().then(ok => { if (ok) voice.unlock(); status(ok ? 'Microphone ready.' : voice.err); U.showStart(); });
     }
-    else if (what === 'solo') go(true, false);
+    else if (what === 'mine') playMine();
     else if (what === 'tut') go(true, true);
-    else if (what === 'online' && !unlock.full()) showBuy('online', 'start');
     else if (what === 'mode') showMode();
     else if (what === 'fmain') { if (!unlock.full()) return showBuy('editor', 'start'), true; U.fromMain = true; U.fcode = ''; showFriendPad(''); }
     else if (what === 'online') { U.omsg = ''; showOnline(); hello(); }
     else if (what === 'ohome') { clearTimeout(U.mmTimer); U.fmsg = ''; showOnline(''); }
     else if (what === 'code') { U.msg = ''; try { const c = localStorage.getItem('bl_room') || ''; U.code = isRoomCode(c) ? c : ''; } catch (e) { U.code = ''; } showKeypad(); }
     else if (what === 'oback') showOnline('');
-    else if (what === 'hostopen') { U.hostOpen = !U.hostOpen; try { localStorage.setItem('ych_open', U.hostOpen ? '1' : '0'); } catch (e) { } showOnline(''); }
+    else if (what === 'hostopen') { U.hostOpen = !U.hostOpen; try { localStorage.setItem('ych_open', U.hostOpen ? '1' : '0'); } catch (e) { } showMode(); }
     else if (what === 'key') { if (U.code.length < 6) U.code += arg; showKeypad(''); }
     else if (what === 'del') { U.code = U.code.slice(0, -1); showKeypad(''); }
     else if (what === 'new') { U.code = randomRoomCode(); U.created = U.code; showKeypad('New room' + (U.hostOpen ? ', open to terrorist players' : '') + ': tell your squad ' + U.code + '.'); }
@@ -274,7 +280,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'watch') { if (isRoomCode(U.code)) go(false, false, true); else showKeypad('The room code has six characters.'); }
     else if (what === 'join') { if (isRoomCode(U.code)) go(false, false); else showKeypad('The room code has six characters.'); }
     else if (what === 'qm') { clearTimeout(U.mmTimer); U.mmMsg = ''; U.mmStart = Date.now(); showMatch(); matchStep(); }
-    else if (what === 'mmstop') { clearTimeout(U.mmTimer); showOnline(''); }
+    else if (what === 'mmstop') { clearTimeout(U.mmTimer); showMode(); }
     else if (what === 'fl') { U.fmsg = ''; U.forget = false; showFriends(arg === undefined ? U.fpage : +arg); hello(); }
     else if (what === 'forget') { if (!U.forget) { U.forget = true; U.fmsg = 'Deletes your friends, requests and blocks on our server. Press again.'; return showFriends(), true; }
       U.forget = false; social.api('forget').then(j => { social.friends = []; social.requests = []; U.fmsg = j.error || 'Deleted. Your friends list is empty now.'; showFriends(0); }); }
@@ -292,7 +298,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'fback') { if (U.fromMain) { U.fromMain = false; return showMode(), true; } S.panel = null; back2(); }
     else if (what === 'fgo') { if (U.fcode.length !== 8) return showFriendPad('The code has eight digits.'), true; const c = U.fcode; showFriendPad('Loading...');
       (U.friendMap ? U.friendMap(c) : Promise.resolve(false)).then(ok => { if (!ok) return showFriendPad('No map has that code (or it was reported).');
-        if (U.fromMain) { U.fromMain = false; go(true, false); let n = 0; const t = setInterval(() => { if (U.started() || ++n > 40) { clearInterval(t); if (U.started()) U.friendMap(c); } }, 300); return; }   // from START MISSION: solo, with that map picked
+        if (U.fromMain) { U.fromMain = false; playMine(); let n = 0; const t = setInterval(() => { if (U.started() || ++n > 40) { clearInterval(t); if (U.started()) U.friendMap(c); } }, 300); return; }   // from START MISSION: your own room, with that map picked
         S.panel = null; back2(); }); }
     else if (what === 'freport') { U.reportMap && U.reportMap(); }
     else if (what === 'players') showPlayers();

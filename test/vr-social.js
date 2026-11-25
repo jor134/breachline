@@ -1,8 +1,8 @@
-// quest-store: PLAY ONLINE panels (quick match, friends, 6-character room codes), PLAYERS detail, the suppressor and the pistol's
+// quest-store: START MISSION and JOIN A SQUAD panels (quick match, friends, 6-character room codes), PLAYERS detail, the suppressor and the pistol's
 // spare magazine. Runs without the Worker: friends show as unavailable.
 (async () => {
   const B = window.__bl, U = B.storeUI, out = {}, wait = ms => new Promise(r => setTimeout(r, ms)), P = B.panel;
-  U.showStart(); out.startOnline = P.btns.some(b => b.act === 'st:online');
+  U.showStart(); U.act('st:mode'); out.modeBtns = P.btns.map(b => b.act).join(','); out.noSolo = !P.btns.some(b => b.act === 'st:solo'); out.openDefault = U.hostOpen;
   U.act('st:online'); out.online = P.btns.map(b => b.act).join(',');
   U.act('st:code'); out.keys = P.btns.filter(b => b.act.startsWith('st:key:')).length;
   for (const k of 'AB2') U.act('st:key:' + k); U.act('st:join'); out.shortCode = U.msg;

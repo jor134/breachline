@@ -16,10 +16,10 @@ with sync_playwright() as p:
     out['controllers'] = pg.evaluate("[0, 1].map(i => window.__bl.renderer.xr.getController(i).visible)")   # both hands there (they connected before three.js took the session)
     pg.wait_for_timeout(1200); out['startStays'] = pg.evaluate('window.__bl.S.panel')   # the game's twice-a-second redraw must not replace it
     pg.evaluate("window.__bl.storeUI.act('st:word')"); out['callsign'] = pg.evaluate("localStorage.getItem('bl_name')")
-    pg.evaluate("window.__bl.storeUI.act('st:online')"); pg.evaluate("for (const k of ['4','7','2','9']) window.__bl.storeUI.act('st:key:' + k)")
+    pg.evaluate("window.__bl.storeUI.act('st:online')"); pg.evaluate("window.__bl.storeUI.act('st:code')"); pg.evaluate("for (const k of ['4','7','2','9']) window.__bl.storeUI.act('st:key:' + k)")
     out['keypad'] = pg.evaluate("[window.__bl.S.panel, window.__bl.panel.btns.find(x => x.act === 'st:join').text]")
-    pg.evaluate("window.__bl.storeUI.act('st:back')"); pg.evaluate("window.__bl.storeUI.act('st:solo')")
-    pg.wait_for_function('window.__bl.S.net === "solo"', timeout=10000); pg.wait_for_timeout(1500)
+    pg.evaluate("window.__bl.storeUI.act('st:back')"); pg.evaluate("window.__bl.storeUI.act('st:mine')")   # PLAY AS SWAT: no server here, so it falls back to offline
+    pg.wait_for_function('window.__bl.S.net === "solo"', timeout=15000); pg.wait_for_timeout(1500)
     out['afterSolo'] = pg.evaluate(JS_STATE)
     pg.screenshot(path='/tmp/store-launch.png')
     # VR ends without quitting (the headset leaves VR for a permission prompt): the game keeps going, ENTER VR comes back to it

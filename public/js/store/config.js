@@ -5,5 +5,5 @@ export const STORE = {
   billing: 'https://quest.meta.com/billing', // Meta's Digital Goods / PaymentRequest method
   sku: 'full_game',                          // the add-on's SKU in the Developer Dashboard (durable)
   gate: 'iap',
-  demoMaps: ['training', 'mansion'],         // free: the training facility and the mansion, solo
+  demoMaps: ['training', 'mansion'],         // free to lead as SWAT (online): the training facility and the mansion; any mission as a terrorist
 };
