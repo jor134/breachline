@@ -36,7 +36,7 @@ export const ROOMS = [
   // back of house: the corridor behind the stage, dressing rooms, the green room, production; the staff corridor, storage, keg cooler, dock
   [0, 'Backstage', 0, 34, 44, 36, 'concrete'], [0, 'Dressing room 1', 0, 36, 7, 42, 'tileW'], [0, 'Dressing room 2', 7, 36, 14, 42, 'tileW'],
   [0, 'Green room', 14, 36, 30, 42, 'carpetG'], [0, 'Production', 30, 36, 40, 42, 'concrete'],
-  [0, 'Staff corridor', 40, 8, 45, 26, 'concrete'], [0, 'Dock passage', 40, 26, 44, 34, 'concrete'], [0, 'Storage', 45, 8, 58, 18, 'concrete'], [0, 'Keg cooler', 45, 18, 52, 26, 'steelfloor'],
+  [0, 'Staff corridor', 40, 8, 45, 26, 'concrete'], [0, 'Dock passage', 40, 26, 44, 34, 'concrete'], [0, 'Storage', 45, 8, 58, 18, 'concrete'], [0, 'Keg cooler', 45, 18, 52, 26, 'steelfloor'], [0, 'Plant room', 52, 18, 58, 26, 'concrete'],
   [0, 'Loading dock', 44, 26, 58, 42, 'concrete'], [0, 'Dock office', 40, 36, 44, 42, 'concrete'],
   // upstairs: the VIP lounge over the lobby, its balcony over the hall, the landing; the offices
   [1, 'Upper landing', 0, 0, 10, 8, 'carpetR'], [1, 'VIP lounge', 10, 0, 40, 8, 'carpetR'], [1, 'VIP balcony', 0, 8, 40, 13, 'carpetR'], [1, 'hall', 0, 13, 40, 34, 'void'],
@@ -53,7 +53,7 @@ export const OPENINGS = [
   [0, 3, 34, 4.2, 34, 'door'], [0, 35, 34, 36.2, 34, 'door'],                                             // stage wings: hall to backstage
   [0, 4, 36, 5.2, 36, 'door'], [0, 10, 36, 11.2, 36, 'door'], [0, 21, 36, 23, 36, 'door'], [0, 34, 36, 35.2, 36, 'door'],   // dressing rooms, green room, production
   [0, 40, 34, 44, 34, 'gap'], [0, 40, 26, 44, 26, 'gap'],                                                  // backstage, the passage, the staff corridor
-  [0, 45, 12, 45, 13.2, 'door'], [0, 45, 21, 45, 22.2, 'door'], [0, 44, 28, 44, 33, 'gap'], [0, 42, 36, 43.2, 36, 'door'],   // storage, keg cooler, dock, dock office
+  [0, 45, 12, 45, 13.2, 'door'], [0, 45, 21, 45, 22.2, 'door'], [0, 44, 28, 44, 33, 'gap'], [0, 54.4, 26, 55.6, 26, 'door'],   /* the plant room off the dock (it was an unroofed gap in the plan) */ [0, 42, 36, 43.2, 36, 'door'],   // storage, keg cooler, dock, dock office
   [0, 49, 42, 53, 42, 'gap', 'ext'], [0, 58, 30, 58, 31.2, 'door', 'ext'], [0, 3, 42, 4.2, 42, 'door', 'ext'],   // the dock's open shutter, its side door, the fire exit
   [1, 4.2, 0.6, 4.2, 7.4, 'gap'], [1, 10, 2, 10, 6, 'gap'], [1, 10, 8, 40, 8, 'gap'], [1, 0, 8, 10, 8, 'gap'], [1, 0, 13, 40, 13, 'gap'],   // landing, lounge, balcony open over the hall
   [1, 40, 2, 40, 3.2, 'door'], [1, 45, 4, 45, 5.2, 'door'], [1, 45, 10.6, 45, 11.8, 'door'],                // lounge to the offices; manager's office; security
@@ -87,16 +87,17 @@ for (const x of [22, 36]) F.push([0, x - 1.2, 2, x + 1.2, 3, 0.8, 'sofa', '+z'])
 // backstage: dressing tables and mirrors, the green room's sofas and drinks, production's flight cases
 for (const [x, x1] of [[0.3, 2.8], [7.3, 13.7]]) F.push([0, x, 40.6, x1, 41.6, 0.8, 'mirrordesk', '-z'], [0, x + 0.3, 36.3, x + 1.0, 39, 1.9, 'locker', '+x']);   // the first stops short of the fire exit
 F.push([0, 16, 40.7, 22, 41.7, 0.8, 'sofa', '-z'], [0, 23, 40.7, 29, 41.7, 0.8, 'sofa', '-z'], [0, 18, 38.4, 21, 39.4, 0.42, 'table'], [0, 24, 38.4, 27, 39.4, 0.42, 'table'], [0, 14.3, 37, 15.1, 40, 1.05, 'counter', '+x']);
-F.push([0, 31, 37, 33, 38.4, 1.1, 'case'], [0, 34, 37, 36, 38.4, 1.1, 'case'], [0, 31, 40, 34, 41.6, 1.4, 'case'], [0, 37, 38, 39.6, 41.6, 1.9, 'shelf', '-x']);
+F.push([0, 31, 37, 33, 38.4, 1.1, 'case'], [0, 34.2, 39, 36.2, 40.4, 1.1, 'case'], [0, 31, 40, 34, 41.6, 1.4, 'case'], [0, 37, 38, 39.6, 41.6, 1.9, 'shelf', '-x']);
 // storage, keg cooler, dock, dock office
-F.push([0, 50.6, 8.3, 57.7, 9.0, 2.2, 'shelf', '+z'], [0, 46, 12, 52, 13.2, 1.8, 'shelf', '+z'], [0, 46, 15.5, 52, 16.7, 1.8, 'shelf', '+z'], [0, 54, 11, 56, 13, 1.1, 'crate'], [0, 54.5, 15, 57, 17, 0.9, 'crate']);
-for (const z of [19, 21.5, 24]) F.push([0, 46, z, 47.6, z + 1.6, 1.0, 'keg'], [0, 49.4, z, 51, z + 1.6, 1.0, 'keg']);
+F.push([0, 50.6, 8.3, 57.7, 9.0, 2.2, 'shelf', '+z'], [0, 46.4, 10.2, 52.4, 11.4, 1.8, 'shelf', '+z'], [0, 46.4, 14.4, 52.4, 15.6, 1.8, 'shelf', '+z']   /* an aisle from the door */, [0, 54, 11, 56, 13, 1.1, 'crate'], [0, 54.5, 15, 57, 17, 0.9, 'crate']);
+for (const z of [19, 21.5, 24]) { if (z !== 21.5) F.push([0, 46, z, 47.6, z + 1.6, 1.0, 'keg']); F.push([0, 49.4, z, 51, z + 1.6, 1.0, 'keg']); }   // none in front of the door
+F.push([0, 52.4, 18.4, 55, 20.4, 1.9, 'cabinet', '+z'], [0, 55.6, 18.4, 57.6, 21.5, 1.5, 'crate'], [0, 56.4, 22.5, 57.6, 25, 1.9, 'cabinet', '-x']);   // the plant room
 F.push([0, 46, 31, 49, 33, 1.4, 'crate'], [0, 53, 34, 57, 36.5, 1.8, 'case'], [0, 54, 27, 57.6, 28.6, 1.2, 'crate'], [0, 40.3, 39.4, 41.2, 41.7, 1.9, 'cabinet', '+x'], [0, 42, 40.8, 43.8, 41.7, 0.76, 'desk', '-z']);
 // upstairs: the VIP lounge (sofas, a small bar), the balcony's tables at its rail; the manager's office (desk, safe), the security room (CCTV desk)
 for (const x of [14, 22, 30]) F.push([1, x - 1.5, 1, x + 1.5, 2, 0.8, 'sofa', '+z'], [1, x - 0.7, 3, x + 0.7, 3.8, 0.42, 'table']);
 F.push([1, 36, 0.3, 39.7, 1.1, 1.05, 'counter', '+z']);
 for (const x of [5, 12, 19, 26, 33]) F.push([1, x - 0.45, 11.6, x + 0.45, 12.4, 1.1, 'hightable']);
-F.push([1, 49, 6, 53, 7.2, 0.76, 'desk', '-z'], [1, 56.6, 1, 57.7, 2.2, 1.2, 'safe', '-x'], [1, 45.3, 0.3, 46.1, 4, 1.9, 'cabinet', '+x'], [1, 50, 1.5, 54, 2.5, 0.8, 'sofa', '+z']);
+F.push([1, 49, 6, 53, 7.2, 0.76, 'desk', '-z'], [1, 56.6, 1, 57.7, 2.2, 1.2, 'safe', '-x'], [1, 45.3, 0.3, 46.1, 3.7, 1.9, 'cabinet', '+x'], [1, 50, 1.5, 54, 2.5, 0.8, 'sofa', '+z']);
 F.push([1, 54, 10.3, 57.7, 11.3, 0.76, 'cctv', '+z'], [1, 47, 18.6, 52, 19.6, 1.9, 'rack', '-z']);
 export const FURNITURE = F;
 
@@ -176,8 +177,8 @@ function extra({ boxes }) {
 }
 const yAt = (f) => f * H;
 export default {
-  id: 'club', name: 'CLUB', op: 'Operation LAST DANCE', test: true, H, DOOR_H, YARD, layers: 2, layerFloor: [0, 1], maxDrop: 1.2, tods: ['night'], parked: PARKED,
-  spawn: SPAWN, exit: EXIT, breaker: BREAKER, cars: [], parked: [], rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
+  id: 'club', name: 'CLUB', op: 'Operation LAST DANCE', test: true, H, DOOR_H, YARD, layers: 2, layerFloor: [0, 1], maxDrop: 1.2, tods: ['night'],
+  spawn: SPAWN, exit: EXIT, breaker: BREAKER, cars: [], parked: PARKED, rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
   spots: { s: SUSPECT_SPOTS, c: CIV_SPOTS, b: BOMB_SPOTS }, hvts: HVTS, veg: null, counts: { s: 16, c: 8, b: 3 }, time: 1080, patrolMax: 14,
   stairs: STAIRS.map(s => ({ ...s, yb: 0, n: 1 })), foot: FOOT, bombMust: BOMB_MUST, civMust: CIV_MUST, yAt,
   lobby: { x: 29, y: 1.5, z: -21.5, tx: 29, tz: -17 },

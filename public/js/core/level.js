@@ -17,11 +17,37 @@ export function registerMap(def) { const fresh = !MAPS[def.id]; MAPS[def.id] = d
 export const U = 0.5, T = 0.2;
 const GRID = 4;   // spatial index bucket size (m)
 
+// Furniture is never left in a door's way: anything within 0.9 m of a door, across its width, is slid along the wall until it is
+// clear (if it still fits in its room without hitting other furniture or another door's space), or else cut back to the longer
+// piece beside the door, or else dropped. Runs once per map, on the map's own list (the scenery and the simulation share it).
+const DOOR_CLEAR = 0.9;
+export function clearDoors(map) {
+  if (map._doorsClear || !map.furniture) return; map._doorsClear = true;
+  const zones = (map.openings || []).filter(o => o[5] === 'door').map(([f, x0, z0, x1, z1]) => { const hz = Math.abs(z1 - z0) < 0.01;
+    return hz ? { f, x0: Math.min(x0, x1) + 0.05, x1: Math.max(x0, x1) - 0.05, z0: z0 - DOOR_CLEAR, z1: z0 + DOOR_CLEAR, hz } : { f, x0: x0 - DOOR_CLEAR, x1: x0 + DOOR_CLEAR, z0: Math.min(z0, z1) + 0.05, z1: Math.max(z0, z1) - 0.05, hz }; });
+  const hit = (a, b) => a.x0 < b.x1 && a.x1 > b.x0 && a.z0 < b.z1 && a.z1 > b.z0, rooms = map.rooms || [], keep = [];
+  const roomOf = (f, x, z) => rooms.find(r => r[0] === f && x > r[2] && x < r[4] && z > r[3] && z < r[5]);
+  for (const it of map.furniture) {
+    const f = it[0], b = { x0: it[1], z0: it[2], x1: it[3], z1: it[4] };
+    if (it[6] === 'dancer' || !zones.some(zn => zn.f === f && hit(b, zn))) { keep.push(it); continue; }
+    const room = roomOf(f, (b.x0 + b.x1) / 2, (b.z0 + b.z1) / 2), ok = c => (!room || (c.x0 >= room[2] && c.x1 <= room[4] && c.z0 >= room[3] && c.z1 <= room[5])) && !zones.some(zn => zn.f === f && hit(c, zn)) && !map.furniture.some(o => o !== it && o[0] === f && hit(c, { x0: o[1], z0: o[2], x1: o[3], z1: o[4] }));
+    let best = null;
+    for (const zn of zones) { if (zn.f !== f || !hit(b, zn)) continue;
+      for (const ax of zn.hz ? ['x'] : ['z']) for (const d of [zn[ax + '1'] - b[ax + '0'] + 0.02, zn[ax + '0'] - b[ax + '1'] - 0.02]) {   // slide past either side of the door
+        const c = Object.assign({}, b); c[ax + '0'] += d; c[ax + '1'] += d; if (ok(c) && (!best || Math.abs(d) < best.d)) best = { c, d: Math.abs(d) }; } }
+    if (best) { const n = it.slice(); n[1] = best.c.x0; n[2] = best.c.z0; n[3] = best.c.x1; n[4] = best.c.z1; keep.push(n); continue; }
+    const zn = zones.find(z => z.f === f && hit(b, z)), ax = zn.hz ? 'x' : 'z', lo = zn[ax + '0'] - 0.02 - b[ax + '0'], hi = b[ax + '1'] - zn[ax + '1'] - 0.02;   // cut back
+    if (Math.max(lo, hi) >= 0.5) { const n = it.slice(), i0 = ax === 'x' ? 1 : 2, i1 = ax === 'x' ? 3 : 4; if (lo >= hi) n[i1] = zn[ax + '0'] - 0.02; else n[i0] = zn[ax + '1'] + 0.02;
+      if (!zones.some(z => z.f === f && hit({ x0: n[1], z0: n[2], x1: n[3], z1: n[4] }, z))) { keep.push(n); continue; } }
+  }
+  map.furniture.length = 0; map.furniture.push(...keep);
+}
 export function buildLevel(id = 'mansion') {
   if (!MAPS[id]) id = 'mansion';
   if (cache.has(id)) return cache.get(id);
   const map = MAPS[id], H = map.H, DOOR_H = map.DOOR_H, YARD = map.YARD, NX = Math.round((YARD.x1 - YARD.x0) / U), NZ = Math.round((YARD.z1 - YARD.z0) / U), LAYERS = map.layers;
   const level = { id, map, H, YARD, NX, NZ, layers: LAYERS, boxes: [], doors: [], walk: null, cy: null };
+  clearDoors(map);
 
   // ---- walls from room plans: every unit edge of every room is a wall unless an opening or glass takes it ----
   const edges = new Set(), k = (f, i, j, o) => f + '|' + i + '|' + j + '|' + o, rooms = map.rooms || [];

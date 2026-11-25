@@ -694,4 +694,10 @@ await t('the squad bots wait for the human at the start instead of going off on 
     bots.forEach((p, i) => assert.ok(!p.bot.task && Math.hypot(p.bot.x - at[i][0], p.bot.z - at[i][1]) < 3, map + ': ' + p.name + ' went off on his own'));
   } } finally { Sim.BOTS = was; }
 });
+await t('no furniture in front of a door on any map', () => {
+  for (const id of ['training', 'mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club']) { const L = buildLevel(id), M = L.map;
+    for (const [f, x0, z0, x1, z1, kind] of (M.openings || []).filter(o => o[5] === 'door')) { const hz = Math.abs(z1 - z0) < 0.01, z = hz ? { x0: Math.min(x0, x1) + 0.06, x1: Math.max(x0, x1) - 0.06, z0: z0 - 0.85, z1: z0 + 0.85 } : { x0: x0 - 0.85, x1: x0 + 0.85, z0: Math.min(z0, z1) + 0.06, z1: Math.max(z0, z1) - 0.06 };
+      const o = M.furniture.find(q => q[0] === f && q[6] !== 'dancer' && q[1] < z.x1 && q[3] > z.x0 && q[2] < z.z1 && q[4] > z.z0); assert.ok(!o, id + ': ' + (o && o[6]) + ' in front of the door at ' + [f, x0, z0]); } }
+});
+await t('the club lot has its parked cars (the map object hands them to the game)', () => { assert.ok(buildLevel('club').map.parked.length > 10); });
 console.log(n + ' tests passed');

@@ -70,12 +70,12 @@ const furn = {
 // ---------- the model's kits: each kind's pieces, where they go (from the map's furniture), how they turn and stretch ----------
 // a kit stands centred on its own origin, facing +z as the model has it, except: bar, shelf face +x; bench faces -x
 function kitPlacements() {
-  const out = {}, put = (k, x, y, z, ry, sx = 1, sy = 1, sz = 1) => (out[k] = out[k] || []).push({ x, y, z, ry, sx, sy, sz });
+  const out = {}, put = (k, x, y, z, ry, sx = 1, sy = 1, sz = 1, mirror = false) => (out[k] = out[k] || []).push({ x, y, z, ry, sx, sy, sz, mirror });
   for (const f of FURNITURE) {
     const [fl, x0, z0, x1, z1, h, kind] = f, y = fl * H, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     if (kind === 'clubbar') { const L = z1 - z0, n = Math.max(1, Math.round(L / 1.83)), s = L / (n * 1.83); for (let i = 0; i < n; i++) put('bar', cx, y, z0 + (i + 0.5) * L / n, 0, (x1 - x0) / 0.91, h / 0.91, s); }
     else if (kind === 'backbar') { const L = z1 - z0, n = Math.max(1, Math.round(L / 0.92)); for (let i = 0; i < n; i++) put('shelf', cx, y, z0 + (i + 0.5) * L / n, 0, 1, h / 2.2, L / (n * 0.92)); }
-    else if (kind === 'booth') { const L = z1 - z0, n = Math.max(1, Math.round(L / 1.83)); for (let i = 0; i < n; i++) put('bench', cx, y, z0 + (i + 0.5) * L / n, 0, (x1 - x0) / 2.01, h / 1.08, L / (n * 1.83)); }
+    else if (kind === 'booth') { const L = z1 - z0, n = Math.max(1, Math.round(L / 1.83)); for (let i = 0; i < n; i++) put('bench', cx, y, z0 + (i + 0.5) * L / n, 0, (x1 - x0) / 2.01, h / 1.08, L / (n * 1.83), i % 2 === 1); }   // every other bench mirrored: each pair curves round its table, a half circle
     else if (kind === 'stool') put('barstool', cx, y, cz, rr() * 6.28, 1, h / 0.71, 1);
     else if (kind === 'desk' || kind === 'cctv') {   // a laptop, open toward the side the desk faces (the kit's laptop opens toward -z)
       const face = f[7] || '+z', d = { '+z': [0, 1], '-z': [0, -1], '+x': [1, 0], '-x': [-1, 0] }[face], len = face[1] === 'z' ? x1 - x0 : z1 - z0, dep = face[1] === 'z' ? z1 - z0 : x1 - x0;
@@ -99,9 +99,12 @@ function placeKits(kitScene, root) {
   for (const [k, list] of Object.entries(kitPlacements())) {
     for (const src of by[k] || []) {
       const mt = src.material; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.35; if (!pbrMats.includes(mt)) pbrMats.push(mt); if (mt.emissiveMap) { ledMats.push(mt); mt.userData.em = mt.emissive.clone(); }
-      const im = new THREE.InstancedMesh(src.geometry, mt, list.length); im.castShadow = !['dancefloor', 'spot', 'swivel', 'screen'].includes(k); im.receiveShadow = true;
-      list.forEach((t, i) => { e.set(0, t.ry, 0); q.setFromEuler(e); m4.compose(p.set(t.x, t.y, t.z), q, s.set(t.sx, t.sy, t.sz)); if (t.sy < 0) { /* hung upside down from the truss/ceiling */ } im.setMatrixAt(i, m4); });
-      im.computeBoundingSphere(); g.add(im);
+      // mirrored pieces get their own mesh, built from a mirrored copy of the geometry (a negative scale on an instance turns its faces inside out)
+      for (const mir of [false, true]) { const sel = list.filter(t => !!t.mirror === mir); if (!sel.length) continue;
+        let geo = src.geometry; if (mir) { geo = geo.clone(); geo.scale(1, 1, -1); const ix = geo.index; if (ix) for (let i = 0; i < ix.count; i += 3) { const a = ix.getX(i + 1); ix.setX(i + 1, ix.getX(i + 2)); ix.setX(i + 2, a); } }
+        const im = new THREE.InstancedMesh(geo, mt, sel.length); im.castShadow = !['dancefloor', 'spot', 'swivel', 'screen'].includes(k); im.receiveShadow = true;
+        sel.forEach((t, i) => { e.set(0, t.ry, 0); q.setFromEuler(e); m4.compose(p.set(t.x, t.y, t.z), q, s.set(t.sx, t.sy, t.sz)); im.setMatrixAt(i, m4); });
+        im.computeBoundingSphere(); g.add(im); }
     }
   }
   root.add(g); kitReady = true; return g;

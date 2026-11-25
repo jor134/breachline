@@ -1130,7 +1130,13 @@ function buildExitMark() {   // a marked rectangle on the ground at the map's wa
   for (const [x, z, sx, sz] of [[0, -d / 2, w, 0.08], [0, d / 2, w, 0.08], [-w / 2, 0, 0.08, d], [w / 2, 0, 0.08, d]]) { const b = new THREE.Mesh(new THREE.BoxGeometry(sx, 0.01, sz), exitMat); b.position.set(x, 0.035, z); exitMark.add(b); }
   exitTag.scale.set(1.6, 0.2, 1); exitTag.position.set(0, 2.2, M.id === 'mansion' ? -d / 2 + 0.3 : 0); exitMark.add(exitTag); exitMark.position.set((E.x0 + E.x1) / 2, E.y || 0, (E.z0 + E.z1) / 2);
 }
-function placeMapProps() { breaker.g.visible = !!M.breaker; if (M.breaker) breaker.g.position.set(M.breaker.x, M.breaker.y, M.breaker.z); buildExitMark(); }
+function placeMapProps() { breaker.g.visible = !!M.breaker; if (M.breaker) { breaker.g.position.set(M.breaker.x, M.breaker.y, M.breaker.z); breaker.g.rotation.y = breakerFacing(M.breaker); } buildExitMark(); }
+// The panel's front is its +z: it turns to face away from the wall it hangs on (the nearest wall within 0.4 m at its height)
+function breakerFacing(b) {
+  let best = null; for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (let r = 0.05; r <= 0.4; r += 0.05) {
+    const x = b.x + dx * r, z = b.z + dz * r; if (level.boxes.some(w => (w.kind === 'wall' || w.kind === 'lintel') && x > w.x0 && x < w.x1 && z > w.z0 && z < w.z1 && b.y > w.y0 && b.y < w.y1)) { if (!best || r < best.r) best = { r, dx, dz }; break; } }
+  return best ? Math.atan2(-best.dx, -best.dz) : 0;
+}
 const missions = () => MISSION_IDS.filter(TEST.shown);   // quest-store: maps marked test only show in test mode (js/store/tester.js)
 function nextMission() { return M.training ? (missions().includes(S.nextMap) ? S.nextMap : missions()[0]) : M.id; }
 function cycleMap() {
@@ -1304,7 +1310,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q68';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q69';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

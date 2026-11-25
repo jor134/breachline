@@ -177,7 +177,10 @@ def retarget_frames(src, tgt, joints, t0=0.0):
     order = sorted(joints, key=lambda i: depth(tgt, i)); frames = []
     for k in range(K):
         St = src.worlds(t0 + k * STEP); Rw = {}; W = {}
-        for m, (si, ti) in pairs.items(): Rw[ti] = rot_of(St[si]) @ rot_of(S0[si]).T @ corr[m] @ rot_of(T0[ti])
+        # the hands take no turn of their own: they keep their rest turn under the forearm. Given the dances' wrist twist, the hand
+        # turned alone (the rig's forearm-twist bones keep their rest), and the cuffs and hands of the crowd's jackets tore and stretched
+        for m, (si, ti) in pairs.items():
+            if not m.endswith('Hand'): Rw[ti] = rot_of(St[si]) @ rot_of(S0[si]).T @ corr[m] @ rot_of(T0[ti])
         for i in order:   # walk down the target skeleton: mapped bones take their world turn, the rest keep their rest turn under their parent
             p = tgt.parent.get(i); Pw = W[p] if p in W else (T0[p] if p is not None else np.eye(4))
             Lr = tgt.local(i); sc = np.cbrt(abs(np.linalg.det(Lr[:3, :3])))
