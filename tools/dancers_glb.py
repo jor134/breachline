@@ -239,29 +239,38 @@ gskip = lambda m: not re.search(r'Eyelash|Tear|Moisture|Mouth_Cavity|Teeth|nails
 out.append(('dj',) + bake_many(girl, gnodes, own_frames(girl, 0.5), DJ_TRIS, 1.68, gskip, 'dj', seams=False)[0])   # as she was before the seam welding (q62)
 
 # ---- write ----
-ob = bytearray(); views = []; accs = []; meshes = []; mats = []; imgs = []; nodes = []
-def view(arr, target=None):
+# Two files, each under the host's 25 MiB limit: the far meshes and the DJ (dancers.glb, everyone dancing as soon as it loads),
+# and the near meshes (dancers-hi.glb, swapped in when it arrives). The dance poses are stored as 16-bit integers
+# (KHR_mesh_quantization): each mesh's offsets are scaled into -1..1, and the scale (extras.morphScale) multiplies the pose weights.
+def write(dst, items):
+    ob = bytearray(); views = []; accs = []; meshes = []; mats = []; imgs = []; nodes = []
+    def view(arr, target=None):
+        while len(ob) % 4: ob.append(0)
+        o = len(ob); ob.extend(arr.tobytes()); v = {'buffer': 0, 'byteOffset': o, 'byteLength': arr.nbytes}
+        if target: v['target'] = target
+        views.append(v); return len(views) - 1
+    def add_acc(arr, ct, typ, target=34962, mm=False, norm=False, mmv=None):
+        a = {'bufferView': view(arr, target), 'componentType': ct, 'count': len(arr), 'type': typ}
+        if norm: a['normalized'] = True
+        if mm: m = arr if mmv is None else mmv; a['min'] = m.min(0).tolist(); a['max'] = m.max(0).tolist()
+        accs.append(a); return len(accs) - 1
+    matOf = {}   # a dancer's meshes share one texture and material
+    for name, P, NI, UV, jpg in items:
+        if jpg not in matOf:
+            imgs.append({'bufferView': view(np.frombuffer(jpg, np.uint8)), 'mimeType': 'image/jpeg'})
+            mats.append({'name': name, 'pbrMetallicRoughness': {'baseColorTexture': {'index': len(imgs) - 1}, 'metallicFactor': 0.0, 'roughnessFactor': 0.8}, 'doubleSided': True}); matOf[jpg] = len(mats) - 1
+        base = P[0].astype(np.float32); D = (P[1:] - P[0]).astype(np.float64); sc = float(np.abs(D).max()) or 1.0
+        Q = np.clip(np.round(D / sc * 32767), -32767, 32767).astype(np.int16)
+        pr = {'attributes': {'POSITION': add_acc(base, 5126, 'VEC3', mm=True), 'NORMAL': add_acc(normals(P[0], NI), 5126, 'VEC3'), 'TEXCOORD_0': add_acc(UV.astype(np.float32), 5126, 'VEC2')},
+              'indices': add_acc(NI.astype(np.uint16 if len(base) < 65536 else np.uint32).ravel(), 5123 if len(base) < 65536 else 5125, 'SCALAR', 34963), 'material': matOf[jpg],
+              'targets': [{'POSITION': add_acc(Q[f], 5122, 'VEC3', mm=True, norm=True, mmv=Q[f].astype(np.float64) / 32767)} for f in range(len(Q))]}
+        meshes.append({'name': name, 'primitives': [pr], 'extras': {'morphScale': sc}}); nodes.append({'name': name, 'mesh': len(meshes) - 1})
     while len(ob) % 4: ob.append(0)
-    o = len(ob); ob.extend(arr.tobytes()); v = {'buffer': 0, 'byteOffset': o, 'byteLength': arr.nbytes}
-    if target: v['target'] = target
-    views.append(v); return len(views) - 1
-def add_acc(arr, ct, typ, target=34962, mm=False):
-    a = {'bufferView': view(arr, target), 'componentType': ct, 'count': len(arr), 'type': typ}
-    if mm: a['min'] = arr.min(0).tolist(); a['max'] = arr.max(0).tolist()
-    accs.append(a); return len(accs) - 1
-matOf = {}   # a dancer's near and far meshes share one texture and material
-for name, P, NI, UV, jpg in out:
-    if jpg not in matOf:
-        imgs.append({'bufferView': view(np.frombuffer(jpg, np.uint8)), 'mimeType': 'image/jpeg'})
-        mats.append({'name': name, 'pbrMetallicRoughness': {'baseColorTexture': {'index': len(imgs) - 1}, 'metallicFactor': 0.0, 'roughnessFactor': 0.8}, 'doubleSided': True}); matOf[jpg] = len(mats) - 1
-    base = P[0].astype(np.float32)
-    pr = {'attributes': {'POSITION': add_acc(base, 5126, 'VEC3', mm=True), 'NORMAL': add_acc(normals(P[0], NI), 5126, 'VEC3'), 'TEXCOORD_0': add_acc(UV.astype(np.float32), 5126, 'VEC2')},
-          'indices': add_acc(NI.astype(np.uint16 if len(base) < 65536 else np.uint32).ravel(), 5123 if len(base) < 65536 else 5125, 'SCALAR', 34963), 'material': matOf[jpg],
-          'targets': [{'POSITION': add_acc((P[f] - P[0]).astype(np.float32), 5126, 'VEC3', mm=True)} for f in range(1, len(P))]}
-    meshes.append({'name': name, 'primitives': [pr]}); nodes.append({'name': name, 'mesh': len(meshes) - 1})
-while len(ob) % 4: ob.append(0)
-g = {'asset': {'version': '2.0', 'generator': 'breachline tools/dancers_glb.py'}, 'scene': 0, 'scenes': [{'nodes': list(range(len(nodes)))}], 'nodes': nodes, 'meshes': meshes, 'materials': mats,
-     'textures': [{'source': i, 'sampler': 0} for i in range(len(imgs))], 'images': imgs, 'samplers': [{}], 'accessors': accs, 'bufferViews': views, 'buffers': [{'byteLength': len(ob)}]}
-js = json.dumps(g, separators=(',', ':')).encode(); js += b' ' * ((4 - len(js) % 4) % 4)
-open(DST, 'wb').write(struct.pack('<III', 0x46546C67, 2, 28 + len(js) + len(ob)) + struct.pack('<II', len(js), 0x4E4F534A) + js + struct.pack('<II', len(ob), 0x004E4942) + bytes(ob))
-print(DST, round((28 + len(js) + len(ob)) / 1e6, 2), 'MB')
+    g = {'asset': {'version': '2.0', 'generator': 'breachline tools/dancers_glb.py'}, 'extensionsUsed': ['KHR_mesh_quantization'], 'extensionsRequired': ['KHR_mesh_quantization'],
+         'scene': 0, 'scenes': [{'nodes': list(range(len(nodes)))}], 'nodes': nodes, 'meshes': meshes, 'materials': mats,
+         'textures': [{'source': i, 'sampler': 0} for i in range(len(imgs))], 'images': imgs, 'samplers': [{}], 'accessors': accs, 'bufferViews': views, 'buffers': [{'byteLength': len(ob)}]}
+    js = json.dumps(g, separators=(',', ':')).encode(); js += b' ' * ((4 - len(js) % 4) % 4)
+    open(dst, 'wb').write(struct.pack('<III', 0x46546C67, 2, 28 + len(js) + len(ob)) + struct.pack('<II', len(js), 0x4E4F534A) + js + struct.pack('<II', len(ob), 0x004E4942) + bytes(ob))
+    print(dst, round((28 + len(js) + len(ob)) / 1e6, 2), 'MB')
+near = [o for o in out if not o[0].endswith('_lo') and o[0] != 'dj' and any(q[0] == o[0] + '_lo' for q in out)]
+write(DST, [o for o in out if o not in near]); write(DST.replace('.glb', '-hi.glb'), near)

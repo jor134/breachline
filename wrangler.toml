@@ -1,6 +1,8 @@
 name = "you-cant-hide"   # quest-store branch: its own Worker, its own Durable Objects (Quest-only lobbies)
 main = "src/worker.js"
 compatibility_date = "2025-09-01"
+# Variables set in the dashboard (TEST_CODE) survive a deploy instead of being wiped by this file, which declares none
+keep_vars = true
 
 # The store app loads the game from this domain (bought in Cloudflare, same account). Cloudflare makes the DNS record and
 # certificate when the Worker deploys. you-cant-hide.jor134.workers.dev keeps working too.

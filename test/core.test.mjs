@@ -680,4 +680,9 @@ await t('a pose left over from the training room does not arm the walk-out at th
     assert.equal(s.phase, 'active', map + ': walked out from the spawn without going in');
   }
 });
+await t('every file the Worker serves is under the 25 MiB asset limit', async () => {
+  const fs = await import('node:fs'), path = await import('node:path'), big = [];
+  const walk = d => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) walk(p); else if (fs.statSync(p).size > 24 * 1024 * 1024) big.push(p); } };
+  walk(new URL('../public', import.meta.url).pathname); assert.deepEqual(big, [], 'too big for Cloudflare: ' + big.join(', '));
+});
 console.log(n + ' tests passed');
