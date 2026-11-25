@@ -646,6 +646,25 @@ await t('club: every spot reachable from the van; front, dock and fire exit all 
   assert.ok(s.npcs.some(n => n.hvt && Math.abs(n.y - C.H) < 0.01), 'the promoter upstairs'); assert.ok(s.npcs.filter(n => n.kind === 's').length >= 12 && s.bombs.length === 3, 'crew and bombs placed');
   assert.ok(s.bombs.some(b => Math.abs(b.x - 20) < 0.1 && Math.abs(b.z - 30.6) < 0.1), 'one in the DJ booth');
 });
+const C_noOverlap = R => R.every(a => R.every(b => a === b || a[0] !== b[0] || a[6] === 'void' || b[6] === 'void' || !(a[2] < b[4] - 0.01 && b[2] < a[4] - 0.01 && a[3] < b[5] - 0.01 && b[3] < a[5] - 0.01)));
+await t('winery: every spot reachable from the van; up either open stair to the terrace and into both wings from it; the terrace party clear of the doors', async () => {
+  const { buildLevel: BL, findPath: FP } = await import('../public/js/core/level.js'), W = await import('../public/js/core/maps/winery.js');
+  const L = BL('winery'), M = L.map, near = (p, x, z) => { const e = p && p[p.length - 1]; return !!p && Math.hypot(e[0] - x, e[1] - z) < 1.2; };
+  const go = ([f, x, z], from = [42, -36], fy = 0) => near(FP(L, from[0], from[1], fy, x, z, M.yAt(f, x, z), true), x, z);
+  for (const sp of [...M.spots.s, ...M.spots.c, ...M.civMust, ...M.hvts.map(h => h.at), ...M.hvts[0].guards, M.hvts[0].flee]) assert.ok(go(sp), 'reachable from the van: ' + sp);
+  for (const fl of W.FLIGHTS) { const p = FP(L, 42, -6, 0, (fl.x0 + fl.x1) / 2, 6, W.H, true); assert.ok(near(p, (fl.x0 + fl.x1) / 2, 6), 'onto the terrace'); }
+  const viaW = FP(L, 33.5, -4, 0, 32, 6, W.H, true), viaE = FP(L, 50.5, -4, 0, 52, 15, W.H, true);
+  assert.ok(near(viaW, 32, 6) && viaW.some(([x, z]) => W.FLIGHTS[0] === W.flightOf(x, z)), 'up the west flight'); assert.ok(near(viaE, 52, 15) && viaE.some(([x, z]) => W.FLIGHTS[1] === W.flightOf(x, z)), 'up the east flight');
+  assert.ok(go([1, 7, 3], [40, 20], W.H) && go([1, 80, 30], [40, 20], W.H), 'from the terrace into both wings upstairs');
+  assert.ok(!FP(L, 34, 5, W.H, 34, -6, 0, true) || FP(L, 34, 5, W.H, 34, -6, 0, true).some(([x, z]) => W.flightOf(x, z) || W.onLanding(x, z) || W.stairOf(x, z)), 'no stepping off the terrace onto the plaza');
+  assert.ok(C_noOverlap(W.ROOMS), 'no two rooms overlap');
+  for (const d of L.doors) { const x = (d.x0 + d.x1) / 2, z = (d.z0 + d.z1) / 2, hz = Math.abs(d.z1 - d.z0) < 0.01;
+    for (const e of [-0.45, 0.45]) { const px = hz ? x : x + e, pz = hz ? z + e : z; assert.ok(!M.furniture.some(f => f[0] === d.f && px > f[1] - 0.25 && px < f[3] + 0.25 && pz > f[2] - 0.25 && pz < f[4] + 0.25), 'door ' + [d.f, x, z] + ' blocked'); } }
+  assert.ok(W.DANCERS.length > 70, 'a full terrace: ' + W.DANCERS.length); assert.ok(W.DANCERS.every(([x, z]) => W.onTerrace(x, z)), 'all dancing on the terrace');
+  const s = new Sim('winery'); s.addPlayer(1, 'A'); s.start(3, false, 'clear', 'winery');
+  assert.ok(s.npcs.some(n => n.hvt && Math.abs(n.y - W.H) < 0.01), 'the estate manager upstairs'); assert.ok(s.npcs.filter(n => n.kind === 's').length >= 16 && s.bombs.length === 3, 'crew and bombs placed');
+  assert.ok(s.bombs.some(b => Math.abs(b.x - 42) < 0.3 && b.z > 31 && b.z < 33), 'one under the DJ\'s decks'); assert.ok(['dusk', 'night'].includes(s.tod), 'sunset or night');
+});
 await t('stadium: the match carries on: the ball goes round both sides, every player touches it, nobody strays past the touchline', async () => {
   const { makeMatch, stepMatch } = await import('../public/js/maps/stadium-match.js'), { PITCH } = await import('../public/js/core/maps/stadium.js');
   const m = makeMatch(), touched = new Set(); let last = null, poss = 0, out = 0;
@@ -677,7 +696,7 @@ await t('stadium: bots fast-rope to the catwalk, rappel down past the suites and
   for (const p of s.bots()) assert.ok(Math.abs(p.bot.y - C.YC) < 0.3, p.name + ' down the stair in the club: ' + [p.bot.x, p.bot.y, p.bot.z].map(v => v.toFixed(1)));
 });
 await t('a pose left over from the training room does not arm the walk-out at the spawn', () => {
-  for (const map of ['mansion', 'terminal', 'grandprix', 'airport', 'club']) {
+  for (const map of ['mansion', 'terminal', 'grandprix', 'airport', 'club', 'winery']) {
     const s = new Sim(3); s.addPlayer('a', 'A'); s.start(5, false, 'clear', 'training'); s.pose('a', { h: [3, 1.65, 3, 0, 0, 0, 1] }); for (let i = 0; i < 10; i++) s.tick(0.05);
     s.start(6, false, 'clear', map); for (let i = 0; i < 3; i++) s.tick(0.05);
     const [x, z] = s.M.spawn[0]; for (let i = 0; i < 160; i++) { s.pose('a', { h: [x, 1.65, z, 0, 0, 0, 1] }); s.tick(0.05); }
@@ -699,7 +718,7 @@ await t('the squad bots wait for the human at the start instead of going off on 
   } } finally { Sim.BOTS = was; }
 });
 await t('no furniture in front of a door on any map', () => {
-  for (const id of ['training', 'mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club']) { const L = buildLevel(id), M = L.map;
+  for (const id of ['training', 'mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club', 'winery']) { const L = buildLevel(id), M = L.map;
     for (const [f, x0, z0, x1, z1, kind] of (M.openings || []).filter(o => o[5] === 'door')) { const hz = Math.abs(z1 - z0) < 0.01, z = hz ? { x0: Math.min(x0, x1) + 0.06, x1: Math.max(x0, x1) - 0.06, z0: z0 - 0.85, z1: z0 + 0.85 } : { x0: x0 - 0.85, x1: x0 + 0.85, z0: Math.min(z0, z1) + 0.06, z1: Math.max(z0, z1) - 0.06 };
       const o = M.furniture.find(q => q[0] === f && q[6] !== 'dancer' && q[1] < z.x1 && q[3] > z.x0 && q[2] < z.z1 && q[4] > z.z0); assert.ok(!o, id + ': ' + (o && o[6]) + ' in front of the door at ' + [f, x0, z0]); } }
 });
@@ -710,7 +729,7 @@ await t('the score lines add up to the score shown, caps included', () => {
   const r = s.score(), sum = r.lines.reduce((a, l) => a + (l[1] || 0), 0); assert.notEqual(r.result, 'MISSION COMPLETE'); assert.equal(r.total, Math.max(0, sum)); assert.ok(r.total <= 49);
 });
 await t('no suspect or hostage starts inside furniture', () => {
-  for (const id of ['training', 'mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club']) { const M = buildLevel(id).map, sp = M.spots || {};
+  for (const id of ['training', 'mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club', 'winery']) { const M = buildLevel(id).map, sp = M.spots || {};
     for (const p of [...(sp.s || []), ...(sp.c || []), ...(M.civMust || [])]) { if (!Array.isArray(p)) continue; const [f, x, z] = p;
       const o = M.furniture.find(q => q[0] === f && q[6] !== 'dancer' && x > q[1] - 0.25 && x < q[3] + 0.25 && z > q[2] - 0.25 && z < q[4] + 0.25); assert.ok(!o, id + ': spot ' + p + ' in ' + (o && o[6])); } }
 });

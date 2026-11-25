@@ -11,8 +11,9 @@ import airportGfx from './maps/airport-gfx.js';
 import casinoGfx from './maps/casino-gfx.js';
 import stadiumGfx from './maps/stadium-gfx.js';
 import clubGfx from './maps/club-gfx.js';
+import wineryGfx from './maps/winery-gfx.js';
 import { customGfx } from './maps/custom-gfx.js';
-const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx, casino: casinoGfx, stadium: stadiumGfx, club: clubGfx };
+const MAPGFX = { mansion: mansionGfx, terminal: terminalGfx, training: trainingGfx, grandprix: grandprixGfx, airport: airportGfx, casino: casinoGfx, stadium: stadiumGfx, club: clubGfx, winery: wineryGfx };
 let MAPFURN = null;   // a map's own furniture pieces (gfx.furn): sub -> builder
 
 export const MATS = {}, SOFT = {};   // SOFT.blob: the round shadow drawn under people
@@ -199,7 +200,8 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
       if (hz) b('glass').quad([a, w.y0 + 0.1, c], [e, w.y0 + 0.1, c], [e, w.y1 - 0.12, c], [a, w.y1 - 0.12, c], [0, 0, 1]); else b('glass').quad([c, w.y0 + 0.1, a], [c, w.y0 + 0.1, e], [c, w.y1 - 0.12, e], [c, w.y1 - 0.12, a], [1, 0, 0]);
       bx('fascia', a, e, w.y0, w.y0 + 0.1, 0.05); bx('fascia', a, e, w.y1 - 0.12, w.y1, 0.05);
       for (let i = 0; i <= n; i++) { const u = a + (e - a) * i / n; bx('fascia', u - 0.035, u + 0.035, w.y0 + 0.1, w.y1 - 0.12, 0.05); }
-    } else if (w.kind === 'furn') { furnish(b, w); if (!['pool', 'hedge', 'wall'].includes(w.sub)) { const e = 0.28, y = w.y0 + 0.016; ao('aoBlob', [w.x0 - e, y, w.z0 - e], [w.x1 + e, y, w.z0 - e], [w.x1 + e, y, w.z1 + e], [w.x0 - e, y, w.z1 + e], [0, 1, 0]); } }
+    } else if (w.kind === 'furn') { furnish(b, w); if (!['pool', 'hedge', 'wall', 'dancer'].includes(w.sub)) {   // (a dancer's own blob shadow is drawn with the crowd; a square here floated under each one)
+      const e = 0.28, y = w.y0 + 0.016; ao('aoBlob', [w.x0 - e, y, w.z0 - e], [w.x1 + e, y, w.z0 - e], [w.x1 + e, y, w.z1 + e], [w.x0 - e, y, w.z1 + e], [0, 1, 0]); } }
   }
   // stairs: floating treads, one flight stacked over the next
   for (const st of map.stairs || []) {
