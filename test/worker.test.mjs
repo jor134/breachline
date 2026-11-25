@@ -64,4 +64,12 @@ a.ws.close(); await sleep(200); assert.equal(rooms.get('ABCDEF').timer, null, 'r
   const env3 = { ...env, CREATOR_CODE: 's3cret' }, r3 = await worker.fetch(req('/ws/GATECC?name=Old'), env3); const m3 = []; r3.webSocket.addEventListener('message', e => m3.push(JSON.parse(e.data))); await sleep(50);
   r3.webSocket.send(JSON.stringify({ t: 'choose', m: 'terminal' })); await sleep(100); assert.ok(!m3.some(m => m.t === 'locked'), 'no app secret: rooms do not check'); r3.webSocket.close();
   globalThis.fetch = realFetch; }
+// test mode: a test map picked by a headset the room does not know as a tester is refused out loud; the token sent later counts
+{ const { makeTesterToken } = await import('../src/social.js'), rm = new Map(), envT = { CREATOR_CODE: 's3cret', TEST_CODE: '123456' }; envT.ROOMS = { idFromName: n => n, get: id => rm.get(id) || rm.set(id, new Room(null, envT)).get(id) };
+  const r = await worker.fetch(req('/ws/TESTAA?name=Tester'), envT), msgs = []; r.webSocket.addEventListener('message', e => msgs.push(JSON.parse(e.data))); await sleep(50);
+  r.webSocket.send(JSON.stringify({ t: 'choose', m: 'winery' })); await sleep(100); assert.ok(msgs.some(m => m.t === 'testonly'), 'told the map is test-only');
+  r.webSocket.send(JSON.stringify({ t: 'tester', tt: 'tst.bad' })); await sleep(100); assert.ok(!msgs.some(m => m.t === 'testerok'), 'a bad token does nothing');
+  r.webSocket.send(JSON.stringify({ t: 'tester', tt: await makeTesterToken(envT) })); await sleep(100); assert.ok(msgs.some(m => m.t === 'testerok'), 'a good one makes a tester');
+  const n = msgs.filter(m => m.t === 'testonly').length; r.webSocket.send(JSON.stringify({ t: 'choose', m: 'winery' })); await sleep(100); assert.equal(msgs.filter(m => m.t === 'testonly').length, n, 'now the test map can be picked');
+  r.webSocket.close(); await sleep(50); }
 console.log('worker tests passed'); process.exit(0);

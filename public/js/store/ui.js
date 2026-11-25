@@ -276,7 +276,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'tdel') { U.tcode = U.tcode.slice(0, -1); showTestPad(''); }
     else if (what === 'tclr') { U.tcode = ''; showTestPad(''); }
     else if (what === 'tback') { U.tcode = ''; showCredits(U.page); }
-    else if (what === 'tgo') { if (U.tcode.length < 6) return showTestPad('The code has at least 6 digits.'), true; const c = U.tcode; U.tcode = ''; showTestPad('Checking...'); TEST.enter(c).then(j => { if (j.token) { status('Test mode on.'); showCredits(U.page); } else showTestPad(j.error || 'Could not check the code.'); }); }
+    else if (what === 'tgo') { if (U.tcode.length < 6) return showTestPad('The code has at least 6 digits.'), true; const c = U.tcode; U.tcode = ''; showTestPad('Checking...'); TEST.enter(c).then(j => { if (j.token) { status('Test mode on.'); if (S.net === 'online') sendTester(); showCredits(U.page); } else showTestPad(j.error || 'Could not check the code.'); }); }
     else if (what === 'watch') { if (isRoomCode(U.code)) go(false, false, true); else showKeypad('The room code has six characters.'); }
     else if (what === 'join') { if (isRoomCode(U.code)) go(false, false); else showKeypad('The room code has six characters.'); }
     else if (what === 'qm') { clearTimeout(U.mmTimer); U.mmMsg = ''; U.mmStart = Date.now(); showMatch(); matchStep(); }
@@ -316,11 +316,15 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   // room messages only the store Worker sends
   // sign in again (Meta is asked again) and hand the room the new pass, so a purchase counts without leaving the room
   const sendPass = () => social.refresh().then(() => { if (social.pass) try { net.send({ t: 'pass', fp: social.pass }); } catch (e) { } });
+  // test mode: hand the room this headset's tester token (the socket can open before the token's check comes back)
+  const sendTester = () => TEST.ready.then(() => { if (TEST.ok && TEST.token) try { net.send({ t: 'tester', tt: TEST.token }); } catch (e) { } });
   U.onMsg = m => {
+    if (m.t === 'testonly') { status(TEST.ok ? 'Confirming test mode with the room... pick the mission again in a moment.' : 'That mission is in test mode: CREDITS > DEBUG ON > TEST MODE to play it.'); if (TEST.ok) { U.testAsk = true; sendTester(); } return true; }
+    if (m.t === 'testerok') { if (U.testAsk) status('Test mode confirmed in this room: pick the test mission again.'); U.testAsk = false; return true; }
     // the room refused a mission pick: leading it needs the full game, and the server did not see a confirmed purchase
     if (m.t === 'locked') { if (!unlock.full()) { showBuy('map', 'board'); return true; }
       status('Your purchase could not be confirmed (' + (social.check || 'not checked') + '). Checking again...'); sendPass(); return true; }
-    if (m.t === 'owner') { U.owner = m.id; U.open = !!m.open; U.mmIds = m.mm || []; U.specs = m.specs || []; for (const id of U.specs) voice.mutePeer(id, true); applyMutes(); redrawPlayers(); if (m.id === S.me.id && U.created === S.room && U.hostOpen && !m.open && !U.sentOpen) { U.sentOpen = true; net.send({ t: 'open', v: true }); } return true; }
+    if (m.t === 'owner') { if (U.testWs !== net.ws) { U.testWs = net.ws; sendTester(); } U.owner = m.id; U.open = !!m.open; U.mmIds = m.mm || []; U.specs = m.specs || []; for (const id of U.specs) voice.mutePeer(id, true); applyMutes(); redrawPlayers(); if (m.id === S.me.id && U.created === S.room && U.hostOpen && !m.open && !U.sentOpen) { U.sentOpen = true; net.send({ t: 'open', v: true }); } return true; }
     if (m.t === 'booted') { status('The room owner removed you from that room.'); return true; }
     if (m.t === 'rel') { U.rel = m.m || {}; applyMutes(); redrawPlayers(); return true; }
     if (m.t === 'friendres') { const n = nameOf(m.p); status({ sent: 'Friend request sent to ' + n + '.', friend: 'You and ' + n + ' are now friends.', limit: 'Too many friend requests today.', full: 'A friends list is full (100).', noacct: n + ' cannot be added: no full game on their account.', no: n + ' cannot be added.' }[m.res] || 'Could not add ' + n + '.'); hello(); redrawPlayers(); return true; }

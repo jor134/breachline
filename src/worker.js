@@ -243,8 +243,10 @@ export class Room {
       if (m && m.t === 'block') { const a = this.acct.get(id), b = this.acct.get(m.p); if (a && b) this.social('/internal/block', { from: a, to: b }).then(() => this.refresh()); return; }
       if (m && m.t === 'rels') { this.refresh(); return; }
       if (m && m.t === 'pass') { const a = this.acct.get(id); if (this.env) readPass(this.env, m.fp).then(p => { if (a && p === a) this.full.add(id); }); return; }   // bought while in the room
+      // test mode reached the headset after it joined (its check was still out when the socket opened, or the code was typed in the room)
+      if (m && m.t === 'tester') { if (this.env) readTesterToken(this.env, m.tt).then(ok => { if (!ok) return; this.testers.add(id); this.full.add(id); try { server.send(JSON.stringify({ t: 'testerok' })); } catch {} }); return; }
       if (m && m.t === 'team' && this.mm.has(id)) return;
-      { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart' || m.t === 'start') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) return;
+      { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart' || m.t === 'start') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) { try { server.send(JSON.stringify({ t: 'testonly', map: String(tm).slice(0, 24) })); } catch {} return; }   // (said, not dropped silently: the mission board went on to the mansion)
         // quest-store: outside the demo's missions, only a player who owns the full game (checked with Meta) may pick the mission
         if (tm && this.gate && !this.full.has(id) && !STORE.demoMaps.includes(tm) && !(m.t === 'restart' && tm === this.host.sim.M.id)) { try { server.send(JSON.stringify({ t: 'locked', map: String(tm).slice(0, 24) })); } catch {} return; } }   // test maps: testers only   // a matchmade stranger stays a terrorist
       if (m && m.t === 'sig') { const to = this.socks.get(m.to) || this.specs.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
