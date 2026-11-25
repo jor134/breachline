@@ -4,7 +4,7 @@ import { RoomHost, TICK } from '../public/js/core/host.js';
 import { buildLevel, findPath, registerMap, MAPS } from '../public/js/core/level.js';
 import { compile, check } from '../public/js/core/maps/custom.js';
 import { cleanCallsign } from '../public/js/store/callsigns.js';
-import { Social, makeTicket, readTicket, ROOM_RE, makeTesterToken, readTesterToken, testerWhy, sameCode, makePass, readPass, makeDevToken, readDevToken, metaOwns } from './social.js';
+import { Social, makeTicket, readTicket, ROOM_RE, makeTesterToken, readTesterToken, testerWhy, socialSecret, sameCode, makePass, readPass, makeDevToken, readDevToken, metaOwns } from './social.js';
 import { STORE } from '../public/js/store/config.js';
 export { Social };
 
@@ -53,7 +53,7 @@ export default {
     // quest-store: test mode. /api/tester takes the TEST_CODE (Worker secret; 20 tries a day per address) and returns a tester token.
     if (url.pathname === '/api/tester' && req.method === 'POST') {
       if (!env.NO_DELAY) await new Promise(r => setTimeout(r, 600)); const b = await req.json().catch(() => ({}));
-      if (!env.TEST_CODE || !social(env)) return json({ error: 'Test mode is not set up' }, 503);
+      if (!env.TEST_CODE || !social(env) || !socialSecret(env)) return json({ error: env.TEST_CODE && social(env) ? 'Test mode needs the SOCIAL_KEY secret' : 'Test mode is not set up' }, 503);   // (without a signing secret it handed out passes nothing could check)
       const ok = await social(env).fetch(new Request('https://social/internal/try', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ip: req.headers.get('cf-connecting-ip') || '' }) })).then(r => r.json()).catch(() => ({ ok: false }));
       if (!ok.ok) return json({ error: 'Too many tries today' }, 429);
       return sameCode(String(b.code || ''), String(env.TEST_CODE)) ? json({ token: await makeTesterToken(env) }) : json({ error: 'Wrong code' }, 403);
