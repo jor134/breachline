@@ -155,7 +155,10 @@ const net = {
   },
   local(name) { this.host = new RoomHost((id, o) => onMsg(JSON.parse(JSON.stringify(o)))); this.host.join(1, name); this.timer = setInterval(() => { const t = performance.now(); this.host.tick(); perf.simNote(performance.now() - t); }, TICK * 1000); },
   leave() { if (this.ws) { const w = this.ws; this.ws = null; w.onclose = w.onerror = w.onmessage = null; try { w.close(1000); } catch (e) { } } if (this.timer) { clearInterval(this.timer); this.timer = null; } this.host = null; },
-  send(o) { if (o && window.__tut) window.__tut.note(o.t); if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); else if (this.host) this.host.message(1, o); },
+  send(o) { if (o && window.__tut) window.__tut.note(o.t);
+    // test mode: a pick of a test map carries this headset's tester token, so the room never has to have heard it before
+    if (o && /^(choose|map|restart|start)$/.test(o.t) && TEST.ok && TEST.token && MAPS[o.m || o.map] && MAPS[o.m || o.map].test) o = { ...o, tt: TEST.token };
+    if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); else if (this.host) this.host.message(1, o); },
 };
 
 // ---------- voice chat (online rooms) ----------
@@ -1310,7 +1313,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q78';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q79';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

@@ -234,7 +234,7 @@ export class Room {
     if (mm || mmBack) { this.mm.add(id); this.host.sim.setTeam(id, 'tango'); }   // strangers play the terrorists
     const bye = () => this.gone(id);
     this.announceOwner(); this.refresh();
-    server.addEventListener('message', e => {
+    const onMsg = e => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
       if (m && m.t === 'boot') { this.boot(id, m.p); return; }   // quest-store: the room owner removes a player
       if (m && m.t === 'open') { if (id === this.owner()) { this.open = !!m.v; this.announceOwner(); this.report(true); } return; }   // the owner opens the room to strangers or closes it
@@ -246,7 +246,10 @@ export class Room {
       // test mode reached the headset after it joined (its check was still out when the socket opened, or the code was typed in the room)
       if (m && m.t === 'tester') { if (this.env) readTesterToken(this.env, m.tt).then(ok => { if (!ok) return; this.testers.add(id); this.full.add(id); try { server.send(JSON.stringify({ t: 'testerok' })); } catch {} }); return; }
       if (m && m.t === 'team' && this.mm.has(id)) return;
-      { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart' || m.t === 'start') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) { try { server.send(JSON.stringify({ t: 'testonly', map: String(tm).slice(0, 24) })); } catch {} return; }   // (said, not dropped silently: the mission board went on to the mansion)
+      { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart' || m.t === 'start') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) {
+          const no = () => { try { server.send(JSON.stringify({ t: 'testonly', map: String(tm).slice(0, 24) })); } catch {} };   // (said, not dropped silently: the board went on to the mansion)
+          if (typeof m.tt === 'string' && this.env) readTesterToken(this.env, m.tt).then(ok => { if (!ok || !this.socks.has(id)) return no(); this.testers.add(id); this.full.add(id); onMsg(e); }); else no();   // the pick carries the token: check it, then take the pick
+          return; }   // (said, not dropped silently: the mission board went on to the mansion)
         // quest-store: outside the demo's missions, only a player who owns the full game (checked with Meta) may pick the mission
         if (tm && this.gate && !this.full.has(id) && !STORE.demoMaps.includes(tm) && !(m.t === 'restart' && tm === this.host.sim.M.id)) { try { server.send(JSON.stringify({ t: 'locked', map: String(tm).slice(0, 24) })); } catch {} return; } }   // test maps: testers only   // a matchmade stranger stays a terrorist
       if (m && m.t === 'sig') { const to = this.socks.get(m.to) || this.specs.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
@@ -254,7 +257,8 @@ export class Room {
       if (typeof mid === 'string' && (mid.startsWith('u_') || mid.startsWith('s_')) && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });
       else this.queue = this.queue.then(() => { try { this.host.message(id, m); } catch {} });
       if (m && (m.t === 'team' || m.t === 'start' || m.t === 'restart')) setTimeout(() => this.report(false), 100);
-    });
+    };
+    server.addEventListener('message', onMsg);
     server.addEventListener('close', bye); server.addEventListener('error', bye);
     if (!this.timer) { let last = Date.now(); this.timer = setInterval(() => { const now = Date.now(), dt = Math.min(0.25, (now - last) / 1000); last = now; try { this.host.tick(dt); } catch (e) { if (!this.tickErr || now - this.tickErr > 10000) { this.tickErr = now; console.error('room tick failed', e && e.stack || e); } } if (now - this.reportT > 5000) this.report(false); }, TICK * 1000); }   // a bad tick is logged, it does not stop the room
     return new Response(null, { status: 101, webSocket: client });

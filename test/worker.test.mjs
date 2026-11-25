@@ -71,5 +71,9 @@ a.ws.close(); await sleep(200); assert.equal(rooms.get('ABCDEF').timer, null, 'r
   r.webSocket.send(JSON.stringify({ t: 'tester', tt: 'tst.bad' })); await sleep(100); assert.ok(!msgs.some(m => m.t === 'testerok'), 'a bad token does nothing');
   r.webSocket.send(JSON.stringify({ t: 'tester', tt: await makeTesterToken(envT) })); await sleep(100); assert.ok(msgs.some(m => m.t === 'testerok'), 'a good one makes a tester');
   const n = msgs.filter(m => m.t === 'testonly').length; r.webSocket.send(JSON.stringify({ t: 'choose', m: 'winery' })); await sleep(100); assert.equal(msgs.filter(m => m.t === 'testonly').length, n, 'now the test map can be picked');
-  r.webSocket.close(); await sleep(50); }
+  r.webSocket.close(); await sleep(50);
+  const r2 = await worker.fetch(req('/ws/TESTAB?name=Late'), envT), m2 = []; r2.webSocket.addEventListener('message', e => m2.push(JSON.parse(e.data))); await sleep(50);
+  r2.webSocket.send(JSON.stringify({ t: 'choose', m: 'winery', tt: await makeTesterToken(envT) })); r2.webSocket.send(JSON.stringify({ t: 'restart', map: 'winery', tt: await makeTesterToken(envT) })); await sleep(300);
+  const room = rm.get('TESTAB'); assert.ok(!m2.some(m => m.t === 'testonly'), 'a pick carrying the token is taken'); assert.equal(room.host.sim.mapId, 'winery', 'and the mission starts on the winery');
+  r2.webSocket.close(); await sleep(50); }
 console.log('worker tests passed'); process.exit(0);
