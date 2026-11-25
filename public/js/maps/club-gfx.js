@@ -154,7 +154,12 @@ export default {
         if (Math.abs(v.x - VAN.x) > 0.45) continue; const k = Math.round(v.z * 10); if (!(bins.get(k) > v.y)) bins.set(k, v.y); } });
       const hits = [...bins].sort((p, q) => q[0] - p[0]).map(([k, y]) => [k / 10, y]);
       const roofY = hits.length ? Math.max(...hits.map(q => q[1])) : 2.6, front = hits.find(q => q[1] > roofY - 0.35) || [VAN.z + 1.2, roofY];
-      for (const b of beams) if (b.siren) { b.siren.position.set(VAN.x, roofY + 0.05, front[0] - 0.2); b.siren.visible = true; }
+      // the van's own roof lights: the front-most slice of roof that runs the van's full width (many points, wide); the bar goes
+      // just in front of them at their height, so the two read as one light bar
+      const wide = new Map(); o.traverse(q => { if (!q.isMesh) return; const P = q.geometry.attributes.position; for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(q.matrixWorld);
+        if (v.y < roofY - 0.25) continue; const kk = Math.round(v.z * 10), e = wide.get(kk) || { n: 0, x0: 9, x1: -9, y: 0 }; e.n++; e.x0 = Math.min(e.x0, v.x - VAN.x); e.x1 = Math.max(e.x1, v.x - VAN.x); e.y = Math.max(e.y, v.y); wide.set(kk, e); } });
+      const row = [...wide].filter(([, e]) => e.n >= 60 && e.x1 - e.x0 > 1.6).sort((p, q) => q[0] - p[0])[0];
+      for (const b of beams) if (b.siren) { if (row) b.siren.position.set(VAN.x, row[1].y - 0.05, row[0] / 10 + 0.17); else b.siren.position.set(VAN.x, roofY + 0.05, front[0] - 0.2); b.siren.scale.x = 1.25; b.siren.visible = true; }
       res(null);
     }, undefined, () => res(null)));
     return Promise.all([kit, van, dancers ? dancers.load() : null]).then(() => new THREE.Group());

@@ -187,10 +187,11 @@ function placeKits(kitScene, root) {
   root.add(g); return g;
 }
 // ---------- the Andes: a range of snow peaks round the south and west, the bare precordillera in front of it ----------
+// (te: each range tapers down into the horizon over the last sixth of its arc at either end)
 function range(r0, a0, a1, hgt, snow, rock, base, n = 420) {
   const P = [], C = [], I = [], rows = 9, cx = (FOOT.x0 + FOOT.x1) / 2, cz = (FOOT.z0 + FOOT.z1) / 2, cr = new THREE.Color(rock), cs = new THREE.Color(snow), cb = new THREE.Color(base), c = new THREE.Color(), dk = new THREE.Color(0x000000);
   const ss = (e0, e1, v) => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
-  for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n, h = hgt(a), sl = 0.38 + 0.12 * Math.sin(a * 23) * Math.sin(a * 7);
+  for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n, te = Math.min(i, n - i) / (n * 0.16), h = hgt(a) * (te >= 1 ? 1 : te * te * (3 - 2 * te)) - (te >= 1 ? 0 : 14 * (1 - te)), sl = 0.38 + 0.12 * Math.sin(a * 23) * Math.sin(a * 7);
     for (let j = 0; j <= rows; j++) { const t = j / rows, y = -12 + (h + 12) * Math.pow(t, 0.8), r = r0 + 45 * t; P.push(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r);
       c.copy(cb).lerp(cr, Math.min(1, t * 1.8)).lerp(dk, 0.18 * (0.5 + 0.5 * Math.sin(a * 90 + j)));   // rock, with gullies
       if (snow) { const k = y / Math.max(1, h) + 0.1 * Math.sin(a * 61 + j * 1.7) + 0.07 * Math.sin(a * 133 + j); c.lerp(cs, ss(sl - 0.04, sl + 0.06, k) * (0.82 + 0.18 * Math.sin(a * 47 + j * 2.3))); }
@@ -246,7 +247,12 @@ export default {
         if (Math.abs(v.x - VAN.x) > 0.45) continue; const kk = Math.round(v.z * 10); if (!(bins.get(kk) > v.y)) bins.set(kk, v.y); } });
       const hits = [...bins].sort((p, q) => q[0] - p[0]).map(([kk, y]) => [kk / 10, y]);
       const roofY = hits.length ? Math.max(...hits.map(q => q[1])) : 2.6, front = hits.find(q => q[1] > roofY - 0.35) || [VAN.z + 1.2, roofY];
-      for (const b of beams) if (b.siren) { b.siren.position.set(VAN.x, roofY + 0.05, front[0] - 0.2); b.siren.visible = true; }
+      // the van's own roof lights: the front-most slice of roof that runs the van's full width (many points, wide); the bar goes
+      // just in front of them at their height, so the two read as one light bar
+      const wide = new Map(); o.traverse(q => { if (!q.isMesh) return; const P = q.geometry.attributes.position; for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(q.matrixWorld);
+        if (v.y < roofY - 0.25) continue; const kk = Math.round(v.z * 10), e = wide.get(kk) || { n: 0, x0: 9, x1: -9, y: 0 }; e.n++; e.x0 = Math.min(e.x0, v.x - VAN.x); e.x1 = Math.max(e.x1, v.x - VAN.x); e.y = Math.max(e.y, v.y); wide.set(kk, e); } });
+      const row = [...wide].filter(([, e]) => e.n >= 60 && e.x1 - e.x0 > 1.6).sort((p, q) => q[0] - p[0])[0];
+      for (const b of beams) if (b.siren) { if (row) b.siren.position.set(VAN.x, row[1].y - 0.05, row[0] / 10 + 0.17); else b.siren.position.set(VAN.x, roofY + 0.05, front[0] - 0.2); b.siren.scale.x = 1.25; b.siren.visible = true; }
       res(null);
     }, undefined, () => res(null)));
     return Promise.all([kit, wkit, van, dancers ? dancers.load() : null]).then(() => new THREE.Group());
@@ -341,6 +347,9 @@ export default {
         if (sides.includes('x')) B('ochre', a, a + 0.06, y0, y1, z0, z1, 'yYx'); if (sides.includes('X')) B('ochre', c - 0.06, c, y0, y1, z0, z1, 'yYX'); };
       band(2.9, 3.08, 'zZ' + outX); band(6.4, 6.58, 'zZxX'); band(2 * H + 1.6, 2 * H + 1.75, 'zZxX'); B('ochre', x0 - 0.16, x1 + 0.16, 2 * H + 1.6, 2 * H + 1.75, FOOT.z0 - 0.16, FOOT.z1 + 0.16, 'Y'); }
     B('ochre', TERR.x0, TERR.x1, H - 0.4, H, FOOT.z1 + 0.1, FOOT.z1 + 0.25, 'yZ'); B('ochre', TERR.x0, TERR.x1, H - 0.4, H, FOOT.z0 - 0.25, FOOT.z0 - 0.1, 'yz');   // slab edges
+    // the tank gallery's underside and its slab edge over the hall (the hall's own ceiling is the roof, two storeys up)
+    { const y = H - 0.012; b('concW').quad([VOID.x0, y, 10], [VOID.x1, y, 10], [VOID.x1, y, VOID.z0], [VOID.x0, y, VOID.z0], [0, -1, 0], 0.5); B('concW', VOID.x0 + 0.1, VOID.x1 - 0.1, H - 0.35, H - 0.012, VOID.z0, VOID.z0 + 0.02, 'Z', 0.5);
+      for (let x = 2; x < VOID.x1; x += 4) B('steelD', x - 0.1, x + 0.1, H - 0.35, H - 0.012, 10.05, VOID.z0, 'xXyZ'); }   // (steel beams under it)
     // the terrace floor: pavers, round the pavilion
     { const y = H + 0.004, t = TERR, p = PAV; for (const [a, c, e, g] of [[t.x0, t.z0, t.x1, p.z0], [t.x0, p.z1, t.x1, t.z1], [t.x0, p.z0, p.x0, p.z1], [p.x1, p.z0, t.x1, p.z1]]) b('paverT').quad([a, y, c], [e, y, c], [e, y, g], [a, y, g], [0, 1, 0], 0.25); }
     // the pavilion: its corten band over the glass, outside and in, and the roof's edge
