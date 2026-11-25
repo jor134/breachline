@@ -14,4 +14,6 @@ const post = (path, body) => fetch(path, { method: 'POST', headers: { 'content-t
 // is the saved token still good?
 TEST.ready = TEST.token ? post('api/tester/check', { token: TEST.token }).then(j => { TEST.ok = !!j.ok; if (j.ok === false) { TEST.token = ''; put('ych_tester', ''); } return TEST.ok; }) : Promise.resolve(false);
 TEST.enter = code => post('api/tester', { code }).then(j => { if (j.token) { TEST.token = j.token; TEST.ok = true; TEST.setOff(false); put('ych_tester', j.token); } return j; });
+// the room refused the token: ask the Worker about it again; if it is no good, drop it (type the code again) and say why
+TEST.recheck = () => TEST.token ? post('api/tester/check', { token: TEST.token }).then(j => { if (j.ok === false) { TEST.token = ''; TEST.ok = false; put('ych_tester', ''); } return j; }) : Promise.resolve({ ok: false, why: 'no token on this headset' });
 TEST.leave = () => { TEST.token = ''; TEST.ok = false; put('ych_tester', ''); };

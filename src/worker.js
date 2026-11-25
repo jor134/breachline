@@ -4,7 +4,7 @@ import { RoomHost, TICK } from '../public/js/core/host.js';
 import { buildLevel, findPath, registerMap, MAPS } from '../public/js/core/level.js';
 import { compile, check } from '../public/js/core/maps/custom.js';
 import { cleanCallsign } from '../public/js/store/callsigns.js';
-import { Social, makeTicket, readTicket, ROOM_RE, makeTesterToken, readTesterToken, sameCode, makePass, readPass, makeDevToken, readDevToken, metaOwns } from './social.js';
+import { Social, makeTicket, readTicket, ROOM_RE, makeTesterToken, readTesterToken, testerWhy, sameCode, makePass, readPass, makeDevToken, readDevToken, metaOwns } from './social.js';
 import { STORE } from '../public/js/store/config.js';
 export { Social };
 
@@ -58,7 +58,7 @@ export default {
       if (!ok.ok) return json({ error: 'Too many tries today' }, 429);
       return sameCode(String(b.code || ''), String(env.TEST_CODE)) ? json({ token: await makeTesterToken(env) }) : json({ error: 'Wrong code' }, 403);
     }
-    if (url.pathname === '/api/tester/check' && req.method === 'POST') { const b = await req.json().catch(() => ({})); return json({ ok: await readTesterToken(env, b.token) }); }
+    if (url.pathname === '/api/tester/check' && req.method === 'POST') { const b = await req.json().catch(() => ({})); const why = await testerWhy(env, b.token); return json({ ok: !why, why }); }
     const sm = url.pathname.match(/^\/api\/social\/([a-z]+)$/);
     if (sm) {
       if (req.method !== 'POST' || !SOCIAL_API.includes(sm[1]) || !social(env)) return json({ error: 'Not found' }, 404);
@@ -248,7 +248,7 @@ export class Room {
       if (m && m.t === 'team' && this.mm.has(id)) return;
       { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart' || m.t === 'start') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) {
           const no = why => { try { server.send(JSON.stringify({ t: 'testonly', map: String(tm).slice(0, 24), why })); } catch {} };   // (said, not dropped silently: the board went on to the mansion)
-          if (typeof m.tt === 'string' && this.env) readTesterToken(this.env, m.tt).then(ok => { if (!ok || !this.socks.has(id)) return no(this.env.TEST_CODE ? 'token refused' : 'no TEST_CODE on the server'); this.testers.add(id); this.full.add(id); onMsg(e); }); else no(this.env ? 'no token sent' : 'room has no env');   // the pick carries the token: check it, then take the pick
+          if (typeof m.tt === 'string' && this.env) readTesterToken(this.env, m.tt).then(ok => { if (!ok || !this.socks.has(id)) return testerWhy(this.env, m.tt).then(w => no('token refused: ' + (w || 'room closed'))); this.testers.add(id); this.full.add(id); onMsg(e); }); else no(this.env ? 'no token sent' : 'room has no env');   // the pick carries the token: check it, then take the pick
           return; }   // (said, not dropped silently: the mission board went on to the mansion)
         // quest-store: outside the demo's missions, only a player who owns the full game (checked with Meta) may pick the mission
         if (tm && this.gate && !this.full.has(id) && !STORE.demoMaps.includes(tm) && !(m.t === 'restart' && tm === this.host.sim.M.id)) { try { server.send(JSON.stringify({ t: 'locked', map: String(tm).slice(0, 24) })); } catch {} return; } }   // test maps: testers only   // a matchmade stranger stays a terrorist

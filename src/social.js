@@ -163,6 +163,14 @@ export class Social {
 
 // ---- test mode: a signed tester token for whoever typed the TEST_CODE (Worker secret) ----
 export async function makeTesterToken(env) { const secret = socialSecret(env), exp = Math.floor(Date.now() / 1000) + 90 * 86400; return 'tst.' + exp + '.' + await sign(secret, 'tester.' + exp); }
+// why a tester token fails (for the headset to show): '' when it is good. key: 6 hex of a hash of the signing secret (not the
+// secret), so two places that disagree about a token can be seen to hold different secrets
+export async function testerWhy(env, t) {
+  const secret = socialSecret(env), key = secret ? (await sha('fp:' + secret)).slice(0, 6) : 'none';
+  if (!secret) return 'no signing secret (key none)'; if (!env.TEST_CODE) return 'no TEST_CODE (key ' + key + ')'; if (typeof t !== 'string' || !t) return 'no token (key ' + key + ')';
+  const m = t.match(/^tst\.(\d{10})\.([0-9a-f]{32})$/); if (!m) return 'bad format, length ' + t.length + ' (key ' + key + ')'; if (+m[1] < Date.now() / 1000) return 'expired (key ' + key + ')';
+  return (await readTesterToken(env, t)) ? '' : 'signature (key ' + key + ')';
+}
 export async function readTesterToken(env, t) {
   const secret = socialSecret(env); if (!secret || !env.TEST_CODE || typeof t !== 'string') return false;
   const m = t.match(/^tst\.(\d{10})\.([0-9a-f]{32})$/); if (!m || +m[1] < Date.now() / 1000) return false;
