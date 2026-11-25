@@ -75,14 +75,17 @@ export function buildLevel(id = 'mansion') {
   }
   const addDoor = (d) => { d.id = doors.length; doors.push(d); return d; };
   for (const [f, x0, z0, x1, z1, kind, tag] of map.openings || []) {
-    if (z0 === z1) for (let i = Math.round(x0 / U); i < Math.round(x1 / U); i++) edges.delete(k(f, i, Math.round(z0 / U), 'h'));
-    else for (let j = Math.round(z0 / U); j < Math.round(z1 / U); j++) edges.delete(k(f, Math.round(x0 / U), j, 'v'));
+    // the cut takes every grid unit the opening touches (rounding could leave 0.2 m of wall standing inside a doorway); the slivers
+    // beside the opening are filled back below
+    const lo = v => Math.floor(Math.min(v[0], v[1]) / U + 1e-6), hi = v => Math.ceil(Math.max(v[0], v[1]) / U - 1e-6);
+    if (z0 === z1) for (let i = lo([x0, x1]); i < hi([x0, x1]); i++) edges.delete(k(f, i, Math.round(z0 / U), 'h'));
+    else for (let j = lo([z0, z1]); j < hi([z0, z1]); j++) edges.delete(k(f, Math.round(x0 / U), j, 'v'));
     const hz = z0 === z1, out = outSide(f, hz ? 'h' : 'v', hz ? z0 : x0, hz ? (x0 + x1) / 2 : (z0 + z1) / 2);
     openEnds.add(f + '|' + x0 + '|' + z0); openEnds.add(f + '|' + x1 + '|' + z1);
     // The wall is cut on the 0.5 m grid, the opening is not always on it (a door at 27.6-28.8 cuts the wall 27.5-29): the slivers
     // between the cut and the opening are filled (a jamb to the door's head, or full height beside a gap) and the lintel spans the
     // whole cut, so there is no slit beside a door or above it
-    const a0 = hz ? x0 : z0, a1 = hz ? x1 : z1, S = Math.round(a0 / U) * U, E = Math.round(a1 / U) * U, line = hz ? z0 : x0;
+    const a0 = hz ? x0 : z0, a1 = hz ? x1 : z1, S = Math.floor(a0 / U + 1e-6) * U, E = Math.ceil(a1 / U - 1e-6) * U, line = hz ? z0 : x0;
     const jamb = (u0, u1, capA, capB) => { if (u1 - u0 < 0.01) return; const y1 = f * H + (kind === 'gap' ? H : DOOR_H);
       boxes.push(hz ? { f, kind: 'wall', ext: !!out, out, capA, capB, horiz: true, x0: u0, x1: u1, z0: line - T / 2, z1: line + T / 2, y0: f * H, y1 }
         : { f, kind: 'wall', ext: !!out, out, capA, capB, horiz: false, x0: line - T / 2, x1: line + T / 2, z0: u0, z1: u1, y0: f * H, y1 }); };

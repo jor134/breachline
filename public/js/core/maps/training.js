@@ -22,8 +22,8 @@ export const FURNITURE = [   // [floor, x0, z0, x1, z1, height, kind, face]
   ...[4, 8, 12, 16].map(x => [0, x - 0.06, 11, x + 0.06, 14, 1.8, 'baffle']),   // lane dividers
   [0, 0, -16, 20, -15.2, 3.2, 'berm'],   // backstop
   [0, 31, 21.6, 33.2, 22.6, 0.78, 'table'],   // bomb bench
-  [0, 21, 17.2, 26, 17.8, 1.0, 'cabinet', '+z'], [0, 33.4, 17, 34, 20.5, 1.9, 'shelf', '-x'],
-  [0, 0.6, 19, 1.2, 25, 0.45, 'sofa', '+x'], [0, 18.8, 19, 19.4, 25, 0.45, 'sofa', '-x'],
+  [0, 24.5, 17.2, 29.5, 17.8, 1.0, 'cabinet', '+z']   /* between the kill house's two doors */, [0, 33.4, 17, 34, 20.5, 1.9, 'shelf', '-x'],
+  [0, 0.6, 19, 1.2, 25, 0.45, 'sofa', '+x'],
 ];
 export const LANES = [2, 6, 10, 14, 18];
 // Targets: kind static | pop | move | house. y is the bottom edge; w x h the face. move slides along x between x0 and x1.
