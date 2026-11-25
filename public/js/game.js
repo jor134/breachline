@@ -498,7 +498,7 @@ function showBoard() {
     return panel.draw('PICK A MISSION', sub + (pages > 1 ? '   ·   page ' + (S.bpage + 1) + ' of ' + pages : ''), [squadLine(), range], [...page, ["FRIEND'S MAP", 'st:friend'], ...(pages > 1 ? [['MORE MISSIONS', 'bpage']] : []), ...(S.mode === 'vr' ? [['MAP EDITOR', 'edit']] : [])]);
   }
   // step 2: its options, then go
-  panel.draw('MISSION OPTIONS', sub, [squadLine(), 'Mission: ' + nx.op + '  (' + nx.name + ')' + storeUI.lockTag(S.nextMap), range],
+  panel.draw('MISSION OPTIONS', sub, [squadLine(), 'Mission: ' + nx.op + '  (' + nx.name + ')' + storeUI.lockTag(S.nextMap), ...(nx.test ? ['Test map  ·  test mode ' + (TEST.ok ? (TEST.off ? 'OFF' : 'ON') : 'NOT SET') + '  ·  build ' + BUILD] : []), range],
     [['WEATHER: ' + S.wxPick.toUpperCase(), 'wx'], ...(nx.tods ? [['TIME: ' + S.todPick.toUpperCase(), 'tod']] : []), teamBtn(), ['CHANGE MISSION', 'bmaps'], ...(S.nextMap.startsWith('s_') ? [['REPORT THIS MAP', 'st:freport']] : []), ['START ' + (pvpOn() ? 'PVP ' : '') + 'MISSION', 'start']]);
 }
 function pickMission(id) {
@@ -1313,7 +1313,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q79';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q80';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

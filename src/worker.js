@@ -247,8 +247,8 @@ export class Room {
       if (m && m.t === 'tester') { if (this.env) readTesterToken(this.env, m.tt).then(ok => { if (!ok) return; this.testers.add(id); this.full.add(id); try { server.send(JSON.stringify({ t: 'testerok' })); } catch {} }); return; }
       if (m && m.t === 'team' && this.mm.has(id)) return;
       { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart' || m.t === 'start') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) {
-          const no = () => { try { server.send(JSON.stringify({ t: 'testonly', map: String(tm).slice(0, 24) })); } catch {} };   // (said, not dropped silently: the board went on to the mansion)
-          if (typeof m.tt === 'string' && this.env) readTesterToken(this.env, m.tt).then(ok => { if (!ok || !this.socks.has(id)) return no(); this.testers.add(id); this.full.add(id); onMsg(e); }); else no();   // the pick carries the token: check it, then take the pick
+          const no = why => { try { server.send(JSON.stringify({ t: 'testonly', map: String(tm).slice(0, 24), why })); } catch {} };   // (said, not dropped silently: the board went on to the mansion)
+          if (typeof m.tt === 'string' && this.env) readTesterToken(this.env, m.tt).then(ok => { if (!ok || !this.socks.has(id)) return no(this.env.TEST_CODE ? 'token refused' : 'no TEST_CODE on the server'); this.testers.add(id); this.full.add(id); onMsg(e); }); else no(this.env ? 'no token sent' : 'room has no env');   // the pick carries the token: check it, then take the pick
           return; }   // (said, not dropped silently: the mission board went on to the mansion)
         // quest-store: outside the demo's missions, only a player who owns the full game (checked with Meta) may pick the mission
         if (tm && this.gate && !this.full.has(id) && !STORE.demoMaps.includes(tm) && !(m.t === 'restart' && tm === this.host.sim.M.id)) { try { server.send(JSON.stringify({ t: 'locked', map: String(tm).slice(0, 24) })); } catch {} return; } }   // test maps: testers only   // a matchmade stranger stays a terrorist

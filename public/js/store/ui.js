@@ -319,7 +319,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   // test mode: hand the room this headset's tester token (the socket can open before the token's check comes back)
   const sendTester = () => TEST.ready.then(() => { if (TEST.ok && TEST.token) try { net.send({ t: 'tester', tt: TEST.token }); } catch (e) { } });
   U.onMsg = m => {
-    if (m.t === 'testonly') { status(TEST.ok ? 'Confirming test mode with the room... pick the mission again in a moment.' : 'That mission is in test mode: CREDITS > DEBUG ON > TEST MODE to play it.'); if (TEST.ok) { U.testAsk = true; sendTester(); } return true; }
+    if (m.t === 'testonly') { notify('TEST MAP REFUSED: ' + (m.why || '?') + (TEST.ok ? '' : ' (test mode is off on this headset)')); status(TEST.ok ? 'Confirming test mode with the room... pick the mission again in a moment.' : 'That mission is in test mode: CREDITS > DEBUG ON > TEST MODE to play it.'); if (TEST.ok) { U.testAsk = true; sendTester(); } return true; }
     if (m.t === 'testerok') { if (U.testAsk) status('Test mode confirmed in this room: pick the test mission again.'); U.testAsk = false; return true; }
     // the room refused a mission pick: leading it needs the full game, and the server did not see a confirmed purchase
     if (m.t === 'locked') { if (!unlock.full()) { showBuy('map', 'board'); return true; }
