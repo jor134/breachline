@@ -76,10 +76,10 @@ export const DANCERS = [];
 for (let z = FLOOR.z0 + 0.8; z < FLOOR.z1 - 0.4; z += 1.25) for (let x = FLOOR.x0 + 0.7; x < FLOOR.x1 - 0.4; x += 1.25) {
   if (Math.abs(x - 20) < 1.3 || Math.abs(z - 19.5) < 0.7) continue;                     // two lanes kept clear: up the middle and across
   if (x > STEPS.x0 - 0.9 && x < STEPS.x1 + 0.9 && z > STEPS.z0 - 1.2) continue;        // and the foot of the stage steps
-  if (rr() < 0.42) continue;
+  if (rr() < 0.6) continue;   // (some of the crowd is upstairs in the VIP area)
   DANCERS.push([+(x + (rr() - 0.5) * 0.6).toFixed(2), +(z + (rr() - 0.5) * 0.6).toFixed(2), +((rr() - 0.5) * 1.8).toFixed(2)]);   // [x, z, facing (0 = +z, the stage)]
 }
-for (const [x, z] of DANCERS) F.push([0, x - 0.22, z - 0.22, x + 0.22, z + 0.22, 1.7, 'dancer']);
+for (const [x, z] of DANCERS) F.push([0, x - 0.22, z - 0.22, x + 0.22, z + 0.22, 1.7, 'dancer']);   // (the hall's; the VIP guests' are added with them, below)
 // lobby, coat check, box office, restrooms
 F.push([0, 10.3, 5.6, 17.7, 6.4, 1.05, 'counter', '-z'], [0, 10.2, 0.3, 17.8, 0.9, 1.9, 'rack', '+z'], [0, 49, 0.3, 57, 1.1, 1.05, 'counter', '+z'], [0, 54, 6.8, 57.7, 7.7, 0.76, 'desk', '-z']);
 F.push([0, 47.2, 0.3, 47.9, 3.6, 0.9, 'counter', '-x'], [0, 47.2, 4.4, 47.9, 7.7, 0.9, 'counter', '-x']);   // the restrooms' basins
@@ -116,6 +116,14 @@ export const BOMB_SPOTS = [[0, 4, 41.1, 0.8], [0, 11, 41.1, 0.8], [0, 32, 37.7, 
 export const BOMB_MUST = [0, 20, 30.6, STAGE.h + 1.1];             // one always in the DJ booth, under the decks
 export const HVTS = [{ at: [1, 51, 4.5], guards: [[1, 47, 8], [1, 56, 4]], flee: [0, 51, 39], name: 'PROMOTER' }];
 
+// VIP guests dancing upstairs: in the lounge and along the balcony (facing the stage), clear of the furniture, the doors and the
+// spots where suspects and hostages start, with a lane left through each. [x, z, facing, floor]
+{ const busy = (x, z) => F.some(q => q[0] === 1 && x > q[1] - 0.55 && x < q[3] + 0.55 && z > q[2] - 0.55 && z < q[4] + 0.55) || [...SUSPECT_SPOTS, ...CIV_SPOTS, ...HVTS.map(h => h.at), ...HVTS.flatMap(h => h.guards)].some(p => p[0] === 1 && Math.hypot(p[1] - x, p[2] - z) < 1.3);
+  const at = [];
+  for (let x = 11.2; x < 38.6; x += 1.3) for (const z of [0.8, 2.6, 6.2, 7.3]) at.push([x, z, (rr() - 0.5) * 2.4]);          // the lounge (its lane: z 4-5.5)
+  for (let x = 1.2; x < 39; x += 1.3) for (const z of [8.7, 10.9]) at.push([x, z, (rr() - 0.5) * 0.8]);                    // the balcony (its lane: z 9.3-10.3), facing the stage
+  for (const [x, z, face] of at) { if ((x > 38.2 && z < 4.2) || busy(x, z) || rr() < 0.72) continue; const px = +(x + (rr() - 0.5) * 0.3).toFixed(2), pz = +(z + (rr() - 0.5) * 0.2).toFixed(2);
+    DANCERS.push([px, pz, +face.toFixed(2), 1]); F.push([1, px - 0.22, pz - 0.22, px + 0.22, pz + 0.22, 1.7, 'dancer']); } }
 // ---- shape helpers ----
 export const inFoot = (x, z) => x >= FOOT.x0 && x <= FOOT.x1 && z >= FOOT.z0 && z <= FOOT.z1;
 export const inUpper = (x, z) => UPPER.some(u => x >= u.x0 && x <= u.x1 && z >= u.z0 && z <= u.z1);
