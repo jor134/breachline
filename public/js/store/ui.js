@@ -73,9 +73,9 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       lines.push(clip('   by ' + c.by + ', ' + c.lic + (c.chg ? ', ' + c.chg : '')));
     }
     lines.push('', 'Full list with links: breachline credits page.');
-    U.prev = S.panel === 'start' || ((S.panel === 'credits' || S.panel === 'tpad') && U.prev) ? 'start' : null;
+    U.prev = S.panel === 'start' || ((S.panel === 'credits' || S.panel === 'tpad' || S.panel === 'privacy') && U.prev) ? 'start' : null;
     if (U.prev) { S.panel = 'credits'; placeBoard(); }   // (the test-mode pad, tpad, opens from these credits and comes back here)
-    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages + (DBG.on ? '   ·   build ' + DBG.build + (social.acct ? '   ·   account ' + social.acct : '') : ''), lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['DEBUG: ' + (DBG.on ? 'ON' : 'OFF'), 'st:debug'], ...(DBG.on ? [['TEST MODE: ' + (!TEST.ok ? 'ENTER CODE' : TEST.off ? 'OFF' : 'ON'), 'st:tester']] : []), U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
+    panel.draw('CREDITS', 'Page ' + (U.page + 1) + ' of ' + pages + (DBG.on ? '   ·   build ' + DBG.build + (social.acct ? '   ·   account ' + social.acct : '') : ''), lines, [['NEXT PAGE', 'st:credits:' + (U.page + 1)], ['PRIVACY & MY DATA', 'st:privacy'], ['DEBUG: ' + (DBG.on ? 'ON' : 'OFF'), 'st:debug'], ...(DBG.on ? [['TEST MODE: ' + (!TEST.ok ? 'ENTER CODE' : TEST.off ? 'OFF' : 'ON'), 'st:tester']] : []), U.prev ? ['BACK', 'st:back'] : ['CLOSE', 'close']]);
   }
 
   // which edition this headset is running, on the start menu, so a developer unlock is never mistaken for the demo
@@ -92,6 +92,14 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       'Point at a button and pull the trigger.',
     ], [['CALLSIGN: ' + call.split('-')[0], 'st:word'], ['NUMBER: ' + call.split('-')[1], 'st:num'], [voice.on && !voice.mic ? 'VOICE CHAT: ALLOW MIC' : 'VOICE CHAT: ' + (voice.on ? 'ON' : 'OFF'), 'st:voice'], ['MUSIC: ' + (S.music === false ? 'OFF' : 'ON'), 'st:music'], ...(S.mode === 'vr' ? [['BODY FIT', 'fit:open']] : []), ['TUTORIAL', 'st:tut'], ['CREDITS', 'st:credits:0'], ['START MISSION' + (social.requests.length ? '  (' + social.requests.length + ' FRIEND REQUEST' + (social.requests.length > 1 ? 'S' : '') + ')' : ''), 'st:mode']]);
   };
+  // ---- privacy: what is kept where, and deleting it (Meta asks for an in-app way) ----
+  function showPrivacy() {
+    S.panel = 'privacy'; placeBoard(); panel.mesh.visible = true;
+    panel.draw('PRIVACY & MY DATA', 'Full policy: youcanthidegame.com/privacy', [
+      'On our server: your friends account (a scrambled code, your callsign,', '   last online, room, friends, requests, blocks). Nothing else is kept:', '   rooms, positions and voice are never stored.',
+      'On this headset: your settings, map drafts and unlock flag.', 'Delete both below. Anything else (logs, shared maps, reports):', '   youcanthidegame.com/delete-data or jor134@gmail.com.', U.pmsg || ''],
+      [[U.wipe ? 'YES, DELETE ALL MY DATA' : 'DELETE ALL MY DATA', 'st:wipe'], ['BACK', 'st:credits:0']]);
+  }
   // ---- the full game: what the demo leaves out, and Meta's purchase dialog ----
   function showBuy(why, from) {
     U.buyWhy = why; U.buyFrom = from; S.panel = 'buy'; placeBoard(); panel.mesh.visible = true;
@@ -107,8 +115,8 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   U.gate = what => { if (what === 'editor' ? unlock.full() : unlock.mapOk(what)) return false; showBuy(what === 'editor' ? 'editor' : 'map', 'board'); return true; };
   U.lockTag = id => unlock.mapOk(id) ? '' : '   [FULL GAME]';
   // the game redraws its own panels twice a second; while the start menu is up it redraws this instead
-  U.redraw = () => { if (S.panel === 'mode') showMode(); else if (S.panel === 'tpad') showTestPad(); else if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); else if (S.panel === 'online') showOnline(); else if (S.panel === 'friends') showFriends(); else if (S.panel === 'friend1') showFriend1(); else if (S.panel === 'mm') showMatch(); };
-  U.holdsPanel = () => ['start', 'mode', 'keypad', 'friend', 'buy', 'online', 'friends', 'friend1', 'mm', 'tpad'].includes(S.panel) || (S.panel === 'credits' && U.prev);
+  U.redraw = () => { if (S.panel === 'mode') showMode(); else if (S.panel === 'tpad') showTestPad(); else if (S.panel === 'buy') showBuy(U.buyWhy, U.buyFrom); else if (S.panel === 'friend') showFriendPad(); else if (S.panel === 'keypad') showKeypad(); else if (S.panel === 'start') U.showStart(); else if (S.panel === 'credits') showCredits(U.page); else if (S.panel === 'privacy') showPrivacy(); else if (S.panel === 'online') showOnline(); else if (S.panel === 'friends') showFriends(); else if (S.panel === 'friend1') showFriend1(); else if (S.panel === 'mm') showMatch(); };
+  U.holdsPanel = () => ['start', 'mode', 'keypad', 'friend', 'buy', 'online', 'friends', 'friend1', 'mm', 'tpad'].includes(S.panel) || S.panel === 'privacy' || (S.panel === 'credits' && U.prev);
 
   // a 6-character room code typed on an on-panel keyboard (no system keyboard inside VR)
   function showKeypad(msg) {
@@ -307,6 +315,10 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
     else if (what === 'addf') { net.send({ t: 'friend', p: +arg }); status('Asking ' + nameOf(+arg) + '...'); }
     else if (what === 'blk') { const id = +arg; net.send({ t: 'block', p: id }); U.rel[id] = 'blocked'; U.unmuted.delete(id); applyMutes(); showPlayer(id); }
     else if (what === 'credits') showCredits(+arg || 0);
+    else if (what === 'privacy') { U.wipe = false; U.pmsg = ''; showPrivacy(); }
+    else if (what === 'wipe') { if (!U.wipe) { U.wipe = true; U.pmsg = 'This deletes your friends account on our server and everything saved on this headset. Press again.'; return showPrivacy(), true; }
+      U.wipe = false; const done = j => { try { localStorage.clear(); } catch (e) { } social.friends = []; social.requests = []; U.pmsg = (j && j.error ? 'Server: ' + j.error + '. ' : '') + 'Deleted. Close and reopen the game to start fresh.'; showPrivacy(); };
+      (social.ticket ? social.api('forget').catch(() => ({ error: 'could not reach the server, email us' })) : Promise.resolve(null)).then(done); }
     else if (what === 'debug') { toggleDebug(); showCredits(U.page || 0); }
     else if (what === 'mute') { const id = +arg, m = !voice.isPeerMuted(id); voice.mutePeer(id, m); U.auto.delete(id); if (m) U.unmuted.delete(id); else U.unmuted.add(id); showPlayer(id); }
     else if (what === 'boot') { if (U.owner === S.me.id) net.send({ t: 'boot', p: +arg }); setTimeout(showPlayers, 400); }
