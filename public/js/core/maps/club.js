@@ -6,6 +6,7 @@
 //
 // Heights (H = 3.6): ground floor 0, upstairs 1 (3.6). The hall is two storeys tall (ceiling 7.2), with the VIP balcony across its
 // front upstairs; the back of house and the dock are one storey. Nav layers: 0 ground (and the stairs' flights), 1 upstairs.
+import { park, carBox } from './cars.js';
 export const H = 3.6, DOOR_H = 2.2;
 export const FOOT = { x0: 0, x1: 58, z0: 0, z1: 42 };               // the building
 export const HALL = { x0: 0, x1: 40, z0: 8, z1: 34 };               // the main hall (two storeys)
@@ -17,6 +18,10 @@ export const UPPER = [{ x0: 0, x1: 40, z0: 0, z1: 13 }, { x0: 40, x1: 58, z0: 0,
 export const STAIRS = [{ x0: 1, x1: 4, z0: 1, z1: 7.6 }, { x0: 42.2, x1: 45, z0: 12.4, z1: 20 }];   // west (lobby side) and staff (east); both climb toward -z
 export const YARD = { x0: -1, z0: -34, x1: 64, z1: 48 };
 export const VAN = { x: 29, z: -17, turn: 0 };                       // nose to the club
+// Cars in the lot's bays (the casino's car pack): both rows nose in (to the club, to the street); a few bays left empty.
+// The bays are 2.7 m wide, either side of the drive (x 22-36) the van stands in.
+const BAYS = []; for (const [z, turn] of [[-6.5, 0], [-27.5, Math.PI]]) for (let k = 0; k < 20; k++) { const x = 2 + 2.7 * k; if (x + 2.7 > 22 && x < 36) continue; if (x + 2.7 <= 56.1) BAYS.push([x + 1.35, z, turn]); }
+export const PARKED = park(BAYS.filter((b, i) => (i * 7 + 3) % 10 > 2), 4);
 export const SPAWN = [[26.6, -19.5], [27.8, -19.5], [30.2, -19.5], [31.4, -19.5]];
 export const EXIT = { x0: 22, x1: 36, z0: -24, z1: -12 };             // back at the van
 export const BREAKER = { x: 57.87, y: 1.4, z: 13 };                  // in the storage room, on the outside wall
@@ -162,6 +167,7 @@ function extra({ boxes }) {
     if (open((st.x0 + st.x1) / 2, st.z1 + 0.3)) rail(st.x0 - 0.08, st.x1 + 0.08, st.z1, st.z1 + 0.08);
   }
   for (const x of [STEPS.x0 - 0.08, STEPS.x1]) box('fence', x, x + 0.08, 0, STAGE.h + 0.9, STEPS.z0 + 0.3, STEPS.z1, { sub: 'steprail' });   // the steps' handrails
+  for (const c of PARKED) { const b = carBox(c); box('pcar', b.x0, b.x1, 0, b.h, b.z0, b.z1); }
   const v = VAN; box('van', v.x - 1.05, v.x + 1.05, 0, 2.6, v.z - 2.9, v.z + 2.9);
   box('fence', -1, -0.9, 0, 2.4, -34, 48, { sub: 'wall' }); box('fence', 58, 64, 0, 2.4, 47.9, 48, { sub: 'wall' }); box('fence', -1, 58, 0, 2.4, 47.9, 48, { sub: 'wall' });
   box('fence', 63.9, 64, 0, 2.4, -34, 48, { sub: 'wall' });
@@ -170,7 +176,7 @@ function extra({ boxes }) {
 }
 const yAt = (f) => f * H;
 export default {
-  id: 'club', name: 'CLUB', op: 'Operation LAST DANCE', test: true, H, DOOR_H, YARD, layers: 2, layerFloor: [0, 1], maxDrop: 1.2, tods: ['night'],
+  id: 'club', name: 'CLUB', op: 'Operation LAST DANCE', test: true, H, DOOR_H, YARD, layers: 2, layerFloor: [0, 1], maxDrop: 1.2, tods: ['night'], parked: PARKED,
   spawn: SPAWN, exit: EXIT, breaker: BREAKER, cars: [], parked: [], rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
   spots: { s: SUSPECT_SPOTS, c: CIV_SPOTS, b: BOMB_SPOTS }, hvts: HVTS, veg: null, counts: { s: 16, c: 8, b: 3 }, time: 1080, patrolMax: 14,
   stairs: STAIRS.map(s => ({ ...s, yb: 0, n: 1 })), foot: FOOT, bombMust: BOMB_MUST, civMust: CIV_MUST, yAt,
