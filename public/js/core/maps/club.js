@@ -152,8 +152,15 @@ function floorAt(x, z, y) {
 function extra({ boxes }) {
   const box = (kind, x0, x1, y0, y1, z0, z1, o = {}) => boxes.push(Object.assign({ f: 0, kind, x0, x1, y0, y1, z0, z1 }, o));
   box('fence', BALC.x0, BALC.x1, H, H + 1.05, BALC.z1 - 0.05, BALC.z1 + 0.05, { sub: 'glassrail', f: 1 });
-  box('fence', 4.2, 4.3, H, H + 1.05, 0.6, 7.4, { sub: 'glassrail', f: 1 });                              // the west stair's well, upstairs
-  box('fence', 42.1, 42.2, H, H + 1.05, 12.4, 18.9, { sub: 'glassrail', f: 1 });                          // the staff stair's well, upstairs
+  // round the stairs' wells upstairs: every open side but the top, where the flight's landing meets the floor (left open to walk off)
+  for (const st of STAIRS) {
+    const top = st.z0 + (st.z1 - st.z0) * 0.15, rail = (x0, x1, z0, z1) => box('fence', x0, x1, H, H + 1.05, z0, z1, { sub: 'glassrail', f: 1 });
+    const roomUp = (x, z) => ROOMS.find(r => r[0] === 1 && x > r[2] && x < r[4] && z > r[3] && z < r[5]), here = roomUp((st.x0 + st.x1) / 2, (top + st.z1) / 2);
+    const open = (x, z) => inUpper(x, z) && roomUp(x, z) === here;   // floor upstairs beside the well, in the same room (not through a wall)
+    if (open(st.x0 - 0.3, (top + st.z1) / 2)) rail(st.x0 - 0.08, st.x0, top, st.z1 + 0.08);
+    if (open(st.x1 + 0.3, (top + st.z1) / 2)) rail(st.x1, st.x1 + 0.08, top, st.z1 + 0.08);
+    if (open((st.x0 + st.x1) / 2, st.z1 + 0.3)) rail(st.x0 - 0.08, st.x1 + 0.08, st.z1, st.z1 + 0.08);
+  }
   for (const x of [STEPS.x0 - 0.08, STEPS.x1]) box('fence', x, x + 0.08, 0, STAGE.h + 0.9, STEPS.z0 + 0.3, STEPS.z1, { sub: 'steprail' });   // the steps' handrails
   const v = VAN; box('van', v.x - 1.05, v.x + 1.05, 0, 2.6, v.z - 2.9, v.z + 2.9);
   box('fence', -1, -0.9, 0, 2.4, -34, 48, { sub: 'wall' }); box('fence', 58, 64, 0, 2.4, 47.9, 48, { sub: 'wall' }); box('fence', -1, 58, 0, 2.4, 47.9, 48, { sub: 'wall' });

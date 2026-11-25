@@ -165,7 +165,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     if (open) continue;
     const cy = f * H + H - 0.012; for (const [a, c, e, g] of cut([x0, z0, x1, z1], holes[f + 1])) b('ceiling').quad([a, cy, c], [e, cy, c], [e, cy, g], [a, cy, g], [0, -1, 0], 0.5);
     const inHole = (hs, x, z, m) => (hs || []).some(([a, c, e, g]) => x > a - m && x < e + m && z > c - m && z < g + m);
-    for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) { if (inHole(holes[f + 1], x, z, 0.2) || inHole(holes[f], x, z, 0.5)) continue; b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
+    for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) { if (inHole(holes[f + 1], x, z, 0.2) || inHole(holes[f], x, z, 0.5) || (G.noFit && G.noFit(f, x, z))) continue; b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
       if (!vd) ao('lightpool', [x - 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z + 1.5], [x - 1.5, y + 0.03, z + 1.5], [0, 1, 0]); }   // pool of light on the floor under each fitting
   }
   // walls: plaster inside, the map's cladding outside, glass with dark mullions

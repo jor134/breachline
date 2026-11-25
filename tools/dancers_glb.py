@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image
 
 PEOPLE, BELLY, GIRL, SAMBA, TIFA, GINA, DST = sys.argv[1:8]
-K = int(os.environ.get('K', '32')); STEP = float(os.environ.get('STEP', '0.2')); TRIS = int(os.environ.get('TRIS', '2400')); DJ_TRIS = int(os.environ.get('DJ_TRIS', '9000')); TEX = 512
+K = int(os.environ.get('K', '32')); STEP = float(os.environ.get('STEP', '0.2')); TRIS = int(os.environ.get('TRIS', '2400')); DJ_TRIS = int(os.environ.get('DJ_TRIS', '9000')); HI_TRIS = int(os.environ.get('HI_TRIS', '9000')); TEX = 512   # near: every dancer at up to HI_TRIS, far at TRIS
 QEM = os.environ.get('QEM', '/tmp/qem')
 CT = {5126: np.float32, 5125: np.uint32, 5123: np.uint16, 5121: np.uint8}; NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4, 'MAT4': 16}
 
@@ -92,17 +92,17 @@ def skin_pose(g, ni, W):
         out.append((p.get('material', 0), S[:, :3], g.acc(at['TEXCOORD_0']) if 'TEXCOORD_0' in at else np.zeros((len(P), 2)), g.acc(p['indices']).reshape(-1, 3)))
     return out
 
-def simplify(P, I, target, UV=None):
+def simplify(P, I, target, UV=None, seams=True):
     if target >= len(I): return I, np.arange(len(P))
     # true duplicates (same point, same texture spot: a mesh exported with split faces) are welded first, so they simplify as one
     if UV is not None:
         key = np.c_[np.round(P / 1e-5), np.round(UV / 1e-5)].astype(np.int64); _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
-        inv = inv.reshape(-1); NI, o = simplify(P[first], inv[I], target); return NI, first[o]
+        inv = inv.reshape(-1); NI, o = simplify(P[first], inv[I], target, None, seams); return NI, first[o]
     with tempfile.TemporaryDirectory() as t:
         fi, fo = os.path.join(t, 'i.bin'), os.path.join(t, 'o.bin')
         # seams: a point split into two vertices (two textures, two parts, a UV cut) is locked, so neither side can pull away from it
         # and open a crack (the holes in the dancers); everything else is simplified as before
-        key = np.round(P / 1e-5).astype(np.int64); _, inv, cnt = np.unique(key, axis=0, return_inverse=True, return_counts=True); lock = (cnt[inv.reshape(-1)] > 1).astype(np.uint8)
+        key = np.round(P / 1e-5).astype(np.int64); _, inv, cnt = np.unique(key, axis=0, return_inverse=True, return_counts=True); lock = (cnt[inv.reshape(-1)] > 1).astype(np.uint8) if seams else np.zeros(len(P), np.uint8)
         with open(fi, 'wb') as f: f.write(struct.pack('<ii', len(P), len(I))); f.write(P.astype(np.float64).tobytes()); f.write(I.astype(np.int32).tobytes()); f.write(lock.tobytes())
         subprocess.run([QEM, fi, fo, str(target), 'keep', 'lock'], check=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         o = open(fo, 'rb').read(); mv, mt = struct.unpack('<ii', o[:8]); q = 8 + mv * 24; NI = np.frombuffer(o, np.int32, mt * 3, q).reshape(mt, 3); q += mt * 12; orig = np.frombuffer(o, np.int32, mv, q)
@@ -139,10 +139,11 @@ def bake(g, ni, frames, target, height, keep=lambda name: True, name='?'):
     if (hi - lo)[2] > (hi - lo)[1] * 1.5: poses = poses[:, :, [0, 2, 1]] * np.array([1, 1, -1])
     c = poses[0].mean(0); poses -= np.array([c[0], poses[0][:, 1].min(), c[2]]); poses *= height / poses[0][:, 1].max()
     # weld coincident vertices for the simplifier (UV seams), keep the first of each
-    NI, orig = simplify(poses[0], I, target, UV)
-    buf = io.BytesIO(); img.save(buf, 'JPEG', quality=85)
-    P = poses[:, orig]; print(f'{name:12s} {len(NI):6d} tris {len(orig):6d} verts {len(frames)} poses  texture {img.size}')
-    return P, NI, UV[orig], buf.getvalue()
+    buf = io.BytesIO(); img.save(buf, 'JPEG', quality=85); res = []
+    for tg in (target if isinstance(target, (list, tuple)) else [target]):
+        NI, orig = simplify(poses[0], I, tg, UV); print(f'{name:12s} {len(NI):6d} tris {len(orig):6d} verts {len(frames)} poses  texture {img.size}')
+        res.append((poses[:, orig], NI, UV[orig], buf.getvalue()))
+    return res
 
 # ---- the source dances (Mixamo) ----
 def key(name): return re.sub(r'_Reference$', '', re.sub(r'_\d+$', '', name.split(':')[-1]))   # Mixamo 'mixamorig:LeftArm_09', mocap 'LeftArm_Reference'
@@ -192,6 +193,7 @@ def depth(g, i):
     return d
 
 out = []   # (name, P, NI, UV, jpeg)
+def lod(name, r): out.append((name,) + r[0]); out.append((name + '_lo',) + r[1])   # near, far
 # the four people, two dances between them
 pn = [i for i, n in enumerate(people.nodes) if 'skin' in n]
 NAMES = ['man1', 'man2', 'woman1', 'woman2']; DANCES = {'belly': (belly, 2.0), 'girl': (girl, 3.0), 'samba': (samba, 3.0), 'tifa': (tifa, 4.0), 'gina': (gina, 2.5)}
@@ -199,12 +201,12 @@ PLAN = [(0, 'belly'), (0, 'samba'), (1, 'girl'), (1, 'tifa'), (2, 'gina'), (2, '
 for k, dn in PLAN:
     ni = pn[k]; src, t0 = DANCES[dn]
     frames = retarget_frames(src, people, people.j['skins'][people.nodes[ni]['skin']]['joints'], t0=t0 + k * 0.7)
-    out.append((NAMES[k] + '_' + dn,) + bake(people, ni, frames, TRIS, 1.78 if k < 2 else 1.66, name=NAMES[k] + '_' + dn))
+    lod(NAMES[k] + '_' + dn, bake(people, ni, frames, [HI_TRIS, TRIS], 1.78 if k < 2 else 1.66, name=NAMES[k] + '_' + dn))
 # the belly dancer
 bn = [i for i, n in enumerate(belly.nodes) if 'skin' in n][0]
 skip = lambda m: not re.search(r'Eyebrow|Eyelash|Teeth', m)
 bnodes = [i for i, n in enumerate(belly.nodes) if 'skin' in n]
-def bake_many(g, nis, frames, target, height, keep, name):
+def bake_many(g, nis, frames, target, height, keep, name, seams=True):
     mats = g.j['materials']; parts = []   # (posed per frame, material)
     for ni in nis:
         per = [skin_pose(g, ni, W) for W in frames]
@@ -224,15 +226,17 @@ def bake_many(g, nis, frames, target, height, keep, name):
     lo, hi = Ps[0].min(0), Ps[0].max(0)
     if (hi - lo)[2] > (hi - lo)[1] * 1.5: Ps = Ps[:, :, [0, 2, 1]] * np.array([1, 1, -1])
     c = Ps[0].mean(0); Ps = Ps - np.array([c[0], Ps[0][:, 1].min(), c[2]]); Ps *= height / Ps[0][:, 1].max()
-    NI, orig = simplify(Ps[0], I, target, UV); buf = io.BytesIO(); img.save(buf, 'JPEG', quality=85)
-    print(f'{name:12s} {len(NI):6d} tris {len(orig):6d} verts {len(frames)} poses  texture {img.size}')
-    return Ps[:, orig], NI, UV[orig], buf.getvalue()
-out.append(('belly',) + bake_many(belly, bnodes, own_frames(belly, 1.0), TRIS, 1.68, skip, 'belly'))
+    buf = io.BytesIO(); img.save(buf, 'JPEG', quality=85); res = []
+    for tg in (target if isinstance(target, (list, tuple)) else [target]):
+        NI, orig = simplify(Ps[0], I, tg, UV if seams else None, seams); print(f'{name:12s} {len(NI):6d} tris {len(orig):6d} verts {len(frames)} poses  texture {img.size}')
+        res.append((Ps[:, orig], NI, UV[orig], buf.getvalue()))
+    return res
+lod('belly', bake_many(belly, bnodes, own_frames(belly, 1.0), [HI_TRIS, TRIS], 1.68, skip, 'belly'))
 for g2, nm, sk in ((samba, 'samba', lambda m: not re.search(r'Eye_trans', m)), (gina, 'gina', lambda m: True)):
-    out.append((nm,) + bake_many(g2, [i for i, n in enumerate(g2.nodes) if 'skin' in n], own_frames(g2, 2.0), TRIS, 1.68, sk, nm))
+    lod(nm, bake_many(g2, [i for i, n in enumerate(g2.nodes) if 'skin' in n], own_frames(g2, 2.0), [HI_TRIS, TRIS], 1.68, sk, nm))
 gnodes = [i for i, n in enumerate(girl.nodes) if 'skin' in n]
 gskip = lambda m: not re.search(r'Eyelash|Tear|Moisture|Mouth_Cavity|Teeth|nails', m)
-out.append(('dj',) + bake_many(girl, gnodes, own_frames(girl, 0.5), DJ_TRIS, 1.68, gskip, 'dj'))
+out.append(('dj',) + bake_many(girl, gnodes, own_frames(girl, 0.5), DJ_TRIS, 1.68, gskip, 'dj', seams=False)[0])   # as she was before the seam welding (q62)
 
 # ---- write ----
 ob = bytearray(); views = []; accs = []; meshes = []; mats = []; imgs = []; nodes = []
@@ -245,12 +249,14 @@ def add_acc(arr, ct, typ, target=34962, mm=False):
     a = {'bufferView': view(arr, target), 'componentType': ct, 'count': len(arr), 'type': typ}
     if mm: a['min'] = arr.min(0).tolist(); a['max'] = arr.max(0).tolist()
     accs.append(a); return len(accs) - 1
+matOf = {}   # a dancer's near and far meshes share one texture and material
 for name, P, NI, UV, jpg in out:
-    imgs.append({'bufferView': view(np.frombuffer(jpg, np.uint8)), 'mimeType': 'image/jpeg'})
-    mats.append({'name': name, 'pbrMetallicRoughness': {'baseColorTexture': {'index': len(imgs) - 1}, 'metallicFactor': 0.0, 'roughnessFactor': 0.8}, 'doubleSided': True})
+    if jpg not in matOf:
+        imgs.append({'bufferView': view(np.frombuffer(jpg, np.uint8)), 'mimeType': 'image/jpeg'})
+        mats.append({'name': name, 'pbrMetallicRoughness': {'baseColorTexture': {'index': len(imgs) - 1}, 'metallicFactor': 0.0, 'roughnessFactor': 0.8}, 'doubleSided': True}); matOf[jpg] = len(mats) - 1
     base = P[0].astype(np.float32)
     pr = {'attributes': {'POSITION': add_acc(base, 5126, 'VEC3', mm=True), 'NORMAL': add_acc(normals(P[0], NI), 5126, 'VEC3'), 'TEXCOORD_0': add_acc(UV.astype(np.float32), 5126, 'VEC2')},
-          'indices': add_acc(NI.astype(np.uint16 if len(base) < 65536 else np.uint32).ravel(), 5123 if len(base) < 65536 else 5125, 'SCALAR', 34963), 'material': len(mats) - 1,
+          'indices': add_acc(NI.astype(np.uint16 if len(base) < 65536 else np.uint32).ravel(), 5123 if len(base) < 65536 else 5125, 'SCALAR', 34963), 'material': matOf[jpg],
           'targets': [{'POSITION': add_acc((P[f] - P[0]).astype(np.float32), 5126, 'VEC3', mm=True)} for f in range(1, len(P))]}
     meshes.append({'name': name, 'primitives': [pr]}); nodes.append({'name': name, 'mesh': len(meshes) - 1})
 while len(ob) % 4: ob.append(0)

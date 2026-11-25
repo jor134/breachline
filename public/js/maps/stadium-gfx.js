@@ -4,6 +4,7 @@
 // terrace, the roof catwalk with its davits and ropes, the helicopter, floodlight banks on the roof edge. The crowd and the players are
 // stadium-crowd.js. Power cut (MAIN BREAKER) darkens the VIP level only: the floodlights are on the stadium's own supply.
 import * as THREE from '../../vendor/three.module.min.js';
+import { skylineMat, tower } from './skyline.js';
 import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import { ObfLoader } from '../store/obf.js';
@@ -11,6 +12,7 @@ import { setRotor } from '../audio.js';
 import { H, XC, ZC, PITCH, BLOCK, TERR, DECK, HELI, SHAFT, SUITES, WINX, ROPES, YC, YS, ROOF, FLY, inHeli } from '../core/maps/stadium.js';
 import { makeCrowd } from './stadium-crowd.js';
 
+let skyM = null;
 let outside = [], outsideOn = true, tod = 'night', glows = [], heli = null, screens = null, crowd = null, inner = null, flood = [];
 // lamps: [x, y, z, intensity, range] — the club, the suites, the terrace and the concourse
 const LAMPS = [[24, YC + 3.2, 16.5, 12, 16], [12, YC + 3.2, 23, 8, 12], [36, YC + 3.2, 23, 8, 12], [30, YC + 3.2, 8, 7, 12], [49, YC + 3.0, 15, 7, 11],
@@ -170,6 +172,7 @@ export default {
     M.flood = new THREE.MeshBasicMaterial({ color: 0xf4f8ff }); M.led = new THREE.MeshBasicMaterial({ map: ledTex() }); M.led.map.repeat.set(3, 1);
   },
   look(night, nvg) {
+    if (skyM) skyM.color.set(nvg ? 0x6dff7a : 0xffffff);
     for (const m of glows) m.color.set(nvg ? (night ? 0x0c3a12 : 0x9cff9c) : night ? 0x0d0c0a : m.userData.c);
     if (screens) screens.m.color.set(nvg ? 0x8cff9c : 0xffffff);   // the stadium's screens and boards stay on (own supply)
   },
@@ -233,9 +236,9 @@ export default {
     plane(root, 'THE HARBOUR CLUB', 5, 0.6, 24, YC + 2.95, 11.15, 0, { bg: null, fg: '#d8c08a', pw: 1024, ph: 96 });
     plane(root, 'GATE 4  ▶', 1.6, 0.3, 53.5, YC + 2.4, 6.12, 0, { bg: '#0f6b2c' }); plane(root, 'EXIT', 0.6, 0.22, 55.88, YC + 2.45, 8, -Math.PI / 2, { bg: '#0f6b2c' });
     SUITES.forEach((x, i) => plane(root, i === 2 ? "OWNERS' SUITE" : 'SUITE ' + (i < 2 ? i + 1 : i + 1), 1.4, 0.26, x + 1.6, YS + 2.5, 9.88, Math.PI, { bg: '#1c1f26', fg: '#d8c08a' }));
-    // ---- the city round the ground: dark blocks with a few lit windows ----
-    { const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0); const m = new THREE.MeshBasicMaterial({ color: 0x14161d });
-      for (let k = 0; k < 40; k++) { const a = k * 6.283 / 40 + rr() * 0.1, r = 230 + rr() * 140, o = new THREE.Mesh(geo, m); o.position.set(XC + Math.cos(a) * r, 0, ZC + Math.sin(a) * r); o.scale.set(20 + rr() * 30, 20 + rr() * 80, 20 + rr() * 30); hills.add(o); } }
+    // ---- the city round the ground: towers with lit windows (the casino's skyline) ----
+    { skyM = skylineMat();
+      for (let k = 0; k < 40; k++) { const a = k * 6.283 / 40 + rr() * 0.1, r = 230 + rr() * 140, o = tower(20 + rr() * 30, 20 + rr() * 80, 20 + rr() * 30, skyM); o.position.set(XC + Math.cos(a) * r, 0, ZC + Math.sin(a) * r); o.rotation.y = -a; hills.add(o); } }
     // ---- the helicopter, the big screens, the crowd and the players ----
     heli = buildHeli(MATS); root.add(heli.g);
     screens = buildScreens(root);

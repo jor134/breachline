@@ -45,7 +45,16 @@ export function buildLevel(id = 'mansion') {
     else for (let j = Math.round(z0 / U); j < Math.round(z1 / U); j++) edges.delete(k(f, Math.round(x0 / U), j, 'v'));
     const hz = z0 === z1, out = outSide(f, hz ? 'h' : 'v', hz ? z0 : x0, hz ? (x0 + x1) / 2 : (z0 + z1) / 2);
     openEnds.add(f + '|' + x0 + '|' + z0); openEnds.add(f + '|' + x1 + '|' + z1);
-    if (kind !== 'gap') boxes.push({ f, kind: 'lintel', out, x0: hz ? x0 : x0 - T / 2, x1: hz ? x1 : x0 + T / 2, z0: hz ? z0 - T / 2 : z0, z1: hz ? z0 + T / 2 : z1, y0: f * H + DOOR_H, y1: f * H + H });
+    // The wall is cut on the 0.5 m grid, the opening is not always on it (a door at 27.6-28.8 cuts the wall 27.5-29): the slivers
+    // between the cut and the opening are filled (a jamb to the door's head, or full height beside a gap) and the lintel spans the
+    // whole cut, so there is no slit beside a door or above it
+    const a0 = hz ? x0 : z0, a1 = hz ? x1 : z1, S = Math.round(a0 / U) * U, E = Math.round(a1 / U) * U, line = hz ? z0 : x0;
+    const jamb = (u0, u1, capA, capB) => { if (u1 - u0 < 0.01) return; const y1 = f * H + (kind === 'gap' ? H : DOOR_H);
+      boxes.push(hz ? { f, kind: 'wall', ext: !!out, out, capA, capB, horiz: true, x0: u0, x1: u1, z0: line - T / 2, z1: line + T / 2, y0: f * H, y1 }
+        : { f, kind: 'wall', ext: !!out, out, capA, capB, horiz: false, x0: line - T / 2, x1: line + T / 2, z0: u0, z1: u1, y0: f * H, y1 }); };
+    jamb(S, a0, false, true); jamb(a1, E, true, false);
+    const l0 = Math.min(S, a0), l1 = Math.max(E, a1);
+    if (kind !== 'gap') boxes.push({ f, kind: 'lintel', out, x0: hz ? l0 : x0 - T / 2, x1: hz ? l1 : x0 + T / 2, z0: hz ? z0 - T / 2 : l0, z1: hz ? z0 + T / 2 : l1, y0: f * H + DOOR_H, y1: f * H + H });
     if (kind === 'door') {
       const d = 0.04;
       addDoor({ f, x0, z0, x1, z1, horiz: hz, h: DOOR_H, hidden: tag === 'hidden', cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, y: f * H, exterior: !!tag,

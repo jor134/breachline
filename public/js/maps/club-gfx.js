@@ -6,6 +6,7 @@
 // the walls; the hall's lamps change colour with it and pulse on its bass. Power cut (MAIN BREAKER) darkens the building's lamps;
 // the sound system and the stage lights have their own supply.
 import * as THREE from '../../vendor/three.module.min.js';
+import { skylineMat, tower } from './skyline.js';
 import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { ObfLoader } from '../store/obf.js';
 import { setVenueMusic, setVenueMix, venueLevel } from '../audio.js';
@@ -13,7 +14,7 @@ import { H, FOOT, HALL, BALC, STAGE, STEPS, FLOOR, DJ, ROOMS, FURNITURE, VAN, in
 import { makeDancers } from './club-crowd.js';
 
 const VAN_TURN = Math.PI;   // the model's nose is at its -z end: turned to face the club
-let glows = [], matGlows = [], dancers = null, beams = [], hallLamps = null, ledMats = [], root0 = null, kitReady = false;
+let skyM = null, glows = [], matGlows = [], dancers = null, beams = [], hallLamps = null, ledMats = [], root0 = null, kitReady = false;
 const LAMPS = [
   // the hall (coloured by tick): over the floor, the stage, the bar, the booths, the balcony
   [10, 6.6, 16, 9, 13], [20, 6.6, 16, 9, 13], [30, 6.6, 16, 9, 13], [10, 6.6, 23, 9, 13], [20, 6.6, 23, 9, 13], [30, 6.6, 23, 9, 13], [20, 6.3, 30.5, 10, 12], [2.5, 3.2, 19, 5, 9], [37, 3.2, 17, 5, 9], [20, 6.8, 10.5, 5, 12],
@@ -50,7 +51,12 @@ const lotTex = () => cvs(512, 512, (g, w, h) => { g.fillStyle = '#2a2b2f'; g.fil
 const furn = {
   stage({ P, len, dep, h }) { P('stageblk', 0, len, 0, dep, 0, h - 0.04); P('stagetop', 0, len, 0, dep, h - 0.04, h); P('led', 0, len, dep, dep + 0.012, h - 0.14, h - 0.08, 'Z'); },
   djbooth() { },   // the kit's DJ stand (load)
-  speaker() { }, clubbar() { }, backbar({ P, len, dep, h }) { P('glowB', 0, len, dep - 0.03, dep, 0.95, 0.99, 'Y'); }, stool() { }, booth() { }, dancer() { },
+  speaker() { },
+  // the bar is the kit's (placed in load()); its two ends are closed with panels, and an LED strip runs under the top on the staff side
+  clubbar({ P, len, dep, h }) { for (const [u0, u1] of [[-0.02, 0.03], [len - 0.03, len + 0.02]]) P('oakD', u0, u1, 0.02, dep - 0.02, 0, h - 0.035);
+    P('led', 0.05, len - 0.05, -0.012, 0, h - 0.16, h - 0.13, 'x'); },
+  // the back bar: LED strips along its shelves' front edges
+  backbar({ P, len, dep, h }) { P('glowB', 0, len, dep - 0.03, dep, 0.95, 0.99, 'Y'); for (const y of [0.98, 1.5, 2.02]) P('led', 0.05, len - 0.05, dep + 0.02, dep + 0.035, y, y + 0.025, 'X'); }, stool() { }, booth() { }, dancer() { },
   hightable({ P, len, dep, h }) { P('chrome', len / 2 - 0.04, len / 2 + 0.04, dep / 2 - 0.04, dep / 2 + 0.04, 0, h - 0.04); P('stoneD', 0, len, 0, dep, h - 0.04, h); P('chrome', 0.1, len - 0.1, 0.1, dep - 0.1, 0, 0.03); },
   rack({ P, len, dep, h }) { P('chrome', 0, len, dep / 2 - 0.02, dep / 2 + 0.02, h - 0.05, h); for (let u = 0.15; u < len - 0.1; u += 0.22) P(u % 0.66 < 0.22 ? 'coatA' : 'coatB', u, u + 0.12, 0.05, dep - 0.05, h - 1.05, h - 0.1); },
   desk({ P, len, dep, h }) { P('oakD', 0, len, 0, dep, h - 0.04, h); P('oakD', 0, 0.05, 0, dep, 0, h - 0.04); P('oakD', len - 0.05, len, 0, dep, 0, h - 0.04); P('oakD', 0.05, len - 0.05, 0, 0.04, 0.3, h - 0.04); },   // its laptop is a kit (kitPlacements)
@@ -104,7 +110,7 @@ function placeKits(kitScene, root) {
 const KIT_NAMES = new Set(['bar', 'barcorner', 'barend', 'barstool', 'table', 'shelf', 'bench', 'djstand', 'speaker', 'screen', 'swivel', 'spot', 'ceilspeaker', 'lightbar', 'pole', 'steps', 'dancefloor', 'laptop']);
 const roomAt = (f, x, z) => { for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return r[1]; return null; };
 let mix = { g: -1, c: -1 }, mood = { base: null, nvg: false, k: 0, hemi: null };   // the hall's haze and darkness (tick)
-const HAZE = new THREE.Color(0x140a20), HAZE_D = 0.045, HALL_HEMI = 0.4;
+const HAZE = new THREE.Color(0x140a20), HAZE_D = 0.045, HALL_HEMI = 0.25, HALL_SUN = 0.4;   // in the hall: about what the breaker leaves (power cut)
 export default {
   get env() { return NIGHT; },
   envs: { night: NIGHT },
@@ -118,7 +124,16 @@ export default {
       const g = new THREE.Group(), k = 5.8 / Math.max(sz.x, sz.z); m.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2); g.add(m);
       const o = new THREE.Group(); o.add(g); g.scale.setScalar(k); g.rotation.y = (long === 'x' ? Math.PI / 2 : 0) + VAN_TURN; o.position.set(VAN.x, 0, VAN.z);
       m.traverse(q => { if (q.isMesh) { q.castShadow = q.receiveShadow = true; const mt = q.material; mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.8; if (!pbrMats.includes(mt)) pbrMats.push(mt); } });
-      root0.add(o); o.updateMatrixWorld(true); const top = new THREE.Box3().setFromObject(o).max.y; for (const b of beams) if (b.siren) { b.siren.position.y = top + 0.05; b.siren.visible = true; }
+      root0.add(o); o.updateMatrixWorld(true);
+      // the light bar sits on the roof. The model's own vertices along the van's middle give the roof's height and its front edge (the
+      // bounding box's top is the racks and lamps and its +z end the bumper, which left the bar floating in front of the cab; rays
+      // missed the roof, whose faces point inward)
+      const v = new THREE.Vector3(), bins = new Map();
+      o.traverse(q => { if (!q.isMesh) return; const P = q.geometry.attributes.position; for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(q.matrixWorld);
+        if (Math.abs(v.x - VAN.x) > 0.45) continue; const k = Math.round(v.z * 10); if (!(bins.get(k) > v.y)) bins.set(k, v.y); } });
+      const hits = [...bins].sort((p, q) => q[0] - p[0]).map(([k, y]) => [k / 10, y]);
+      const roofY = hits.length ? Math.max(...hits.map(q => q[1])) : 2.6, front = hits.find(q => q[1] > roofY - 0.35) || [VAN.z + 1.2, roofY];
+      for (const b of beams) if (b.siren) { b.siren.position.set(VAN.x, roofY + 0.05, front[0] - 0.2); b.siren.visible = true; }
       res(null);
     }, undefined, () => res(null)));
     return Promise.all([kit, van, dancers ? dancers.load() : null]).then(() => new THREE.Group());
@@ -165,7 +180,9 @@ export default {
     M.led = new THREE.MeshBasicMaterial({ color: 0xff2fa0 }); M.neon = new THREE.MeshBasicMaterial({ color: 0xff3fb0 });
     M.beam = new THREE.MeshBasicMaterial({ color: 0x6aa0ff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
   },
+  noFit: (f, x, z) => f === 1 && inHall(x, z) && z > BALC.z1,   // no white downlights over the dance floor: the hall is lit only by the show
   look(night, nvg) {
+    if (skyM) skyM.color.set(nvg ? 0x6dff7a : 0xffffff);
     mood.base = null; mood.nvg = nvg;   // the light was just set: tick takes it as the outside's and works the hall's from it
     for (const m of [...glows, ...matGlows]) m.color.set(nvg ? (night ? 0x0c3a12 : 0x9cff9c) : night ? 0x0d0c0a : m.userData.c);
   },
@@ -210,9 +227,9 @@ export default {
     plane(root, 'BACKSTAGE  ·  STAFF ONLY', 2.6, 0.32, 3.6, 2.5, 33.855, Math.PI, { bg: '#16181c', fg: '#ff5050' }); plane(root, 'STAFF ONLY', 1.4, 0.3, 39.855, 2.5, 28.2, -Math.PI / 2, { bg: '#16181c', fg: '#ff5050' });
     plane(root, 'VIP  ▲', 1.2, 0.3, 4.5, 2.6, 7.855, Math.PI, { bg: '#2a1240', fg: '#ffd23a' }); plane(root, 'GREEN ROOM', 1.6, 0.3, 22, 2.5, 36.145, Math.PI, { bg: '#16181c', fg: '#d8c08a' });
     plane(root, 'COAT CHECK', 2, 0.36, 14, 2.6, 6.45, 0, { bg: '#2a1240', fg: '#ffd23a' }); plane(root, 'MANAGER', 1.2, 0.26, 44.855, H + 2.4, 4.6, -Math.PI / 2, { bg: '#16181c', fg: '#d8c08a' });
-    // ---- the city round the block: dark buildings with a few lit windows ----
-    { const geo = new THREE.BoxGeometry(1, 1, 1); geo.translate(0, 0.5, 0); const m = new THREE.MeshBasicMaterial({ color: 0x101219 });
-      for (let k = 0; k < 36; k++) { const a = k * 6.283 / 36 + rr() * 0.1, r = 110 + rr() * 90, o = new THREE.Mesh(geo, m); o.position.set(29 + Math.cos(a) * r, 0, 10 + Math.sin(a) * r); o.scale.set(14 + rr() * 22, 10 + rr() * 50, 14 + rr() * 22); hills.add(o); } }
+    // ---- the city round the block: towers with lit windows (the casino's skyline) ----
+    { skyM = skylineMat();
+      for (let k = 0; k < 36; k++) { const a = k * 6.283 / 36 + rr() * 0.1, r = 110 + rr() * 90, o = tower(14 + rr() * 22, 10 + rr() * 50, 14 + rr() * 22, skyM); o.position.set(29 + Math.cos(a) * r, 0, 10 + Math.sin(a) * r); o.rotation.y = -a; hills.add(o); } }
     dancers = makeDancers(root);
   },
   tick(dt, { S, head, scene }) {
@@ -224,7 +241,7 @@ export default {
     if (Math.abs(g - mix.g) > 0.01 || Math.abs(c - mix.c) > 5) { mix = { g, c }; setVenueMix(g, c); }
     // the hall's lamps: a slow wash round the colour wheel, pulsing on the bass (the building's own lamps keep their warm white)
     if (!hallLamps && root0) { hallLamps = []; root0.traverse(o => { if (o.isPointLight && o.userData.d) hallLamps.push(o); }); }
-    for (const l of hallLamps || []) { const q = l.userData.d.p; if (inHall(q.x, q.z) && q.y > 3) { const hue = (t * 0.05 + q.x * 0.02 + q.z * 0.015) % 1; l.color.setHSL(hue, 0.9, 0.2 + lv * 0.28); } else l.color.set(0xffd9a8); }
+    for (const l of hallLamps || []) { const q = l.userData.d.p; if (inHall(q.x, q.z) && q.y > 3) { const hue = (t * 0.05 + q.x * 0.02 + q.z * 0.015) % 1; l.color.setHSL(hue, 0.95, 0.035 + lv * 0.09); } else l.color.set(0xffd9a8); }   // the hall's: only a coloured glow pulsing on the bass, near black
     for (const bm of beams) {
       if (bm.siren) { bm.siren.material.color.set(Math.floor(t * 3) % 2 ? 0x3060ff : 0xff2020); continue; }
       const a = Math.sin(t * 0.6 + bm.ph) * 0.55, k = Math.cos(t * 0.45 + bm.ph * 1.3) * 0.35; bm.m.rotation.set(-0.35 + k, 0, a);
@@ -234,10 +251,10 @@ export default {
     // the hall is darker than the rest of the building and hazy (smoke machines): fog thickens and turns purple, the sky light dims,
     // as you walk in; out again, back to what the rest of the map has (night vision keeps its own green)
     if (scene && scene.fog) {
-      if (!mood.base) { mood.base = { d: scene.fog.density, c: scene.fog.color.clone() }; mood.hemi = null; root0 && root0.traverse(o => { if (!mood.hemi && o.isHemisphereLight) mood.hemi = { l: o, i: o.intensity }; }); mood.k = -1; }
+      if (!mood.base) { mood.base = { d: scene.fog.density, c: scene.fog.color.clone() }; mood.hemi = null; mood.sun = null; scene.traverse(o => { if (!mood.hemi && o.isHemisphereLight) mood.hemi = { l: o, i: o.intensity }; if (!mood.sun && o.isDirectionalLight) mood.sun = { l: o, i: o.intensity }; }); mood.k = -1; }
       const want = inHall(p.x, p.z) && p.y < 2 * H ? 1 : 0, k = Math.max(0, Math.min(1, (mood.k < 0 ? want : mood.k + Math.sign(want - mood.k) * dt * 1.5)));
       if (k !== mood.k) { mood.k = k; scene.fog.density = mood.base.d + (HAZE_D - mood.base.d) * k; if (!mood.nvg) scene.fog.color.copy(mood.base.c).lerp(HAZE, k);
-        if (mood.hemi) mood.hemi.l.intensity = mood.hemi.i * (1 - (1 - HALL_HEMI) * k); }
+        if (mood.hemi) mood.hemi.l.intensity = mood.hemi.i * (1 - (1 - HALL_HEMI) * k); if (mood.sun) mood.sun.l.intensity = mood.sun.i * (1 - (1 - HALL_SUN) * k); }
     }
     if (dancers) dancers.tick(dt, p);
   },
