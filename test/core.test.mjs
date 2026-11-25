@@ -685,4 +685,13 @@ await t('every file the Worker serves is under the 25 MiB asset limit', async ()
   const walk = d => { for (const f of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) walk(p); else if (fs.statSync(p).size > 24 * 1024 * 1024) big.push(p); } };
   walk(new URL('../public', import.meta.url).pathname); assert.deepEqual(big, [], 'too big for Cloudflare: ' + big.join(', '));
 });
+await t('the squad bots wait for the human at the start instead of going off on their own', () => {
+  const was = Sim.BOTS; Sim.BOTS = true;
+  try { for (const map of ['mansion', 'club']) {
+    const s = new Sim(4); s.addPlayer('a', 'A'); s.start(5, false, 'clear', map); const bots = s.bots(); assert.ok(bots.length === 3, map + ': three bots');
+    const at = bots.map(p => [p.bot.x, p.bot.z]); for (let i = 0; i < 40; i++) s.tick(0.05);   // 2 s, the human's first pose not in yet
+    const [x, z] = s.M.spawn[0]; for (let i = 0; i < 60; i++) { s.pose('a', { h: [x, 1.65, z, 0, 0, 0, 1] }); s.tick(0.05); }
+    bots.forEach((p, i) => assert.ok(!p.bot.task && Math.hypot(p.bot.x - at[i][0], p.bot.z - at[i][1]) < 3, map + ': ' + p.name + ' went off on his own'));
+  } } finally { Sim.BOTS = was; }
+});
 console.log(n + ' tests passed');

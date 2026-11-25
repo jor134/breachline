@@ -58,8 +58,10 @@ export const BotMixin = {
   // ---- per tick ----
   tickBots(dt) {
     const bots = this.bots(); if (!bots.length) return;
-    const humans = [...this.players.values()].filter(p => !p.bot && p.team !== 'tango' && p.has);
-    const auto = !humans.length;   // nobody to give orders: run the mission
+    // a human SWAT player counts as there even before his first pose of the mission arrives (has is cleared at every start): if not,
+    // the first bot saw nobody in the first moments, took a task of its own and went off with it
+    const squad = [...this.players.values()].filter(p => !p.bot && p.team !== 'tango'), humans = squad.filter(p => p.has);
+    const auto = !squad.length;   // nobody to give orders: run the mission
     bots.forEach((p, k) => { if (!p.down) this.tickBot(p, dt, auto, humans, bots, k); this.botPose(p); });
   },
   tickBot(p, dt, auto, humans, bots, k) {
@@ -72,7 +74,8 @@ export const BotMixin = {
     // 2. call out to anyone in view who has not complied yet (civilians, unaware suspects)
     if (this.t - b.shoutT > 2.5) for (const n of this.npcs) { if (!(n.kind === 'c' ? n.st === 'w' : (n.st === 'g' || n.st === 'a') && n.armed)) continue; const d = Math.hypot(n.x - b.x, n.z - b.z); if (d < 9 && Math.abs(n.y - b.y) < 1.5 && this.clear(b.x, b.y + 1.6, b.z, n.x, n.y + 1.2, n.z)) { b.shoutT = this.t; p.lastShout = -9; this.shout(p.id); break; } }
     // 3. the current task, or follow / hold
-    if (!b.task && auto && k === 0) b.task = this.botPlan(p);
+    if (b.task && b.task.auto && !auto) { b.task = null; b.path = null; }   // a human took charge: drop the task it gave itself
+    if (!b.task && auto && k === 0) { b.task = this.botPlan(p); if (b.task) b.task.auto = true; }
     if (!b.task && !auto && b.base === 'follow') { const q = humans.find(h => h.down && Math.hypot(h.hx - b.x, h.hz - b.z) < 25); if (q && !bots.some(o => o.bot.task && o.bot.task.k === 'revive' && o.bot.task.p === q.id)) b.task = { k: 'revive', p: q.id, ph: 'go', t: 0 }; }   // an officer down: go and get him up
     if (b.task) { if (this.botTask(p, b.task, dt)) { b.task = null; b.path = null; if (b.base === 'hold') b.hold = [b.x, b.z, b.y, b.yaw]; } return; }
     if (b.base === 'hold' && b.hold) { if (Math.hypot(b.hold[0] - b.x, b.hold[1] - b.z) > 0.6) this.botGo(p, b.hold[0], b.hold[1], b.hold[2], dt, 2.4); else { b.path = null; b.spd = 0; this.botLook(p, dt); } return; }
