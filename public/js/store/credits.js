@@ -38,7 +38,7 @@ export const CREDITS = [
   { use: 'Winery stone walls', title: 'Photoscanned Old Stone Wall (2x4m)', by: 'chrisg4919', lic: BY, url: 'https://sketchfab.com/3d-models/photoscanned-old-stone-wall-2x4m-594513b103034bffa48370b4ef521106', chg: 'textures only, reduced and tinted' },
   { use: 'Winery concrete', title: 'Concrete material', by: 'roko', lic: BY, url: 'https://sketchfab.com/3d-models/concrete-material-ebe968851be0443e9392ad87cbf64eab', chg: 'textures only, reduced and tinted' },
   { use: 'Winery corten steel', title: 'Kellen Metallo Corten Steel', by: 'Hardscape', lic: BY, url: 'https://sketchfab.com/3d-models/kellen-metallo-corten-steel-1d2c38521ed342d286ca8c81819ebc2f', chg: 'texture only, reduced' },
-  { use: 'Winery barrels', title: 'Wooden Wine Barrel', by: 'Joseph Gush', lic: BY, url: 'https://sketchfab.com/3d-models/wooden-wine-barrel-c75aa49368da487aa3b360d0fad446f5', chg: 'simplified, textures reduced' },
+  { use: 'Winery barrels', title: 'Wooden Wine Barrel', by: 'Joseph Gush', lic: BY, url: 'https://sketchfab.com/3d-models/wooden-wine-barrel-c75aa49368da487aa3b360d0fad446f5', chg: 'textures only, reduced' },
   { use: 'Wine bottles', title: 'Wine Bottle', by: 'sotocodes', lic: BY, url: 'https://sketchfab.com/3d-models/wine-bottle-651e6b77329043ecb89cf5e75f5fe209', chg: 'simplified' },
   { use: 'Wine glasses', title: 'Wine Glass', by: 'Gamedirection', lic: BY, url: 'https://sketchfab.com/3d-models/wine-glass-480cfc5b09ce4a1bb6b262e3686077c7', chg: 'simplified, material redone' },
   { use: 'Club music', title: 'Dance (Pixabay track 518070)', by: 'atlasaudio', lic: 'Pixabay Content License', url: 'https://pixabay.com/music/' },
