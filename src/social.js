@@ -29,6 +29,31 @@ export async function readTicket(env, t) {
   return d ? null : m[1];
 }
 
+// quest-store: the full-game pass. Who owns the full game is decided here, not on the headset: /api/me asks Meta
+// (verify_entitlement, with the app secret META_APP_SECRET, a Worker secret) whether this Meta user owns the add-on, and signs a
+// pass bound to the account. A room lets only a pass holder lead a mission outside the demo. Signed tags: kind:acct.exp
+async function makeTag(env, kind, acct, days) { const secret = socialSecret(env); if (!secret) return ''; const exp = Math.floor(Date.now() / 1000) + days * 86400; return acct + '.' + exp + '.' + await sign(secret, kind + ':' + acct + '.' + exp); }
+async function readTag(env, kind, t) {
+  const secret = socialSecret(env); if (!secret || typeof t !== 'string') return null;
+  const m = t.match(/^([0-9a-f]{24}|dev)\.(\d{10})\.([0-9a-f]{32})$/); if (!m || +m[2] < Date.now() / 1000) return null;
+  const want = await sign(secret, kind + ':' + m[1] + '.' + m[2]); let d = 0; for (let i = 0; i < 32; i++) d |= want.charCodeAt(i) ^ m[3].charCodeAt(i);
+  return d ? null : m[1];
+}
+export const makePass = (env, acct) => makeTag(env, 'full', acct, 2);   // short: ownership is checked with Meta again at every launch
+export const readPass = (env, t) => readTag(env, 'full', t);
+export const makeDevToken = env => makeTag(env, 'dev', 'dev', 365);   // a headset unlocked with the creator code (?dev=)
+export const readDevToken = async (env, t) => (await readTag(env, 'dev', t)) === 'dev';
+// Meta: does this (app-scoped) user own the SKU? -> 'yes' | 'no' | an error string
+export async function metaOwns(env, uid, sku, appId) {
+  if (!env.META_APP_SECRET) return 'not set up'; if (!/^\d{5,25}$/.test(String(uid || ''))) return 'no user id';
+  try {
+    const r = await fetch('https://graph.oculus.com/' + appId + '/verify_entitlement', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ access_token: 'OC|' + appId + '|' + env.META_APP_SECRET, user_id: String(uid), sku }) });
+    const j = await r.json().catch(() => ({})); if (j && j.success === true) return 'yes'; if (j && j.success === false) return 'no';
+    return 'meta error ' + r.status + (j && j.error && j.error.message ? ': ' + String(j.error.message).slice(0, 80) : '');
+  } catch (e) { return 'meta unreachable'; }
+}
+
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 const ONLINE = 75e3, ROOM_FRESH = 30e3, MAX_FRIENDS = 100, MAX_REQ_DAY = 40;
 export const ROOM_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;

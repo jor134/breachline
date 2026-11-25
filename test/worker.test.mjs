@@ -42,4 +42,26 @@ a.ws.close(); await sleep(200); assert.equal(rooms.get('ABCDEF').timer, null, 'r
   assert.equal((await post('s3cret', { ...env, CREATOR_CODE: 's3cret' })).status, 200);
   assert.equal((await post('guess', { ...env, CREATOR_CODE: 's3cret' })).status, 403);
   assert.equal((await post('', env)).status, 403, 'no creator code set: nothing unlocks'); }
+// quest-store: who owns the full game is checked with Meta on the server. /api/me asks verify_entitlement (with the app secret) and
+// signs a pass for the account; a room lets only a pass holder pick a mission outside the demo. Without the secret nothing is checked.
+{ const realFetch = globalThis.fetch, calls = [];
+  globalThis.fetch = async (u, o) => { if (String(u).includes('graph.oculus.com')) { const b = new URLSearchParams(o.body); calls.push([String(u), b.get('user_id'), b.get('sku'), b.get('access_token')]); return { status: 200, json: async () => ({ success: b.get('user_id') === '111111111' }) }; } return realFetch(u, o); };
+  const env2 = { ...env, CREATOR_CODE: 's3cret', META_APP_SECRET: 'appsecret' }, me = body => worker.fetch(new Request('https://x.dev/api/me', { method: 'POST', body: JSON.stringify(body) }), env2).then(r => r.body ? JSON.parse(r.body) : r.json());
+  const owner = await me({ token: 'purchase-token-1', uid: '111111111' }), demo = await me({ token: 'guest-device-2', uid: '222222222' }), nouid = await me({ token: 'guest-device-3' });
+  assert.ok(owner.full && owner.pass && owner.check === 'yes', 'Meta says yes: a pass'); assert.ok(!demo.full && !demo.pass && demo.check === 'no'); assert.equal(nouid.check, 'no user id');
+  assert.deepEqual(calls[0].slice(1), ['111111111', 'full_game', 'OC|1766163904906396|appsecret']); assert.match(calls[0][0], /graph\.oculus\.com\/1766163904906396\/verify_entitlement$/);
+  const dev = await worker.fetch({ url: 'https://x.dev/api/unlock', method: 'POST', headers: { get: () => null }, json: async () => ({ code: 's3cret' }) }, env2).then(r => JSON.parse(r.body));
+  assert.ok((await me({ token: 'dev-device-4', dev: dev.dev })).full, 'the creator-code unlock also gets a pass');
+  const j2 = async path => { const r = await worker.fetch(req(path), env2); const msgs = []; r.webSocket.addEventListener('message', e => msgs.push(JSON.parse(e.data))); return { ws: r.webSocket, msgs }; };
+  const host = await j2('/ws/GATEAA?name=Host&t=' + encodeURIComponent(demo.ticket)), buyer = await j2('/ws/GATEAA?name=Buyer&t=' + encodeURIComponent(owner.ticket) + '&fp=' + encodeURIComponent(owner.pass));
+  const thief = await j2('/ws/GATEAA?name=Thief&t=' + encodeURIComponent(demo.ticket) + '&fp=' + encodeURIComponent(owner.pass)); await sleep(100);
+  host.ws.send(JSON.stringify({ t: 'choose', m: 'terminal' })); await sleep(100); assert.ok(host.msgs.some(m => m.t === 'locked'), 'the demo host cannot pick a full-game mission');
+  host.ws.send(JSON.stringify({ t: 'choose', m: 'mansion' })); thief.ws.send(JSON.stringify({ t: 'choose', m: 'airport' })); await sleep(100);
+  assert.equal(host.msgs.filter(m => m.t === 'locked').length, 1, 'the mansion is free'); assert.ok(thief.msgs.some(m => m.t === 'locked'), "someone else's pass does not work");
+  buyer.ws.send(JSON.stringify({ t: 'choose', m: 'terminal' })); await sleep(100); assert.ok(!buyer.msgs.some(m => m.t === 'locked'), 'the buyer picks it for the room');
+  for (const x of [host, buyer, thief]) x.ws.close(); await sleep(150);
+  const free = await j2.call(null, '/ws/GATEBB?name=Free'); free.ws.close();
+  const env3 = { ...env, CREATOR_CODE: 's3cret' }, r3 = await worker.fetch(req('/ws/GATECC?name=Old'), env3); const m3 = []; r3.webSocket.addEventListener('message', e => m3.push(JSON.parse(e.data))); await sleep(50);
+  r3.webSocket.send(JSON.stringify({ t: 'choose', m: 'terminal' })); await sleep(100); assert.ok(!m3.some(m => m.t === 'locked'), 'no app secret: rooms do not check'); r3.webSocket.close();
+  globalThis.fetch = realFetch; }
 console.log('worker tests passed'); process.exit(0);

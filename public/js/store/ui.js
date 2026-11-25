@@ -289,7 +289,7 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
       U.fmsg = '...'; showFriend1(); social.api({ facc: 'accept', fdec: 'decline', frem: 'remove', fblk: 'block' }[what], { id: e.id }).then(j => hello().then(() => { U.fmsg = j.error || { facc: 'You and ' + e.call + ' are now friends.', fdec: 'Request declined.', frem: e.call + ' removed.', fblk: e.call + ' blocked.' }[what]; if (what === 'facc' && !j.error) { U.fsel = { ...e, kind: 'friend' }; showFriend1(); } else showFriends(); })); }
     else if (what === 'fwatch') { const e = U.fsel; if (!e) return showFriends(), true; U.fmsg = 'Joining as a spectator...'; showFriend1(); social.api('join', { id: e.id, watch: true }).then(j => { if (j.room) { U.fmsg = ''; U.code = j.room; go(false, false, true); } else { U.fmsg = j.error || 'Could not spectate.'; showFriend1(); } }); }
     else if (what === 'fjoin') { const e = U.fsel; if (!e) return showFriends(), true; U.fmsg = 'Joining...'; showFriend1(); social.api('join', { id: e.id }).then(j => { if (j.room) { U.fmsg = ''; U.code = j.room; go(false, false); } else { U.fmsg = j.error || 'Could not join.'; showFriend1(); } }); }
-    else if (what === 'buy') { unlock.buy().then(ok => { if (ok) { U.bought = true; showBuy(U.buyWhy, U.buyFrom); } }).catch(e => { U.buyErr = String(e && e.message || e); showBuy(U.buyWhy, U.buyFrom); }); }
+    else if (what === 'buy') { unlock.buy().then(ok => { if (ok) { U.bought = true; sendPass(); showBuy(U.buyWhy, U.buyFrom); } }).catch(e => { U.buyErr = String(e && e.message || e); showBuy(U.buyWhy, U.buyFrom); }); }
     else if (what === 'nobuy') { U.bought = false; U.buyErr = ''; if (U.buyFrom === 'start') U.showStart(); else { S.panel = null; back2(); } }
     else if (what === 'friend') { if (!unlock.full()) return showBuy('editor', 'board'), true; U.fcode = ''; showFriendPad(''); }
     else if (what === 'fkey') { if (U.fcode.length < 8) U.fcode += arg; showFriendPad(''); }
@@ -314,7 +314,12 @@ export function makeStoreUI({ panel, S, voice, net, sfx, back, status, placeBoar
   };
 
   // room messages only the store Worker sends
+  // sign in again (Meta is asked again) and hand the room the new pass, so a purchase counts without leaving the room
+  const sendPass = () => social.refresh().then(() => { if (social.pass) try { net.send({ t: 'pass', fp: social.pass }); } catch (e) { } });
   U.onMsg = m => {
+    // the room refused a mission pick: leading it needs the full game, and the server did not see a confirmed purchase
+    if (m.t === 'locked') { if (!unlock.full()) { showBuy('map', 'board'); return true; }
+      status('Your purchase could not be confirmed (' + (social.check || 'not checked') + '). Checking again...'); sendPass(); return true; }
     if (m.t === 'owner') { U.owner = m.id; U.open = !!m.open; U.mmIds = m.mm || []; U.specs = m.specs || []; for (const id of U.specs) voice.mutePeer(id, true); applyMutes(); redrawPlayers(); if (m.id === S.me.id && U.created === S.room && U.hostOpen && !m.open && !U.sentOpen) { U.sentOpen = true; net.send({ t: 'open', v: true }); } return true; }
     if (m.t === 'booted') { status('The room owner removed you from that room.'); return true; }
     if (m.t === 'rel') { U.rel = m.m || {}; applyMutes(); redrawPlayers(); return true; }

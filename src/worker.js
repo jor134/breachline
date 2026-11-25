@@ -4,7 +4,8 @@ import { RoomHost, TICK } from '../public/js/core/host.js';
 import { buildLevel, findPath, registerMap, MAPS } from '../public/js/core/level.js';
 import { compile, check } from '../public/js/core/maps/custom.js';
 import { cleanCallsign } from '../public/js/store/callsigns.js';
-import { Social, makeTicket, readTicket, ROOM_RE, makeTesterToken, readTesterToken, sameCode } from './social.js';
+import { Social, makeTicket, readTicket, ROOM_RE, makeTesterToken, readTesterToken, sameCode, makePass, readPass, makeDevToken, readDevToken, metaOwns } from './social.js';
+import { STORE } from '../public/js/store/config.js';
 export { Social };
 
 const ASSET_LINKS = [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: 'com.jordanbreccia.youcanthide', sha256_cert_fingerprints: ['5D:F8:23:37:37:DC:A0:A5:13:6E:92:74:2C:AE:D3:BE:C3:79:6A:E2:24:18:6F:93:25:4B:6B:5E:84:11:69:0C'] } }];
@@ -23,6 +24,10 @@ export default {
       const code = m[1].toUpperCase(); if (!ROOM_RE.test(code)) return new Response('Room codes have 6 characters', { status: 400 });
       // the player's account (from their signed ticket) goes to the room as ?acct=; anything the client put there is dropped
       const acct = await readTicket(env, url.searchParams.get('t')); url.searchParams.delete('t'); url.searchParams.delete('acct'); if (acct) url.searchParams.set('acct', acct);
+      // the full-game pass (signed by /api/me after Meta confirmed the purchase) must belong to this account. Without META_APP_SECRET
+      // the rooms do not check (gate=0): the headset's own word goes, as before
+      const pass = await readPass(env, url.searchParams.get('fp')); for (const k of ['fp', 'full', 'gate']) url.searchParams.delete(k);
+      if (acct && pass === acct) url.searchParams.set('full', '1'); url.searchParams.set('gate', env.META_APP_SECRET ? '1' : '0');
       const tester = await readTesterToken(env, url.searchParams.get('tt')); url.searchParams.delete('tt'); url.searchParams.delete('tester'); if (tester) url.searchParams.set('tester', '1');   // test mode (src/social.js)
       return env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(new Request(url.toString(), req));
     }
@@ -34,12 +39,16 @@ export default {
       const body = await req.json().catch(() => ({})), want = env.CREATOR_CODE || '', got = typeof body.code === 'string' ? body.code : '';
       let diff = want.length === got.length && want.length > 0 ? 0 : 1; for (let i = 0; i < Math.min(want.length, got.length); i++) diff |= want.charCodeAt(i) ^ got.charCodeAt(i);
       await new Promise(r => setTimeout(r, 400));   // slows guessing
-      return json({ ok: !diff }, diff ? 403 : 200);
+      return diff ? json({ ok: false }, 403) : json({ ok: true, dev: await makeDevToken(env) });
     }
     // quest-store: accounts and friends (src/social.js). /api/me turns the full-game purchase token into a signed ticket.
     if (url.pathname === '/api/me' && req.method === 'POST') {
       const b = await req.json().catch(() => ({})), t = await makeTicket(env, b.token);
-      return t ? json({ ticket: t.ticket, acct: t.acct.slice(0, 6) }) : json({ error: 'Friends are switched off' }, 503);
+      if (!t) return json({ error: 'Friends are switched off' }, 503);
+      // and whether this player owns the full game: Meta says so (by the user's app-scoped id), or the headset was unlocked with the creator code
+      const dev = await readDevToken(env, b.dev), owns = dev ? 'dev' : b.uid ? await metaOwns(env, b.uid, STORE.sku, STORE.appId) : 'no user id';
+      const full = owns === 'yes' || owns === 'dev';
+      return json({ ticket: t.ticket, acct: t.acct.slice(0, 6), full, check: owns, pass: full ? await makePass(env, t.acct) : '' });
     }
     // quest-store: test mode. /api/tester takes the TEST_CODE (Worker secret; 20 tries a day per address) and returns a tester token.
     if (url.pathname === '/api/tester' && req.method === 'POST') {
@@ -153,7 +162,7 @@ export class Room {
   constructor(state, env) {
     this.env = env; this.socks = new Map(); this.next = 1; this.timer = null; this.queue = Promise.resolve();
     // quest-store: who each player is (account, from the ticket the Worker checked) and who came in through QUICK MATCH
-    this.acct = new Map(); this.mm = new Set(); this.specs = new Map(); this.testers = new Set();   // testers: may pick maps marked test (test mode). specs: spectators (up to 4, on top of the 4 players; not in the mission)
+    this.acct = new Map(); this.mm = new Set(); this.specs = new Map(); this.testers = new Set(); this.full = new Set(); this.gate = false;   // testers: may pick maps marked test (test mode). specs: spectators (up to 4, on top of the 4 players; not in the mission)
     this.open = false; this.code = ''; this.reportT = 0; this.lastRep = '';
     this.host = new RoomHost((id, obj) => {
       const s = JSON.stringify(obj);
@@ -182,7 +191,7 @@ export class Room {
     try { ws.close(4001, 'Removed by the room owner'); } catch {}
     this.gone(target);
   }
-  gone(id) { if (this.specs.delete(id)) { this.announceOwner(); return; } if (!this.socks.delete(id)) return; this.acct.delete(id); this.testers.delete(id); this.mm.delete(id); this.host.leave(id); this.announceOwner(); this.refresh(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } }
+  gone(id) { if (this.specs.delete(id)) { this.announceOwner(); return; } if (!this.socks.delete(id)) return; this.acct.delete(id); this.testers.delete(id); this.full.delete(id); this.mm.delete(id); this.host.leave(id); this.announceOwner(); this.refresh(); if (!this.socks.size && this.timer) { clearInterval(this.timer); this.timer = null; } }
   // QUICK MATCH may put a stranger in only while the owner has the room open and the squad is in the lobby
   testing() { const s = this.host.sim, t = id => !!(MAPS[id] && MAPS[id].test); return t(s.M.id) || t(s.nextMap); }   // a room on a test map takes no strangers
   lobby() { const s = this.host.sim; return s.phase !== 'active' || !!s.M.training; }
@@ -221,6 +230,7 @@ export class Room {
     if (!this.host.join(id, name)) { this.socks.delete(id); server.close(4000, 'Room full'); return new Response(null, { status: 101, webSocket: client }); }
     if (acct) this.acct.set(id, acct);
     if (q.get('tester') === '1') this.testers.add(id);
+    if (q.get('full') === '1' || q.get('tester') === '1') this.full.add(id); this.gate = q.get('gate') === '1';
     if (mm || mmBack) { this.mm.add(id); this.host.sim.setTeam(id, 'tango'); }   // strangers play the terrorists
     const bye = () => this.gone(id);
     this.announceOwner(); this.refresh();
@@ -232,8 +242,11 @@ export class Room {
         this.social('/internal/request', { from: a, to: b }).then(r => { try { server.send(JSON.stringify({ t: 'friendres', p: m.p, res: r && r.res || 'error' })); } catch {} if (r && (r.res === 'sent' || r.res === 'friend')) { try { this.socks.get(m.p)?.send(JSON.stringify({ t: 'friendreq', p: id, res: r.res })); } catch {} } this.refresh(); }); return; }
       if (m && m.t === 'block') { const a = this.acct.get(id), b = this.acct.get(m.p); if (a && b) this.social('/internal/block', { from: a, to: b }).then(() => this.refresh()); return; }
       if (m && m.t === 'rels') { this.refresh(); return; }
+      if (m && m.t === 'pass') { const a = this.acct.get(id); if (this.env) readPass(this.env, m.fp).then(p => { if (a && p === a) this.full.add(id); }); return; }   // bought while in the room
       if (m && m.t === 'team' && this.mm.has(id)) return;
-      { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) return; }   // test maps: testers only   // a matchmade stranger stays a terrorist
+      { const tm = m && (m.t === 'choose' || m.t === 'map' || m.t === 'restart' || m.t === 'start') && (m.m || m.map); if (tm && MAPS[tm] && MAPS[tm].test && !this.testers.has(id)) return;
+        // quest-store: outside the demo's missions, only a player who owns the full game (checked with Meta) may pick the mission
+        if (tm && this.gate && !this.full.has(id) && !STORE.demoMaps.includes(tm) && !(m.t === 'restart' && tm === this.host.sim.M.id)) { try { server.send(JSON.stringify({ t: 'locked', map: String(tm).slice(0, 24) })); } catch {} return; } }   // test maps: testers only   // a matchmade stranger stays a terrorist
       if (m && m.t === 'sig') { const to = this.socks.get(m.to) || this.specs.get(m.to); if (to && m.data && JSON.stringify(m.data).length < 20000) try { to.send(JSON.stringify({ t: 'sig', from: id, data: m.data })); } catch {} return; }   // voice chat set-up, passed straight to the other person
       const mid = m && (m.m || m.map);
       if (typeof mid === 'string' && (mid.startsWith('u_') || mid.startsWith('s_')) && !MAPS[mid]) this.queue = this.queue.then(() => this.ensureMap(mid)).catch(() => {}).then(() => { try { this.host.message(id, m); } catch {} });
