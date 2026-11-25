@@ -606,8 +606,11 @@ export class Sim {
     if (L.ff) lines.push(['Friendly fire x' + L.ff, -Math.round(2.5 * L.ff)]);
     const loose = sus.filter(n => !SECURED[n.st]).length, unsafe = this.bombs.length - defused, left = civ.filter(n => n.st === 'w' || n.st === 'y').length;
     if (this.left) lines.push([(this.left === 'exit' ? 'Walked out' : 'Ended by radio') + (loose ? ', ' + loose + ' suspect' + (loose > 1 ? 's' : '') + ' unaccounted for' : '') + (left ? ', ' + left + ' hostage' + (left > 1 ? 's' : '') + ' left inside' : '') + (unsafe ? ', ' + unsafe + ' bomb' + (unsafe > 1 ? 's' : '') + ' live' : ''), null]);
-    let total = Math.max(0, Math.min(100, lines.reduce((s, l) => s + (l[1] || 0), 0)));
-    if (result !== 'MISSION COMPLETE') total = Math.min(total, 49);
+    // the caps are lines of their own, so the lines always add up to the score shown
+    const raw = lines.reduce((s, l) => s + (l[1] || 0), 0);
+    if (result !== 'MISSION COMPLETE' && raw > 49) lines.push(['Mission incomplete: capped at 49', 49 - raw]);
+    else if (raw > 100) lines.push(['Capped at 100', 100 - raw]);
+    const total = Math.max(0, lines.reduce((s, l) => s + (l[1] || 0), 0));
     const grade = total >= 90 ? 'A' : total >= 80 ? 'B' : total >= 70 ? 'C' : total >= 60 ? 'D' : 'F';
     return { result, lines, total, grade, time: Math.round(this.M.time - this.timer) };
   }

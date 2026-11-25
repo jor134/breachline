@@ -75,7 +75,7 @@ function kitPlacements() {
     const [fl, x0, z0, x1, z1, h, kind] = f, y = fl * H, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     if (kind === 'clubbar') { const L = z1 - z0, n = Math.max(1, Math.round(L / 1.83)), s = L / (n * 1.83); for (let i = 0; i < n; i++) put('bar', cx, y, z0 + (i + 0.5) * L / n, 0, (x1 - x0) / 0.91, h / 0.91, s); }
     else if (kind === 'backbar') { const L = z1 - z0, n = Math.max(1, Math.round(L / 0.92)); for (let i = 0; i < n; i++) put('shelf', cx, y, z0 + (i + 0.5) * L / n, 0, 1, h / 2.2, L / (n * 0.92)); }
-    else if (kind === 'booth') { const L = z1 - z0, n = Math.max(1, Math.round(L / 1.83)); for (let i = 0; i < n; i++) put('bench', cx, y, z0 + (i + 0.5) * L / n, 0, (x1 - x0) / 2.01, h / 1.08, L / (n * 1.83), i % 2 === 1); }   // every other bench mirrored: each pair curves round its table, a half circle
+    else if (kind === 'booth') { const L = z1 - z0, n = Math.max(1, Math.round(L / 1.83)); for (let i = 0; i < n; i++) put('bench', cx, y, z0 + (i + 0.5) * L / n, 0, (x1 - x0) / 2.01, h / 1.08, L / (n * 1.83), i % 2 === 0); }   // the first mirrored: the pair's curved backs meet in the middle, the arms at the ends   
     else if (kind === 'stool') put('barstool', cx, y, cz, rr() * 6.28, 1, h / 0.71, 1);
     else if (kind === 'desk' || kind === 'cctv') {   // a laptop, open toward the side the desk faces (the kit's laptop opens toward -z)
       const face = f[7] || '+z', d = { '+z': [0, 1], '-z': [0, -1], '+x': [1, 0], '-x': [-1, 0] }[face], len = face[1] === 'z' ? x1 - x0 : z1 - z0, dep = face[1] === 'z' ? z1 - z0 : x1 - x0;
@@ -220,7 +220,7 @@ export default {
     // the balcony's underside: the hall is two storeys, so it has no ceiling of its own, and the balcony floor had no face from below
     b('stageblk').quad([BALC.x0, H - 0.012, BALC.z0], [BALC.x1, H - 0.012, BALC.z0], [BALC.x1, H - 0.012, BALC.z1], [BALC.x0, H - 0.012, BALC.z1], [0, -1, 0], 0.5);
     // the stage steps: five risers up its front at the east end, a handrail each side
-    for (let i = 0; i < 5; i++) { const d = (STEPS.z1 - STEPS.z0) / 5, z0 = STEPS.z0 + i * d; B('stagetop', STEPS.x0, STEPS.x1, 0, (i + 1) * STAGE.h / 5, z0, z0 + d, 'xXyz', 1); B('led', STEPS.x0 + 0.05, STEPS.x1 - 0.05, (i + 1) * STAGE.h / 5 - 0.03, (i + 1) * STAGE.h / 5 - 0.01, z0 - 0.012, z0, 'z', 1); }
+    for (let i = 0; i < 5; i++) { const d = (STEPS.z1 - STEPS.z0) / 5, z0 = STEPS.z0 + i * d; B('stagetop', STEPS.x0, STEPS.x1, 0, (i + 1) * STAGE.h / 5, z0, z0 + d, 'xXYz', 1); B('led', STEPS.x0 + 0.05, STEPS.x1 - 0.05, (i + 1) * STAGE.h / 5 - 0.03, (i + 1) * STAGE.h / 5 - 0.01, z0 - 0.012, z0, 'z', 1); }
     plane(root, 'DJ  NOVA', 3.4, 0.6, DJ.x, STAGE.h + 1.0, DJ.z - 1.23, Math.PI, { bg: null, fg: '#7ad8ff', pw: 512, ph: 96, own: true });
     // beams from the moving heads on the truss: cones of faint light that swing over the floor
     const cone = new THREE.ConeGeometry(1.3, 9, 16, 1, true); cone.translate(0, -4.5, 0);

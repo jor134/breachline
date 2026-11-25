@@ -51,7 +51,7 @@ export const OPENINGS = [
   [0, 24, 8, 34, 8, 'gap'], [0, 3, 8, 6, 8, 'gap'],                                                       // into the hall from the lobby and from the stair hall
   [0, 40, 27.6, 40, 28.8, 'door'],                                                                         // hall to the dock passage (past the east booths, clear of them)
   [0, 3, 34, 4.2, 34, 'door'], [0, 35, 34, 36.2, 34, 'door'],                                             // stage wings: hall to backstage
-  [0, 4, 36, 5.2, 36, 'door'], [0, 10, 36, 11.2, 36, 'door'], [0, 21, 36, 23, 36, 'door'], [0, 34, 36, 35.2, 36, 'door'],   // dressing rooms, green room, production
+  [0, 4, 36, 5.2, 36, 'door'], [0, 10, 36, 11.2, 36, 'door'], [0, 21.4, 36, 22.6, 36, 'door'], [0, 34, 36, 35.2, 36, 'door'],   // dressing rooms, green room, production
   [0, 40, 34, 44, 34, 'gap'], [0, 40, 26, 44, 26, 'gap'],                                                  // backstage, the passage, the staff corridor
   [0, 45, 12, 45, 13.2, 'door'], [0, 45, 21, 45, 22.2, 'door'], [0, 44, 28, 44, 33, 'gap'], [0, 54.4, 26, 55.6, 26, 'door'],   /* the plant room off the dock (it was an unroofed gap in the plan) */ [0, 42, 36, 43.2, 36, 'door'],   // storage, keg cooler, dock, dock office
   [0, 49, 42, 53, 42, 'gap', 'ext'], [0, 58, 30, 58, 31.2, 'door', 'ext'], [0, 3, 42, 4.2, 42, 'door', 'ext'],   // the dock's open shutter, its side door, the fire exit

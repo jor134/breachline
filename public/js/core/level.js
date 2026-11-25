@@ -41,6 +41,14 @@ export function clearDoors(map) {
       if (!zones.some(z => z.f === f && hit({ x0: n[1], z0: n[2], x1: n[3], z1: n[4] }, z))) { keep.push(n); continue; } }
   }
   map.furniture.length = 0; map.furniture.push(...keep);
+  // and nobody starts inside furniture: a suspect's or hostage's spot that is in (or within 0.3 m of) a piece moves to the nearest
+  // clear point of the same room
+  const inF = (f, x, z) => map.furniture.some(q => q[0] === f && q[6] !== 'dancer' && x > q[1] - 0.3 && x < q[3] + 0.3 && z > q[2] - 0.3 && z < q[4] + 0.3);
+  for (const list of [map.spots && map.spots.s, map.spots && map.spots.c, map.civMust]) for (const p of list || []) {
+    if (!Array.isArray(p) || !inF(p[0], p[1], p[2])) continue; const room = roomOf(p[0], p[1], p[2]);
+    let done = false; for (let r = 0.25; r <= 4 && !done; r += 0.25) for (let k = 0; k < 16 && !done; k++) { const a = k * Math.PI / 8, x = p[1] + Math.cos(a) * r, z = p[2] + Math.sin(a) * r;
+      if (room && !(x > room[2] + 0.35 && x < room[4] - 0.35 && z > room[3] + 0.35 && z < room[5] - 0.35)) continue; if (!inF(p[0], x, z)) { p[1] = Math.round(x * 100) / 100; p[2] = Math.round(z * 100) / 100; done = true; } }
+  }
 }
 export function buildLevel(id = 'mansion') {
   if (!MAPS[id]) id = 'mansion';

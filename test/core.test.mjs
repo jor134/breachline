@@ -700,4 +700,14 @@ await t('no furniture in front of a door on any map', () => {
       const o = M.furniture.find(q => q[0] === f && q[6] !== 'dancer' && q[1] < z.x1 && q[3] > z.x0 && q[2] < z.z1 && q[4] > z.z0); assert.ok(!o, id + ': ' + (o && o[6]) + ' in front of the door at ' + [f, x0, z0]); } }
 });
 await t('the club lot has its parked cars (the map object hands them to the game)', () => { assert.ok(buildLevel('club').map.parked.length > 10); });
+await t('the score lines add up to the score shown, caps included', () => {
+  const s = new Sim(9); s.addPlayer('a', 'A'); s.start(5, false, 'clear', 'club');
+  for (const b of s.bombs) b.defused = true; s.npcs.filter(n => n.kind !== 'c').forEach(n => { n.st = 'j'; }); s.npcs.filter(n => n.kind === 'c').slice(1).forEach(n => { n.st = 'u'; }); s.left = 'exit';
+  const r = s.score(), sum = r.lines.reduce((a, l) => a + (l[1] || 0), 0); assert.notEqual(r.result, 'MISSION COMPLETE'); assert.equal(r.total, Math.max(0, sum)); assert.ok(r.total <= 49);
+});
+await t('no suspect or hostage starts inside furniture', () => {
+  for (const id of ['training', 'mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club']) { const M = buildLevel(id).map, sp = M.spots || {};
+    for (const p of [...(sp.s || []), ...(sp.c || []), ...(M.civMust || [])]) { if (!Array.isArray(p)) continue; const [f, x, z] = p;
+      const o = M.furniture.find(q => q[0] === f && q[6] !== 'dancer' && x > q[1] - 0.25 && x < q[3] + 0.25 && z > q[2] - 0.25 && z < q[4] + 0.25); assert.ok(!o, id + ': spot ' + p + ' in ' + (o && o[6])); } }
+});
 console.log(n + ' tests passed');
