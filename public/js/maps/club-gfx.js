@@ -16,8 +16,7 @@ import { makeDancers } from './club-crowd.js';
 const VAN_TURN = Math.PI;   // the model's nose is at its -z end: turned to face the club
 let skyM = null, glows = [], matGlows = [], dancers = null, beams = [], hallLamps = null, ledMats = [], root0 = null, kitReady = false;
 const LAMPS = [
-  // the hall (coloured by tick): over the floor, the stage, the bar, the booths, the balcony
-  [10, 6.6, 16, 9, 13], [20, 6.6, 16, 9, 13], [30, 6.6, 16, 9, 13], [10, 6.6, 23, 9, 13], [20, 6.6, 23, 9, 13], [30, 6.6, 23, 9, 13], [20, 6.3, 30.5, 10, 12], [2.5, 3.2, 19, 5, 9], [37, 3.2, 17, 5, 9], [20, 6.8, 10.5, 5, 12],
+  // none: the hall is lit only by the show (beams, screen, LED strips), as with the power cut
   // front of house
   [24, 3.2, 4, 7, 10], [34, 3.2, 4, 7, 10], [14, 3.2, 4, 6, 9], [44, 3.1, 2, 5, 7], [44, 3.1, 6, 5, 7], [53, 3.1, 4, 6, 9], [5, 3.2, 4, 6, 9],
   // back of house

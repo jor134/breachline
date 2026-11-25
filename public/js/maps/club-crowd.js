@@ -9,7 +9,8 @@ import { DANCERS, DJ, STAGE } from '../core/maps/club.js';
 
 const POSES = 32, POSE_T = 0.2;
 // four people in two dances each (three for the older woman: one), and the three dancers in their own
-const TYPES = ['man1_belly', 'man1_samba', 'man2_girl', 'man2_tifa', 'woman1_gina', 'woman1_samba', 'woman2_tifa', 'belly', 'samba', 'gina'], SHARE = [0.12, 0.12, 0.12, 0.12, 0.1, 0.1, 0.06, 0.09, 0.09, 0.08];
+// (the belly dancer herself is gone: her model stayed crude however it was simplified. Her dance lives on in man1_belly)
+const TYPES = ['man1_belly', 'man1_samba', 'man2_girl', 'man2_tifa', 'woman1_gina', 'woman1_samba', 'woman2_tifa', 'samba', 'gina'], SHARE = [0.12, 0.12, 0.12, 0.12, 0.1, 0.1, 0.06, 0.13, 0.13];
 let seed = 5; const rr = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 
 export function makeDancers(root) {

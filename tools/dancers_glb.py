@@ -231,7 +231,7 @@ def bake_many(g, nis, frames, target, height, keep, name, seams=True):
         NI, orig = simplify(Ps[0], I, tg, UV if seams else None, seams); print(f'{name:12s} {len(NI):6d} tris {len(orig):6d} verts {len(frames)} poses  texture {img.size}')
         res.append((Ps[:, orig], NI, UV[orig], buf.getvalue()))
     return res
-lod('belly', bake_many(belly, bnodes, own_frames(belly, 1.0), [HI_TRIS, TRIS], 1.68, skip, 'belly'))
+# the belly dancer's own model is not baked: it stayed crude at any budget (her dance is still used by man1_belly)
 for g2, nm, sk in ((samba, 'samba', lambda m: not re.search(r'Eye_trans', m)), (gina, 'gina', lambda m: True)):
     lod(nm, bake_many(g2, [i for i, n in enumerate(g2.nodes) if 'skin' in n], own_frames(g2, 2.0), [HI_TRIS, TRIS], 1.68, sk, nm))
 gnodes = [i for i, n in enumerate(girl.nodes) if 'skin' in n]
