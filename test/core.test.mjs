@@ -647,6 +647,12 @@ await t('club: every spot reachable from the van; front, dock and fire exit all 
   assert.ok(s.bombs.some(b => Math.abs(b.x - 20) < 0.1 && Math.abs(b.z - 30.6) < 0.1), 'one in the DJ booth');
 });
 const C_noOverlap = R => R.every(a => R.every(b => a === b || a[0] !== b[0] || a[6] === 'void' || b[6] === 'void' || !(a[2] < b[4] - 0.01 && b[2] < a[4] - 0.01 && a[3] < b[5] - 0.01 && b[3] < a[5] - 0.01)));
+await t('a bot coming to revive a downed player lobs a smoke onto him first, then gets him up', async () => {
+  const s = new Sim('mansion'); s.addPlayer(1, 'A'); s.start(3, false, 'clear', 'mansion'); const p = s.players.get(1); for (let i = 0; i < 40; i++) s.tick(0.05);
+  for (const n of s.npcs) n.st = 'd'; const [sx, sz] = s.M.spawn[0]; p.has = true; p.hx = sx + 6; p.hz = sz; p.down = true; p.hp = 0;
+  for (let i = 0; i < 400 && p.down; i++) s.tick(0.05);
+  assert.ok(!p.down, 'revived'); assert.ok(s.smokes.some(q => Math.hypot(q.x - p.hx, q.z - p.hz) < 3), 'smoke over him');
+});
 await t('suspects walk beats: most of them on every mission map, none toward where the squad starts; the HVT and his guards hold', async () => {
   for (const id of ['mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club', 'winery']) { const s = new Sim(id); s.addPlayer(1, 'A'); s.start(3, false, 'clear', id);
     const sus = s.npcs.filter(n => n.kind === 's'), beats = sus.filter(n => n.patrol); assert.ok(beats.length >= sus.length * 0.4, id + ': ' + beats.length + ' of ' + sus.length + ' walk a beat');

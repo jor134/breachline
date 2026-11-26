@@ -135,7 +135,13 @@ export const BotMixin = {
   botTask(p, T, dt) {
     const b = p.bot;
     if (T.k === 'move') { if (T.hunt && (T.t += dt) > 8) return true; const r = this.botApproach(p, T, T.x, T.z, T.y, T.hunt ? 3 : 0.7, dt, T.hunt ? 2.4 : 3.0); return r !== 'going'; }
-    if (T.k === 'revive') { const q = this.players.get(T.p); if (!q || !q.down) return true; const r = this.botApproach(p, T, q.hx, q.hz, q.y, 1.2, dt, 3.2, -1, true); if (r === 'fail') return true; if (r === 'going') return false; b.crouch = true; b.workT = this.t; this.botFace(p, q.hx, q.hz, dt); if ((T.w = (T.w || 0) + dt) > 3) { this.revive(p.id, q.id); this.bsay(p, 'up'); return true; } return false; }
+    if (T.k === 'revive') { const q = this.players.get(T.p); if (!q || !q.down) return true;
+      // a downed player: on the way in (within 9 m, still 2 m off) the bot lobs a smoke onto him, unless one is already there, so the
+      // revive happens in cover
+      if (!T.smoked && !q.bot && p.sm > 0) { const dx = q.hx - b.x, dz = q.hz - b.z, d = Math.hypot(dx, dz);
+        if (d < 9 && d > 2 && Math.abs(q.y - p.y) < 1.5 && !this.smokes.some(s => Math.hypot(s.x - q.hx, s.z - q.hz) < 3.5 && s.t < 14)) { T.smoked = true; const f = 0.8;   // (flight time: it comes down at his feet)
+          this.throw(p.id, { k: 'smoke', o: [b.x, p.y + 1.3, b.z], v: [dx / f, (q.y - p.y - 1.2 + 4.9 * f * f) / f, dz / f] }); this.bsay(p, 'smoke'); } }
+      const r = this.botApproach(p, T, q.hx, q.hz, q.y, 1.2, dt, 3.2, -1, true); if (r === 'fail') return true; if (r === 'going') return false; b.crouch = true; b.workT = this.t; this.botFace(p, q.hx, q.hz, dt); if ((T.w = (T.w || 0) + dt) > 3) { this.revive(p.id, q.id); this.bsay(p, 'up'); return true; } return false; }
     if (T.k === 'detain') {
       const n = this.npcs.find(q => q.id === T.n); if (!n || DONE[n.st] || n.st === 'x' || n.st === 'd') return true;
       if (n.kind === 's' && !CUFFABLE[n.st]) return (T.t += dt) > 10;   // not giving up yet: the fight logic handles him; give up the order after a while
