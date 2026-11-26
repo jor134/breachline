@@ -1,18 +1,20 @@
 // Grand Prix scenery: the circuit model around the playable area (track, pit lane, guard rails, the circuit's own garages
 // east of ours, the hairpin, hills and forest; its buildings rebuilt in our style), and the game's own pieces: the paddock
-// ground, team boxes, a slim pit wall with the marshals' gate, floodlight towers, the pit building's facade and team colours, parked cars in the garages and the
+// ground, team boxes, a slim pit wall with the marshals' gate, lamp heads and night beams on the circuit's light poles, the pit building's facade and team colours, parked cars in the garages and the
 // motorhomes in the paddock. Two looks: an afternoon race and a floodlit night race.
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid } from '../mats.js';
 import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H, YARD } from '../core/maps/grandprix.js';
 import { TRACK } from '../core/maps/circuit.js';
+import { POLES, LINE } from '../core/maps/spa-path.js';
 import { ObfLoader } from '../store/obf.js';
 import { makeBuildings } from './gp-buildings.js';
 import { raceCar } from '../racecar.js';
 import { TRUCK, makeTruck, truckAt } from '../truck.js';
 
 const NAMES = ['VORTEX', 'HALCYON', 'KESTREL', 'ORBITA', 'NOVARA', 'SOLSTICE'];   // invented teams
-let tod = 'day', floodMat = null, beams = [];
+let tod = 'day', floodMat = null, beams = [], gantryMat = null;
+const M_gantry = () => gantryMat;
 const LAMPS = [[4.5, 3.3, 2, 9, 12], [22.5, 3.3, 2, 9, 12], [40.5, 3.3, 2, 9, 12], [27, 3.3, 9.2, 8, 22], [9, H + 3.1, 2, 8, 14], [27, H + 3.1, 2, 8, 14], [45, H + 3.1, 2, 8, 14], [27, H + 3.1, 13, 8, 24]];
 const DAY = {
   sky: [[0, '#3f6fb3'], [0.3, '#7ea6d8'], [0.45, '#b3cbe0'], [0.5, '#bfd0de'], [1, '#bfd0de']], skyR: 460, moon: [160, 140, -40],   // the horizon is the fog colour: distant ground melts into it
@@ -62,7 +64,7 @@ export default {
       mast: S(tex('#8e949a', 300), 'metal'), gantry: S(tex('#1d2024', 300), 'metal'),
     });
     TEAMS.forEach((c, i) => { M['team' + i] = S(tex(c, 900, grid(1, 2, 'rgba(0,0,0,0.12)')), 'paint'); M['mh' + i] = S(tex('#1b1d21', 300, (g, s) => { g.fillStyle = c; g.fillRect(0, s * 0.12, s, s * 0.6); g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(0, s * 0.74, s, s * 0.04); }), 'paint'); });
-    floodMat = M.flood = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
+    floodMat = M.flood = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }); gantryMat = M.gantry;
     const fc = document.createElement('canvas'); fc.width = fc.height = 128; const fg = fc.getContext('2d'); fg.strokeStyle = 'rgba(175,180,186,0.9)'; fg.lineWidth = 1;
     for (let i = 0; i <= 128; i += 8) { fg.beginPath(); fg.moveTo(i, 0); fg.lineTo(i, 128); fg.stroke(); fg.beginPath(); fg.moveTo(0, i); fg.lineTo(128, i); fg.stroke(); }
     const ft = new THREE.CanvasTexture(fc); ft.wrapS = ft.wrapT = THREE.RepeatWrapping; M.gpfence = sheen({ map: ft, transparent: true, opacity: 0.75, alphaTest: 0.2, depthWrite: false, side: THREE.DoubleSide }, 'metal');
@@ -85,13 +87,19 @@ export default {
       b('pitwallM').box(x0, x1, 0, PITWALL.h - 0.05, PITWALL.z0, PITWALL.z1, 'xXzZ', 0.5);
       b('mast').box(x0, x1, PITWALL.h - 0.05, PITWALL.h, PITWALL.z0 - 0.03, PITWALL.z1 + 0.03, 'xXzZyY', 1);
     }
-    // floodlight towers behind the far rail; at night they light the track with soft beams
-    for (let x = YARD.x0 + 15; x < YARD.x1; x += 40) {
-      const z = TRACK.z0 - 5;
-      b('mast').box(x - 0.25, x + 0.25, 0, 22, z - 0.25, z + 0.25, 'xXzZ', 1); b('gantry').box(x - 2, x + 2, 22, 23.2, z - 0.3, z + 0.3, 'xXyYzZ', 1);
-      b('flood').box(x - 1.9, x + 1.9, 22.05, 23.15, z + 0.31, z + 0.32, 'Z', 1);
-      if (tod === 'night') { const cone = new THREE.Mesh(new THREE.ConeGeometry(9, 22, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xdfe8ff, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-        cone.position.set(x, 11, TRACK.zc - 2); cone.rotation.x = -0.25; root.add(cone); beams.push(cone); }
+    // the circuit's own light poles (POLES, from the model): a lamp head on each, turned to the nearest tarmac; at night each throws
+    // a soft beam down onto it
+    for (const [x, y, z] of POLES) {
+      if (Math.hypot(x - 27, z) > 260) continue;
+      let bd = 1e9, tx = x, tz = z; for (let i = 0; i < LINE.length; i += 4) { const d = (LINE[i] - x) ** 2 + (LINE[i + 1] - z) ** 2; if (d < bd) { bd = d; tx = LINE[i]; tz = LINE[i + 1]; } }
+      const dl = Math.hypot(tx - x, tz - z) || 1, ux = (tx - x) / dl, uz = (tz - z) / dl, hx = x + ux * 0.6, hz = z + uz * 0.6;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.35, 0.7), floodMat ? [M_gantry(), M_gantry(), M_gantry(), floodMat, M_gantry(), M_gantry()] : undefined);
+      head.position.set(hx, y - 0.1, hz); head.rotation.set(0, Math.atan2(ux, uz), 0); head.rotation.x = 0; head.updateMatrix(); root.add(head);
+      if (tod === 'night') {   // apex at the lamp, base on the tarmac a little short of the race line
+        const gx = x + (tx - x) * 0.8, gz = z + (tz - z) * 0.8, L = Math.hypot(gx - hx, y - 0.3, gz - hz);
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(Math.min(9, L * 0.35), L, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xdfe8ff, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+        cone.position.set((hx + gx) / 2, (y - 0.3) / 2, (hz + gz) / 2); cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(hx - gx, y - 0.3, hz - gz).normalize()); root.add(cone); beams.push(cone);
+      }
     }
     // pit building: team boards over the garage fronts, a header over each opening, the hospitality balcony rail
     for (let i = 0; i < 6; i++) {
