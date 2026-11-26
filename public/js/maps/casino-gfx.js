@@ -4,6 +4,7 @@
 // slots and table games, a gold high-limit room, the barred cashier cage and a live CCTV wall in the security office.
 // The helicopter hovers over the wing roof until the squad is off it, then flies away. Looks: dusk and night.
 import * as THREE from '../../vendor/three.module.min.js';
+import { makeCCTV } from './cctv.js';
 import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import { setRotor } from '../audio.js';
@@ -213,26 +214,15 @@ function buildHeli(MATS) {
   return { g, box, rotor, tail, beacon, rope: rp, idle: 0, gone: 0, home: g.position.clone() };
 }
 
-// ---------- CCTV: six cameras round the building, shown on the security office's wall ----------
+// ---------- CCTV: six cameras round the building, cycled on the security office's wall monitor (cctv.js) ----------
 const CAMS = [['CAM 01 CASINO', [58.5, 6.0, 9.5], [32, 0, 36]], ['CAM 02 CAGE', [71.2, 3.2, 19.4], [62, 0.6, 11]], ['CAM 03 LOBBY', [15, 3.3, 55.4], [44, 0, 50]],
   ['CAM 04 HIGH LIMIT', [13.4, 3.2, 8.6], [3, 0, 26]], ['CAM 05 SUITES', [16.6, F3 + 3.2, 9.5], [55, F3, 9.5]], ['CAM 06 ROOF', [55, ROOF + 3.5, 1], [30, ROOF, 15]]];
-function buildCCTV(root) {
-  const rts = [], cams = [], mats = [];
-  CAMS.forEach(([name, p, t], i) => {
-    const rt = new THREE.WebGLRenderTarget(256, 144), cam = new THREE.PerspectiveCamera(78, 16 / 9, 0.1, 120); cam.layers.enable(5); cam.position.set(...p); cam.lookAt(...t); rts.push(rt); cams.push(cam);
-    const m = new THREE.MeshBasicMaterial({ map: rt.texture, color: 0xb8c8e0, toneMapped: false }); mats.push(m);
-    const col = i % 3, row = i / 3 | 0, z = 22.6 + col * 2.75, y = 3.1 - row * 0.8, s = new THREE.Mesh(new THREE.PlaneGeometry(2.3, 0.7), m); s.position.set(71.83, y, z); s.rotation.y = -Math.PI / 2; root.add(s);
-    plane(root, name, 1.0, 0.09, 71.82, y + 0.28, z + 0.62, -Math.PI / 2, { bg: '#0a0c10', fg: '#9fd8ff', pw: 384, ph: 32 });
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.28), new THREE.MeshLambertMaterial({ color: 0xe8e8e8 })); box.position.set(...p); box.lookAt(...t); root.add(box);   // the camera itself
-  });
-  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.9, 8.5), new THREE.MeshLambertMaterial({ color: 0x0a0b0d })); frame.position.set(71.9, 2.57, 25.35); root.add(frame);
-  return { rts, cams, mats, n: 0, k: 0, on: true };
-}
 
 export default {
   get env() { return tod === 'night' ? NIGHT : DUSK; },
   envs: { dusk: DUSK, night: NIGHT },
   setTod(t) { tod = t === 'night' ? 'night' : 'dusk'; },
+  dispose() { if (cctv) cctv.dispose(); cctv = null; },
   // The lift (models/lift/elevator.glb, "Elevator" by ART_LOLL): one copy at each stop, the cage inside the car's walls and the frame and
   // call button on the landing side. Its door panels slide with the game's lift doors (tick); the game's own door slab is hidden (liftDoors).
   liftDoors() { return !!lifts; },
@@ -342,7 +332,7 @@ export default {
     if (towerM) { towerM.emissive.set(nvg ? 0x4cff5a : 0xffffff); towerM.emissiveIntensity = night ? 0.18 : 1; }
     if (skyM) skyM.color.set(nvg ? 0x6dff7a : 0xffffff);
     dark = night; for (const m of liftGlow) m.emissiveIntensity = night ? 0.03 : m.userData.e;
-    if (cctv) { cctv.on = !night; for (const m of cctv.mats) m.color.set(night ? 0x000000 : nvg ? 0x8cff9c : 0xb8c8e0); }
+    if (cctv) cctv.look(night, nvg);
   },
   scenery({ b, ao, root, hills, hillM, level, MATS }) {
     signs = []; seed = 11; lifts = null; liftGlow = []; inner = { root, mat: MATS.cglow, list: null, on: true };
@@ -473,7 +463,7 @@ export default {
       for (const [x, z, r, h] of [[-380, -340, 240, 60], [380, -360, 260, 70], [0, -420, 300, 80], [-420, 300, 200, 40], [420, 320, 220, 45]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); hills.add(m); } }
     // ---- the helicopter and the CCTV wall ----
     heli = buildHeli(MATS); root.add(heli.g);
-    cctv = buildCCTV(root);
+    cctv = makeCCTV(root, CAMS, { at: [71.84, 2.5, 25.35], ry: -Math.PI / 2, w: 3.2, inRoom: p => p.x > 60 && p.x < 72 && p.z > 20 && p.z < 32 && p.y < H });
   },
   // the helicopter's rotors turn; once nobody is aboard for a few seconds in a live mission it climbs away (and comes back for anyone who spawns in it).
   // The CCTV wall refreshes one camera at a time, only while someone stands in the security office with the power on.
@@ -497,9 +487,7 @@ export default {
       else if (aboard || S.phase !== 'active') { h.idle = 0; h.gone = 0; h.g.visible = true; h.g.position.copy(h.home); h.g.rotation.set(0, 0, 0); h.rope.scale.y = 1; }
       else if ((h.idle += dt) > 6) { h.gone += dt; const t = h.gone; h.g.position.set(h.home.x - t * t * 0.9, h.home.y + t * 2.2 + t * t * 0.25, h.home.z - t * t * 0.4); h.g.rotation.set(0, Math.min(0.5, t * 0.08), Math.min(0.18, t * 0.05)); h.g.visible = t < 16; }
       if (h.g.visible) setRotor(h.g.localToWorld(v0.set(-0.8, 3.4, 0)), 1); }
-    if (cctv && cctv.on && S.mode) { const p = head.pos; if (p.x > 60 && p.x < 72 && p.z > 20 && p.z < 32 && p.y < H) {
-      if (cctv.n++ % 3 === 0) { const i = cctv.k++ % cctv.cams.length, xe = renderer.xr.enabled, rt = renderer.getRenderTarget(); renderer.xr.enabled = false;
-        renderer.setRenderTarget(cctv.rts[i]); renderer.render(scene, cctv.cams[i]); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; } } }
+    if (cctv && S.mode) cctv.tick(dt, renderer, scene, head);
   },
 };
 const TILE = 8 * H, ALLF = 'xXyYzZ', v0 = new THREE.Vector3();

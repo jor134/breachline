@@ -260,6 +260,7 @@ export default {
   noshade: { glowW: 1, led: 1, ledW: 1, bulb: 1 },
   noCast: ['concrete', 'stoneF', 'oak', 'labtile', 'epoxy', 'tileK', 'carpetG', 'cellar', 'steelfloor', 'rows', 'gravel', 'dirt', 'plain', 'paverT', 'paverP', 'trunks', 'stairTop'],
   tread: 'stairTop',
+  slabEdge: 'concW',   // the stair wells' slab edges: the concrete of the floor, not a black band
   outer: w => { const cx = (w.x0 + w.x1) / 2; return cx <= WEST.x1 + 0.15 || cx >= EAST.x0 - 0.15 ? 'pirca' : w.f === 1 ? 'corten' : 'ochre'; },
   inner: () => 'concW',
   innerAt: (f, x, z) => {
@@ -376,12 +377,12 @@ export default {
     plane(root, 'SALIDA', 0.9, 0.26, 12.6, 2.6, 33.88, Math.PI, { bg: '#0f6b2c' }); plane(root, 'SALIDA', 0.9, 0.26, 70.6, 2.6, 33.88, Math.PI, { bg: '#0f6b2c' }); plane(root, 'GERENCIA', 1.2, 0.26, 73.88, H + 2.5, 4.6, -Math.PI / 2, { bg: '#16181c', fg: '#d8c08a' });
     // ---- the steel tanks and the barrels (instanced) ----
     { const tanks = FURNITURE.filter(f => f[6] === 'tank'), mt = MATS.steelG, legM = MATS.steelD, m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), s1 = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
-      const body = new THREE.CylinderGeometry(1.22, 1.22, 4.8, 28), top = new THREE.ConeGeometry(1.22, 0.7, 28), bot = new THREE.ConeGeometry(1.22, 0.3, 28), leg = new THREE.BoxGeometry(0.1, 0.6, 0.1), hatch = new THREE.CylinderGeometry(0.28, 0.28, 0.08, 16);
+      const body = new THREE.CylinderGeometry(1.22, 1.22, 4.8, 28), top = new THREE.ConeGeometry(1.22, 0.7, 28), bot = new THREE.ConeGeometry(1.22, 0.3, 28), leg = new THREE.BoxGeometry(0.12, 1.05, 0.12) /* (legs up into the tank's cone and body) */, hatch = new THREE.CylinderGeometry(0.28, 0.28, 0.08, 16);
       bot.rotateX(Math.PI); hatch.rotateX(Math.PI / 2);
       const im = (geo, m, n) => { const x = new THREE.InstancedMesh(geo, m, n); x.castShadow = x.receiveShadow = true; root.add(x); return x; };
       const B1 = im(body, mt, tanks.length), T1 = im(top, mt, tanks.length), Bo = im(bot, mt, tanks.length), L1 = im(leg, legM, tanks.length * 4), Ha = im(hatch, legM, tanks.length);
       tanks.forEach((f, i) => { const cx = (f[1] + f[3]) / 2, cz = (f[2] + f[4]) / 2; B1.setMatrixAt(i, m4.compose(p.set(cx, 3.4, cz), q, s1)); T1.setMatrixAt(i, m4.compose(p.set(cx, 6.15, cz), q, s1)); Bo.setMatrixAt(i, m4.compose(p.set(cx, 0.85, cz), q, s1));
-        Ha.setMatrixAt(i, m4.compose(p.set(cx, 1.4, cz - 1.24), q, s1)); [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]].forEach(([dx, dz], k) => L1.setMatrixAt(i * 4 + k, m4.compose(p.set(cx + dx, 0.35, cz + dz), q, s1))); });
+        Ha.setMatrixAt(i, m4.compose(p.set(cx, 1.4, cz - 1.24), q, s1)); [[-0.72, -0.72], [0.72, -0.72], [-0.72, 0.72], [0.72, 0.72]].forEach(([dx, dz], k) => L1.setMatrixAt(i * 4 + k, m4.compose(p.set(cx + dx, 0.525, cz + dz), q, s1))); });
       // barrels: on their sides two high in the racks (their heads to the aisle), upright under the barrel tables
       const geo = new THREE.CylinderGeometry(0.33, 0.33, 0.95, 12, 4), P = geo.attributes.position; for (let i = 0; i < P.count; i++) { const y = P.getY(i), k = 1 + 0.13 * (1 - (2 * y / 0.95) ** 2); P.setX(i, P.getX(i) * k); P.setZ(i, P.getZ(i) * k); } geo.computeVertexNormals();
       // texture coordinates for the uploaded barrel's texture (its layout: the side unrolled as two halves across the top left, the axis

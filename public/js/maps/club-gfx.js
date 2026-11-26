@@ -11,10 +11,13 @@ import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { ObfLoader } from '../store/obf.js';
 import { setVenueMusic, setVenueMix, venueLevel } from '../audio.js';
 import { H, FOOT, HALL, BALC, STAGE, STEPS, FLOOR, DJ, ROOMS, FURNITURE, VAN, inHall, inFoot } from '../core/maps/club.js';
+import { makeCCTV } from './cctv.js';
 import { makeDancers } from './club-crowd.js';
 
 const VAN_TURN = Math.PI;   // the model's nose is at its -z end: turned to face the club
 let skyM = null, glows = [], matGlows = [], dancers = null, beams = [], hallLamps = null, ledMats = [], root0 = null, kitReady = false;
+// the VIP level (lounge and balcony, upstairs): kept dark like the dance floor below it, lit by its LEDs and the show
+const inVIP = (x, z, y) => y > H - 0.5 && y < 2 * H && x > 10 * (z < 8 ? 1 : 0) && x < 40 && z > 0 && z < 13;
 const LAMPS = [
   // none: the hall is lit only by the show (beams, screen, LED strips), as with the power cut
   // front of house
@@ -26,7 +29,7 @@ const LAMPS = [
   [5, 6.8, 4, 6, 9], [18, 6.8, 4, 6, 10], [32, 6.8, 4, 6, 10], [42.5, 6.8, 6, 5, 8], [42.5, 6.8, 16, 5, 8], [51, 6.8, 5, 7, 10], [51, 6.8, 15, 7, 10],
   // the lot and the alleys: street lights
   [10, 6, -12, 14, 18], [29, 6, -26, 14, 18], [33, 5.5, -14, 10, 14], [48, 6, -12, 14, 18], [61, 5, 10, 9, 14], [61, 5, 30, 9, 14], [50, 5, 45, 9, 14], [20, 5, 45, 9, 14],
-];
+].filter(([x, y, z]) => !inVIP(x, z, y));
 const NIGHT = {
   sky: [[0, '#04050c'], [0.3, '#0a0d1c'], [0.45, '#161a30'], [0.5, '#2b2740'], [0.53, '#111018'], [1, '#0c0c12']], skyR: 400, moon: [-120, 130, -150],
   fog: [0x0e1018], fogD: [0.006, 0.01], sunAt: [29, 18], sunFrom: [-40, 90, -70], shadow: 45, sunCol: 0xb8c8ff, sunK: 0.55, hemi: 0.6, hemiSky: 0x8a90c0, hemiGround: 0x3a3440,
@@ -65,7 +68,7 @@ const furn = {
   keg({ P, len, dep, h }) { const n = 2; for (let i = 0; i < n; i++) for (let k = 0; k < 2; k++) P('steelG', i * len / n + 0.05, (i + 1) * len / n - 0.05, k * dep / 2 + 0.05, (k + 1) * dep / 2 - 0.05, 0, h); },
   safe({ P, len, dep, h }) { P('steelD', 0, len, 0, dep, 0, h); P('chrome', len / 2 - 0.1, len / 2 + 0.1, dep, dep + 0.03, h / 2 - 0.1, h / 2 + 0.1, 'Z'); },
   cctv({ P, len, dep, h }) { P('oakD', 0, len, 0, dep, h - 0.04, h); P('steelD', 0, 0.05, 0, dep, 0, h); P('steelD', len - 0.05, len, 0, dep, 0, h);
-    for (let r = 0; r < 2; r++) for (let u = 0.1; u < len - 0.6; u += 0.62) P('cctvS', u, u + 0.58, 0.05, 0.1, h + 0.1 + r * 0.4, h + 0.45 + r * 0.4, 'Z'); },
+    P('steelD', len * 0.5 - 0.15, len * 0.5 + 0.15, 0.08, 0.16, h, h + 0.18); },   // (its monitor: cctv.js)
 };
 // ---------- the model's kits: each kind's pieces, where they go (from the map's furniture), how they turn and stretch ----------
 // a kit stands centred on its own origin, facing +z as the model has it, except: bar, shelf face +x; bench faces -x
@@ -113,24 +116,10 @@ const KIT_NAMES = new Set(['bar', 'barcorner', 'barend', 'barstool', 'table', 's
 const roomAt = (f, x, z) => { for (const r of ROOMS) if (r[0] === f && x >= r[2] && x <= r[4] && z >= r[3] && z <= r[5]) return r[1]; return null; };
 let mix = { g: -1, c: -1 }, mood = { base: null, nvg: false, k: 0, hemi: null };   // the hall's haze and darkness (tick)
 const HAZE = new THREE.Color(0x140a20), HAZE_D = 0.045, HALL_HEMI = 0.25, HALL_SUN = 0.4;   // in the hall: about what the breaker leaves (power cut)
-// ---------- CCTV: six cameras round the club, live on the security room's desk screens (the first six of its ten) ----------
-// Each camera's picture is drawn a third of the frames, one camera at a time, and only while you are in the security room; the
-// screens go dark with the power cut, as in the casino.
+// ---------- CCTV: six cameras round the club, cycled on the security desk's monitor (cctv.js); dark with the power cut ----------
 const CAMS = [['CAM 1 DANCE FLOOR', [38.6, 6.6, 13.6], [18, 0, 26]], ['CAM 2 STAGE', [1.4, 6.4, 14], [22, 1, 30]], ['CAM 3 BAR', [6, 3.2, 27.4], [2, 0.4, 14]],
   ['CAM 4 LOBBY', [39.4, 3.2, 0.6], [24, 0, 6]], ['CAM 5 FRONT LOT', [57.4, 6.4, -0.6], [30, 0, -18]], ['CAM 6 LOADING DOCK', [57.4, 3.2, 41.4], [46, 0, 28]]];
 let cctv = null;
-function buildCCTV(root) {
-  const rts = [], cams = [], mats = [], desk = { x0: 54, z0: 10.3, y: H + 0.76 };
-  CAMS.forEach(([name, p, t], i) => {
-    const rt = new THREE.WebGLRenderTarget(256, 144), cam = new THREE.PerspectiveCamera(80, 16 / 9, 0.1, 90); cam.layers.enable(5); cam.position.set(...p); cam.lookAt(...t); rts.push(rt); cams.push(cam);
-    const m = new THREE.MeshBasicMaterial({ map: rt.texture, color: 0xb8c8e0, toneMapped: false }); mats.push(m);
-    const row = i < 5 ? 1 : 0, u = 0.1 + (i < 5 ? i : i - 5) * 0.62, sc = new THREE.Mesh(new THREE.PlaneGeometry(0.54, 0.31), m);
-    sc.position.set(desk.x0 + u + 0.29, desk.y + 0.1 + row * 0.4 + 0.175, desk.z0 + 0.105); root.add(sc);
-    plane(root, name, 0.5, 0.05, desk.x0 + u + 0.29, desk.y + 0.1 + row * 0.4 - 0.015, desk.z0 + 0.107, 0, { bg: '#0a0c10', fg: '#9fd8ff', pw: 384, ph: 38, own: true });
-    const box = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, 0.28), new THREE.MeshLambertMaterial({ color: 0xd8d8d8 })); box.position.set(...p); box.lookAt(...t); root.add(box);   // the camera itself
-  });
-  return { rts, cams, mats, n: 0, k: 0, on: true };
-}
 
 export default {
   get env() { return NIGHT; },
@@ -164,7 +153,7 @@ export default {
     }, undefined, () => res(null)));
     return Promise.all([kit, van, dancers ? dancers.load() : null]).then(() => new THREE.Group());
   },
-  dispose() { setVenueMusic(null, false); dancers = null; hallLamps = null; if (cctv) for (const rt of cctv.rts) rt.dispose(); cctv = null; },
+  dispose() { setVenueMusic(null, false); dancers = null; hallLamps = null; if (cctv) cctv.dispose(); cctv = null; },
   noshade: { glowW: 1, glowB: 1, led: 1, neon: 1, beam: 1, cctvS: 1 },
   noCast: ['clubfloor', 'terrazzo', 'carpetR', 'carpetG', 'tileK', 'tileW', 'concrete', 'steelfloor', 'oak', 'lot', 'lotLine', 'stagetop'],
   tread: 'concrete',
@@ -206,15 +195,15 @@ export default {
     M.led = new THREE.MeshBasicMaterial({ color: 0xff2fa0 }); M.neon = new THREE.MeshBasicMaterial({ color: 0xff3fb0 });
     M.beam = new THREE.MeshBasicMaterial({ color: 0x6aa0ff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
   },
-  noFit: (f, x, z) => f === 1 && inHall(x, z) && z > BALC.z1,   // no white downlights over the dance floor: the hall is lit only by the show
+  noFit: (f, x, z) => f === 1 && ((inHall(x, z) && z > BALC.z1) || inVIP(x, z, H)),   // no white downlights over the dance floor: the hall is lit only by the show
   look(night, nvg) {
-    if (cctv) { cctv.on = !night; for (const m of cctv.mats) m.color.set(night ? 0x000000 : nvg ? 0x8cff9c : 0xb8c8e0); }
+    if (cctv) cctv.look(night, nvg);
     if (skyM) skyM.color.set(nvg ? 0x6dff7a : 0xffffff);
     mood.base = null; mood.nvg = nvg;   // the light was just set: tick takes it as the outside's and works the hall's from it
     for (const m of [...glows, ...matGlows]) m.color.set(nvg ? (night ? 0x0c3a12 : 0x9cff9c) : night ? 0x0d0c0a : m.userData.c);
   },
   scenery({ b, root, hills, level, MATS }) {
-    cctv = buildCCTV(root);
+    cctv = makeCCTV(root, CAMS, { at: [55.85, H + 0.76 + 0.66, 10.42], w: 1.7, inRoom: p => p.x > 45 && p.x < 58 && p.z > 10 && p.z < 20 && p.y > H });
     glows = []; seed = 9; beams = []; ledMats = []; root0 = root; kitReady = false;
     const B = (m, x0, x1, y0, y1, z0, z1, f = 'xXyYzZ', s = 0.5) => b(m).box(x0, x1, y0, y1, z0, z1, f, s);
     const flat = (m, x0, x1, z0, z1, y = 0, s = 0.2) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
@@ -261,9 +250,7 @@ export default {
     dancers = makeDancers(root);
   },
   tick(dt, { S, head, scene, renderer }) {
-    if (cctv && cctv.on && S.mode && renderer) { const p = head.pos; if (p.x > 45 && p.x < 58 && p.z > 10 && p.z < 20 && p.y > H) {
-      if (cctv.n++ % 3 === 0) { const i = cctv.k++ % cctv.cams.length, xe = renderer.xr.enabled, rt = renderer.getRenderTarget(); renderer.xr.enabled = false;
-        renderer.setRenderTarget(cctv.rts[i]); renderer.render(scene, cctv.cams[i]); renderer.setRenderTarget(rt); renderer.xr.enabled = xe; } } }
+    if (cctv && S.mode) cctv.tick(dt, renderer, scene, head);
     const p = head.pos, t = performance.now() / 1000, lv = venueLevel();
     // the music: where you stand decides how loud and how muffled
     const f = p.y > H - 0.6 ? 1 : 0, room = inFoot(p.x, p.z) ? roomAt(f, p.x, p.z) : null;
@@ -283,7 +270,7 @@ export default {
     // as you walk in; out again, back to what the rest of the map has (night vision keeps its own green)
     if (scene && scene.fog) {
       if (!mood.base) { mood.base = { d: scene.fog.density, c: scene.fog.color.clone() }; mood.hemi = null; mood.sun = null; scene.traverse(o => { if (!mood.hemi && o.isHemisphereLight) mood.hemi = { l: o, i: o.intensity }; if (!mood.sun && o.isDirectionalLight) mood.sun = { l: o, i: o.intensity }; }); mood.k = -1; }
-      const want = inHall(p.x, p.z) && p.y < 2 * H ? 1 : 0, k = Math.max(0, Math.min(1, (mood.k < 0 ? want : mood.k + Math.sign(want - mood.k) * dt * 1.5)));
+      const want = (inHall(p.x, p.z) && p.y < 2 * H) || inVIP(p.x, p.z, p.y) ? 1 : 0, k = Math.max(0, Math.min(1, (mood.k < 0 ? want : mood.k + Math.sign(want - mood.k) * dt * 1.5)));
       if (k !== mood.k) { mood.k = k; scene.fog.density = mood.base.d + (HAZE_D - mood.base.d) * k; if (!mood.nvg) scene.fog.color.copy(mood.base.c).lerp(HAZE, k);
         if (mood.hemi) mood.hemi.l.intensity = mood.hemi.i * (1 - (1 - HALL_HEMI) * k); if (mood.sun) mood.sun.l.intensity = mood.sun.i * (1 - (1 - HALL_SUN) * k); }
     }
