@@ -236,11 +236,15 @@ await t('tripwires: three rigged doors, opening one hurts and alerts, cutters di
   s.door(1, traps[0]); assert.ok(p.hp < 100 && s.doorOpen[traps[0]] && !s.doorTrap[traps[0]]); assert.ok(s.events.some(e => e.e === 'trap'));
   const d2 = L.doors[traps[1]]; s.doorLocked[traps[1]] = false; put(s, p, d2.cx + (d2.horiz ? 0 : 0.8), d2.y + 1.65, d2.cz + (d2.horiz ? 0.8 : 0)); const hp = p.hp; s.disarm(1, traps[1]); assert.ok(!s.doorTrap[traps[1]]); s.door(1, traps[1]); assert.equal(p.hp, hp, 'disarmed door is safe');
 });
-await t('cover: a suspect under fire moves out of the line of fire and shoots from there', () => {
+await t('cover: a quarter of suspects run for cover; one under fire moves out of the line of fire and shoots from there', () => {
+  let want = 0; for (let seed = 1; seed <= 200; seed++) { const [s, p] = mkSim(seed); const n = s.npcs[0]; s.engage(n, p, 0.5); if (n.wantCover) want++; }
+  assert.ok(want > 30 && want < 75, 'about a quarter run for cover: ' + want + '/200');
+  const keep = Sim.RUN_FOR_COVER; Sim.RUN_FOR_COVER = 1;   // the rest of this test is about the ones that do
   let covered = 0, fired = 0, runs = 0;
   for (let seed = 1; seed <= 14; seed++) { const [s, p] = mkSim(seed); const n = s.npcs[0]; for (const o of s.npcs) if (o !== n) o.st = 'u'; Object.assign(n, { x: 4.5, z: 10, y: 0 }); put(s, p, 7.5, 1.65, 15); p.hp = 1e6; s.engage(n, p, 0.5); n.wantCover = true; runs++;
     let hid = false, shot = false; for (let i = 0; i < 15 * 25; i++) { s.tick(1 / 15); assert.ok(!circleHits(L, null, n.x, n.z, 0.15, n.y), 'in a wall'); if (n.cov && n.cov.phase === 'hide' && !s.clear(n.x, n.y + 0.5, n.z, p.hx, p.hy, p.hz)) hid = true; if (s.events.some(e => e.e === 'ns')) shot = true; s.events.length = 0; }
     if (hid) covered++; if (hid && shot) fired++; }
+  Sim.RUN_FOR_COVER = keep;
   assert.ok(covered >= runs * 0.7, `took cover in ${covered}/${runs}`); assert.ok(fired >= covered * 0.7, `fired from cover in ${fired}/${covered}`);
 });
 await t('a suspect in a firefight grabs a nearby hostage as a shield; a hit, a flash or talking him down frees her', () => {

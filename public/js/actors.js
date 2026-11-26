@@ -280,7 +280,9 @@ const LOW = { hl: -0.55, hr: -0.5, kl: 1.0, kr: 0.95, drop: -0.22, spine: 0.28 }
 const WORK = { hl: -0.2, hr: -1.3, kl: 1.9, kr: 1.4, drop: -0.42, spine: 0.55, slx: -1.1, srx: -0.9, el: -0.3, er: -0.4, slz: 0.2, srz: -0.2 };   // kneeling over someone, hands on them
 const KN = { kl: 1.65, kr: 1.65, drop: -0.42 }, UPH = { slx: -2.6, srx: -2.6, el: -0.5, er: -0.5, slz: -0.3, srz: 0.3 }, BACK = { slx: 0.55, srx: 0.55, el: 0.4, er: 0.4, slz: 0.25, srz: -0.25 };
 const POSE = {
-  g: { srx: -0.15, er: -0.8, slx: -0.7, slz: 0.45, el: -0.5, spine: 0.03 },   // on guard / on his beat: low ready, both hands on the rifle, muzzle down ahead a: { srx: -0.5, er: -1.0, slx: -1.05, slz: 0.5, el: -0.75, spine: 0.06 }, c: { srx: -1.05, er: -0.55, slx: -1.3, slz: 0.5, el: -0.35, spine: 0.1, kl: 0.12, kr: 0.12, hl: -0.1, hr: 0.14, drop: -0.02 },
+  g: { srx: -0.15, er: -0.8, slx: -0.7, slz: 0.45, el: -0.5, spine: 0.03 },   // on guard / on his beat: low ready, both hands on the rifle, muzzle down ahead
+  a: { srx: -0.5, er: -1.0, slx: -1.05, slz: 0.5, el: -0.75, spine: 0.06 },
+  c: { srx: -1.05, er: -0.55, slx: -1.3, slz: 0.5, el: -0.35, spine: 0.1, kl: 0.12, kr: 0.12, hl: -0.1, hr: 0.14, drop: -0.02 },
   h: { srx: -0.9, er: -0.75, slx: -1.2, slz: 0.5, el: -0.45, spine: 0.3, hl: -1.25, hr: -1.25, kl: 2.0, kr: 2.0, drop: -0.4 },   // crouched behind cover
   z: { slx: -2.15, srx: -2.0, el: -2.0, er: -1.9, slz: 0.2, srz: -0.2, spine: 0.4, kl: 0.25, kr: 0.2, drop: -0.04 },      // stunned: hands to the face
   x: Object.assign({}, UPH, { spine: 0.14, drop: -0.06 }),   // held as a shield: hands up, stooped

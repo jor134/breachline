@@ -192,7 +192,7 @@ export class Sim {
   surrender(n) { if (n.shield) this.unshield(n, 'surrender'); n.grab = null; n.exec = null; n.cov = null; n.crouch = false; n.stun = 0; n.st = 's'; n.tS = 0; n.path = null; n.armed = false; n.fake = n.fakeChance; n.fakeChance = false; n.fakeAt = 3.5 + this.rnd() * 4; this.ev({ e: 'say', n: n.id, k: 'surrender' }); }
   engage(n, p, react) { if (n.kind === 's' && n.st !== 'c' && !n.spotSaid) { n.spotSaid = true; this.ev({ e: 'say', n: n.id, k: 'spot' }); }   // quest-store: a suspect calls out when he first goes for you
     if ((n.hvt || n.guard) && !n.rally) { n.rally = true; for (const q of this.npcs) if ((q.hvt || q.guard) && q !== n && (q.st === 'g' || q.st === 'a')) this.engage(q, p, react + 0.3); n.rally = false; }   // the boss and his guards fight together
-    n.wantCover = !n.cov && (this.rnd() < 0.85 || n.defend); n.crouch = false; n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
+    n.wantCover = !n.cov && this.rnd() < Sim.RUN_FOR_COVER; /* most stand their ground and fight; a quarter run for cover */ n.crouch = false; n.st = 'c'; n.react = react; n.cool = 0; n.burst = 2 + Math.floor(this.rnd() * 3); n.tgt = p.id; n.lost = 0; n.path = null; n.lk = [p.hx, p.hz, p.y]; }
   cuff(id, nid) {
     const p = this.players.get(id), n = this.npcs.find(q => q.id === nid); if (!p || p.down || !n || this.phase !== 'active' || p.team === 'tango' || n.held) return;
     if ((n.st === 's' || n.st === 'k' || n.st === 'y' || n.st === 'i') && this.near(p, n.x, n.y, n.z, 1.9)) { n.st = n.st === 'i' ? 'j' : 'u'; n.fake = false; this.ev({ e: 'cuff', n: n.id, p: id }); }
@@ -327,7 +327,7 @@ export class Sim {
     if (C.phase === 'go') { n.crouch = false; if (!this.walk(n, dt, 3.1)) { C.phase = 'hide'; C.t = 0.5 + this.rnd() * 1.2; C.age = 0; } }
     else if (C.phase === 'hide') {
       n.crouch = C.low; this.face(n, n.lk[0], n.lk[1], dt, 6); C.t -= dt;
-      if (C.seenT > 0.7 || (C.age > 5 && this.clear(n.x, n.y + 0.5, n.z, p.hx, p.hy, p.hz))) { const nc = this.findCover(n, p); n.crouch = false; if (nc && this.goto(n, nc.hx, nc.hz, n.y)) n.cov = nc; else { n.cov = null; } return; }   // flanked: move or fight in the open
+      if (C.seenT > 0.7 || (C.age > 5 && this.clear(n.x, n.y + 0.5, n.z, p.hx, p.hy, p.hz))) { const nc = this.rnd() < Sim.RUN_FOR_COVER && this.findCover(n, p); n.crouch = false; if (nc && this.goto(n, nc.hx, nc.hz, n.y)) n.cov = nc; else { n.cov = null; } return; }   // flanked: now and then run to new cover, mostly fight in the open
       if (C.t <= 0) { C.phase = 'peek'; C.shots = 2 + Math.floor(this.rnd() * 3); C.t = 2.6; n.cool = 0.25; if (!C.low) { n.path = [[n.x, n.z, 0], [C.fx, C.fz, 0]]; n.pi = 1; } }
     } else if (C.phase === 'peek') {
       n.crouch = false; this.face(n, n.lk[0], n.lk[1], dt, 8); if (n.path) { this.walk(n, dt, 2.2, true); return; }
@@ -683,3 +683,4 @@ export class Sim {
 }
 Object.assign(Sim.prototype, BotMixin);   // SWAT bots: core/bots.js
 Sim.MEDIC_MAX = 3; Sim.MEDIC_TIME = 4;   // PvP: AI suspects revive a downed human terrorist up to 3 times a mission, 4 s each
+Sim.RUN_FOR_COVER = 0.25;   // the share of suspects who run for cover when a fight starts (or when flanked); the rest stand and fight
