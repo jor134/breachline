@@ -1,12 +1,10 @@
 {
  "rifle": [
-  "rifle_1.mp3",
-  "rifle_2.mp3"
+  "rifle_u1.wav",
+  "rifle_u2.wav"
  ],
- "rifle_far": "rifle_far.mp3",
  "pistol": [
-  "pistol_1.mp3",
-  "pistol_2.mp3"
+  "pistol_u1.wav"
  ],
  "magout": [
   "magout_1.mp3",
@@ -63,10 +61,7 @@
   "kick_3.mp3"
  ],
  "impact": [
-  "impact_1.mp3",
-  "impact_2.mp3",
-  "impact_3.mp3",
-  "impact_4.mp3"
+  "impact_u1.wav"
  ],
  "impact_glass": [
   "impact_glass_1.mp3",
