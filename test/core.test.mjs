@@ -364,6 +364,11 @@ await t('grand prix: cars lap the straight, anyone on the tarmac when one passes
   assert.ok(hit, 'a car came through within 40 s and knocked the officer on the track down'); assert.ok(!q.down, 'the one in the pit lane is fine');
   assert.ok(s.snapshot().RT > 0, 'race clock goes to clients');
   const a = carsAt(12.5).map(c => c[0]), b = carsAt(12.5).map(c => c[0]); assert.deepEqual(a, b);
+  // past the pit building the cars run straight down the tarmac toward +x; every car in sight stays on the circuit's race line
+  let along = 0; for (let tt = 0; tt < 120; tt += 0.25) for (const [x, z, v, , h, y] of carsAt(tt)) {
+    if (x > -60 && x < 100 && z < -10) { along++; assert.ok(z > TRACK.z0 + 1 && z < TRACK.z1 - 1 && Math.abs(h) < 0.05 && Math.abs(y) < 0.3 && v > 40, 'on the straight, flat out: ' + [x, z, v, h, y]); }
+  }
+  assert.ok(along > 40, 'cars pass the pits');
   const s2 = new Sim('grandprix'); const tods = new Set(); for (let k = 1; k < 12; k++) { s2.start(k, false, 'clear', 'grandprix', 'random'); tods.add(s2.tod); } assert.equal(tods.size, 2, 'random picks both day and night');
 });
 await t('pvp: terrorist players start inside, the AI ignores them, they cannot rescue or defuse, cross-team shots hurt, win rules', async () => {

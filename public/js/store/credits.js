@@ -41,6 +41,7 @@ export const CREDITS = [
   { use: 'Winery corten steel', title: 'Kellen Metallo Corten Steel', by: 'Hardscape', lic: BY, url: 'https://sketchfab.com/3d-models/kellen-metallo-corten-steel-1d2c38521ed342d286ca8c81819ebc2f', chg: 'texture only, reduced' },
   { use: 'Winery barrels', title: 'Wooden Wine Barrel', by: 'Joseph Gush', lic: BY, url: 'https://sketchfab.com/3d-models/wooden-wine-barrel-c75aa49368da487aa3b360d0fad446f5', chg: 'textures only, reduced' },
   { use: 'Wine bottles', title: 'Wine Bottle', by: 'sotocodes', lic: BY, url: 'https://sketchfab.com/3d-models/wine-bottle-651e6b77329043ecb89cf5e75f5fe209', chg: 'simplified' },
+  { use: 'Grand Prix circuit', title: 'Circuit de Spa-Francorchamps 1992 layout', by: 'Dave Love (Tyler_Dave)', lic: BY, url: 'https://sketchfab.com/3d-models/circuit-de-spa-francorchamps-1992-layout-a1223a21df954b9ebf8eb3b7c682eb99', chg: 'cut around the playable area, ground levelled along the straight, reduced, textures shrunk, signs removed' },
   { use: 'Wine glasses', title: 'Wine Glass', by: 'Gamedirection', lic: BY, url: 'https://sketchfab.com/3d-models/wine-glass-480cfc5b09ce4a1bb6b262e3686077c7', chg: 'simplified, material redone' },
   { use: 'Club music', title: 'Dance (Pixabay track 518070)', by: 'atlasaudio', lic: 'Pixabay Content License', url: 'https://pixabay.com/music/' },
   { use: 'Race-car engine', title: 'grandprix', by: 'freesound_community (Pixabay)', lic: 'Pixabay Content License', url: 'https://pixabay.com' },

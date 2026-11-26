@@ -1,10 +1,12 @@
-// Grand Prix scenery: the main straight with kerbs and grid boxes, the pit lane and its markings, the pit wall with its
-// debris fence, empty grandstands across the track, floodlight towers, the pit building's facade and team colours, parked
-// cars in the garages and the motorhomes in the paddock. Two looks: an afternoon race and a floodlit night race.
+// Grand Prix scenery: the circuit model around the playable area (track, pit lane, guard rails, the circuit's own garages
+// east of ours, the hairpin, hills and forest), and the game's own pieces: the paddock ground, team boxes, the marshals' gate,
+// timing stands, floodlight towers, the pit building's facade and team colours, parked cars in the garages and the
+// motorhomes in the paddock. Two looks: an afternoon race and a floodlit night race.
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid } from '../mats.js';
-import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H } from '../core/maps/grandprix.js';
-import { TRACK, VIS } from '../core/maps/circuit.js';
+import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H, YARD } from '../core/maps/grandprix.js';
+import { TRACK } from '../core/maps/circuit.js';
+import { ObfLoader } from '../store/obf.js';
 import { raceCar } from '../racecar.js';
 import { TRUCK, makeTruck, truckAt } from '../truck.js';
 
@@ -31,11 +33,19 @@ function sign(text, col) {
 const tspot = t => ({ x0: t.x0, z0: t.z0, along: t.along, cabEnd: t.cab });
 export default {
   // the transporters' tractors and chassis (js/truck.js) in team colours, once the model has loaded
-  load() { return Promise.all(TRUCKS.map(t => makeTruck(tspot(t), TEAMS[t.team]))).then(ts => { const g = new THREE.Group(); for (const t of ts) g.add(t); return g; }); },
+  // and the circuit around it all: "Circuit de Spa-Francorchamps 1992 layout" by Dave Love (CC BY 4.0), laid out by tools/spa_kit.py
+  load() {
+    const trucks = Promise.all(TRUCKS.map(t => makeTruck(tspot(t), TEAMS[t.team])));
+    const circuit = new Promise(res => new ObfLoader().load('models/grandprix/spa.glb', gl => {
+      gl.scene.traverse(q => { if (!q.isMesh) return; q.castShadow = false; q.receiveShadow = true; q.matrixAutoUpdate = false; q.updateMatrix(); const m = q.material; if (m.map) m.map.anisotropy = 4; if (m.alphaTest) m.transparent = false; m.roughness = 0.95; });
+      res(gl.scene);
+    }, undefined, () => res(null)));
+    return Promise.all([trucks, circuit]).then(([ts, c]) => { const g = new THREE.Group(); for (const t of ts) g.add(t); if (c) g.add(c); return g; });
+  },
   get env() { return tod === 'night' ? NIGHT : DAY; },
   envs: { day: DAY, night: NIGHT },
   setTod(t) { tod = t === 'night' ? 'night' : 'day'; },
-  noshade: { gpline: 1, kerb: 1, flood: 1, gpfence: 1 }, noCast: ['tarmac', 'pitlane', 'gpline', 'kerb', 'grass'],
+  noshade: { gpline: 1, flood: 1 }, noCast: ['pitlane', 'gpline', 'grass'],
   outer: w => w.f >= 1 ? 'facade' : 'facadeLow',
   inner: w => { if (w.f === 0 && w.z1 <= 8.1 && w.z0 >= -4.1) { const i = Math.max(0, Math.min(5, Math.floor(((w.x0 + w.x1) / 2) / 9))); return 'team' + i; } return w.f === 1 ? 'clubwall' : 'plaster'; },
   door: () => 'door',
@@ -63,37 +73,21 @@ export default {
   scenery({ b, root, hills, hillM }) {
     beams = [];
     const flat = (m, x0, x1, z0, z1, y = 0, s = 0.2) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
-    // ground: track, kerbs, run-off, pit lane, paddock
-    flat('tarmac', VIS.x0 - 60, VIS.x1 + 60, TRACK.z0, TRACK.z1, 0.002, 0.08);
-    flat('pitlane', -60, 116, TRACK.z1, 42, 0.001, 0.1);
-    flat('grass', -600, 660, -600, 640, -0.02, 0.05);   // countryside past the sky dome in every direction, fading into the fog: no edge to the world
-    for (const z of [TRACK.z0, TRACK.z1 - 0.9]) b('kerb').quad([VIS.x0 - 60, 0.006, z], [VIS.x1 + 60, 0.006, z], [VIS.x1 + 60, 0.006, z + 0.9], [VIS.x0 - 60, 0.006, z + 0.9], [0, 1, 0], 0.5);
-    for (const z of [TRACK.z0 + 1.0, TRACK.z1 - 1.0]) flat('gpline', VIS.x0 - 60, VIS.x1 + 60, z - 0.06, z + 0.06, 0.007);
-    for (let k = 0; k < 10; k++) { const x = 70 - k * 8, z = TRACK.zc + (k % 2 ? 2.4 : -2.4); flat('gpline', x - 0.06, x + 0.06, z - 1.2, z + 1.2, 0.008); flat('gpline', x - 1.2, x, z - 1.2, z - 1.08, 0.008); flat('gpline', x - 1.2, x, z + 1.08, z + 1.2, 0.008); }   // grid boxes
-    for (let z = TRACK.z0 + 1; z < TRACK.z1 - 1; z += 1.2) { flat('gpline', 79.2, 79.8, z, z + 0.6, 0.009); flat('kerb', 79.8, 80.4, z, z + 0.6, 0.009); }   // start/finish line
-    flat('gpline', -60, 116, -9.06, -8.94, 0.006);                 // fast lane / working lane
-    for (let i = 0; i < 6; i++) { const x = i * 9; for (const [a, c, d, e] of [[x + 1, x + 1.12, -8.9, -4.2], [x + 7.88, x + 8, -8.9, -4.2], [x + 1, x + 8, -8.9, -8.78]]) b('team' + i).quad([a, 0.007, d], [c, 0.007, d], [c, 0.007, e], [a, 0.007, e], [0, 1, 0], 1); }
-    // pit wall with its debris fence and timing gantry; far-side barrier and tyre wall
-    for (const [x0, x1] of [[PITWALL.x0, PITWALL.gate[0]], [PITWALL.gate[1], PITWALL.x1]]) { b('pitwallM').box(x0, x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1, 'xXYzZ', 0.5); b('gpfence').box(x0, x1, PITWALL.h, 4.2, PITWALL.z0 + 0.15, PITWALL.z0 + 0.17, 'zZ', 0.5); }
-    for (const x of PITWALL.gate) b('mast').box(x - 0.06, x + 0.06, 0, 4.3, PITWALL.z0 + 0.1, PITWALL.z0 + 0.2, 'xXzZ', 1);   // gate posts
-    for (let x = PITWALL.x0; x <= PITWALL.x1; x += 6) if (x < PITWALL.gate[0] - 0.5 || x > PITWALL.gate[1] + 0.5) b('mast').box(x - 0.05, x + 0.05, PITWALL.h, 4.3, PITWALL.z0 + 0.1, PITWALL.z0 + 0.2, 'xXzZ', 1);
+    // the circuit itself (track, kerbs, pit lane, guard rails, the circuit's garages east of ours, hills, trees) is the model, loaded
+    // in load(); here: the paddock's own ground, our team boxes in the pit lane, the marshals' gate, timing stands, floodlights
+    flat('pitlane', YARD.x0, YARD.x1, -4.05, YARD.z1, 0.004, 0.1);
+    flat('grass', -1400, 1400, -1400, 1400, -52, 0.01);   // far below the model's lowest valley: where the model has no ground, distance and fog
+    for (let i = 0; i < 6; i++) { const x = i * 9; for (const [a, c, d, e] of [[x + 1, x + 1.12, -8.9, -4.2], [x + 7.88, x + 8, -8.9, -4.2], [x + 1, x + 8, -8.9, -8.78]]) b('team' + i).quad([a, 0.012, d], [c, 0.012, d], [c, 0.012, e], [a, 0.012, e], [0, 1, 0], 1); }
+    const pz = (PITWALL.z0 + PITWALL.z1) / 2;
+    for (const x of PITWALL.gate) b('mast').box(x - 0.06, x + 0.06, 0, 1.6, pz - 0.06, pz + 0.06, 'xXzZ', 1);   // gate posts in the gap cut through the rails
     for (const x of [8, 40, 60]) { b('gantry').box(x - 2.5, x + 2.5, 1.1, 2.4, PITWALL.z1, PITWALL.z1 + 1.2, 'xXyYzZ', 1); b('gantry').box(x - 2.4, x + 2.4, 2.4, 2.5, PITWALL.z1 - 0.2, PITWALL.z1 + 1.6, 'xXyYzZ', 1); }
-    b('barrier').box(VIS.x0 - 60, VIS.x1 + 60, 0, 1.2, TRACK.z0 - 1.2, TRACK.z0 - 0.4, 'xXYzZ', 0.5);
-    b('gpfence').box(VIS.x0 - 60, VIS.x1 + 60, 1.2, 4.5, TRACK.z0 - 0.82, TRACK.z0 - 0.8, 'zZ', 0.5);
-    // grandstands across the track: stepped concrete with blue seats, a roof on columns
-    for (const [x0, x1] of [[-140, -20], [-10, 110], [120, 240]]) {
-      for (let r = 0; r < 12; r++) { const z0 = TRACK.z0 - 8 - r * 0.9, y = 1 + r * 0.5; b('stand').box(x0, x1, 0, y, z0 - 0.9, z0, 'Yz', 0.3); b('seatR').box(x0 + 0.3, x1 - 0.3, y, y + 0.35, z0 - 0.75, z0 - 0.35, 'Yz', 0.5); }
-      b('stand').box(x0, x1, 0, 7, TRACK.z0 - 20, TRACK.z0 - 18.9, 'Zz', 0.3);
-      b('gantry').box(x0, x1, 11, 11.3, TRACK.z0 - 20, TRACK.z0 - 6, 'yY', 0.3);
-      for (let x = x0; x <= x1; x += 20) b('mast').box(x - 0.2, x + 0.2, 0, 11, TRACK.z0 - 19.6, TRACK.z0 - 19.2, 'xXzZ', 1);
-    }
-    // floodlight towers along both sides of the straight; at night they light the track with soft beams
-    for (let x = VIS.x0 + 20; x < VIS.x1; x += 45) for (const z of [TRACK.z0 - 5, x > PITWALL.x0 - 5 && x < PITWALL.x1 + 5 ? null : TRACK.z1 + 3]) {
-      if (z === null) continue;
+    // floodlight towers behind the far rail; at night they light the track with soft beams
+    for (let x = YARD.x0 + 15; x < YARD.x1; x += 40) {
+      const z = TRACK.z0 - 5;
       b('mast').box(x - 0.25, x + 0.25, 0, 22, z - 0.25, z + 0.25, 'xXzZ', 1); b('gantry').box(x - 2, x + 2, 22, 23.2, z - 0.3, z + 0.3, 'xXyYzZ', 1);
-      b('flood').box(x - 1.9, x + 1.9, 22.05, 23.15, z + (z < TRACK.z0 ? 0.31 : -0.32), z + (z < TRACK.z0 ? 0.32 : -0.31), z < TRACK.z0 ? 'Z' : 'z', 1);
+      b('flood').box(x - 1.9, x + 1.9, 22.05, 23.15, z + 0.31, z + 0.32, 'Z', 1);
       if (tod === 'night') { const cone = new THREE.Mesh(new THREE.ConeGeometry(9, 22, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0xdfe8ff, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-        cone.position.set(x, 11, z < TRACK.z0 ? TRACK.zc - 2 : TRACK.zc + 4); cone.rotation.x = z < TRACK.z0 ? -0.25 : 0.25; root.add(cone); beams.push(cone); }
+        cone.position.set(x, 11, TRACK.zc - 2); cone.rotation.x = -0.25; root.add(cone); beams.push(cone); }
     }
     // pit building: team boards over the garage fronts, a header over each opening, the hospitality balcony rail
     for (let i = 0; i < 6; i++) {
@@ -119,6 +113,5 @@ export default {
         root.add(sg);
       }
     }
-    for (const [x, z, r, h] of [[-160, -200, 110, 26], [200, -230, 140, 32], [60, 260, 150, 30], [-200, 120, 120, 24]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); hills.add(m); }
   },
 };
