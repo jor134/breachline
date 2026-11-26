@@ -130,14 +130,14 @@ export const SUSPECT_SPOTS = [
 export const CIV_SPOTS = [[0, 3, 5], [0, 13.5, 8], [0, 10.5, 25], [0, 34, 20.5], [0, 50, 20.5], [0, 55, 8], [0, 74, 10], [0, 62, 31], [1, 2, 8], [1, 12, 8], [1, 72, 12], [1, 66, 31], [1, 80, 30], [1, 50.5, 11.5], [1, 35, 8]];
 export const CIV_MUST = [[0, 42, 23.5]];                             // the winemaker, held in the middle of the cellar
 export const BOMB_SPOTS = [[0, 7, 2, 1.8], [0, 15, 0.7, 0.92], [0, 75, 22, 1.0], [0, 66.6, 1.6, 1.6], [0, 34, 8.5, 1.05], [0, 42, 19.5, 1.0], [0, 42, 28.5, 1.0], [1, 78, 25, 0.76], [1, 52, 8, 0.92], [1, 65, 25, 0.76], [1, 15, 5.6, 0.76]];
-export const BOMB_MUST = [1, 42, 32.1, 1.1];                         // one always under the DJ's decks
+export const BOMB_MUST = [1, 42, 31.2, 0];                           // one always on the floor at the foot of the DJ's decks (on top, the club's DJ stand hid it)
 export const HVTS = [{ at: [1, 80, 9], guards: [[1, 76, 4], [1, 82, 12.6]], flee: [0, 71, 31], name: 'ESTATE MANAGER' }];
 
 // the party on the terrace: [x, z, facing (0 = +z, toward the DJ and the Andes), floor], clear of the furniture, the doors and the
 // spots where suspects and hostages start, with a lane from the restaurant's back door to the DJ and one across
 let seed = 7; const rr = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 export const DANCERS = [];
-{ const busy = (x, z) => F.some(q => q[0] === 1 && x > q[1] - 0.55 && x < q[3] + 0.55 && z > q[2] - 0.55 && z < q[4] + 0.55) || [...SUSPECT_SPOTS, ...CIV_SPOTS, ...HVTS.map(h => h.at)].some(p => p[0] === 1 && Math.hypot(p[1] - x, p[2] - z) < 1.3);
+{ const busy = (x, z) => F.some(q => q[0] === 1 && x > q[1] - 0.55 && x < q[3] + 0.55 && z > q[2] - 0.55 && z < q[4] + 0.55) || Math.hypot(BOMB_MUST[1] - x, BOMB_MUST[2] - z) < 1.1 || [...SUSPECT_SPOTS, ...CIV_SPOTS, ...HVTS.map(h => h.at)].some(p => p[0] === 1 && Math.hypot(p[1] - x, p[2] - z) < 1.3);
   for (let z = 15.8; z < 31; z += 1.25) for (let x = 29.4; x < 55; x += 1.25) {
     if ((x > 39 && x < 41.4) || (z > 22.4 && z < 23.8) || busy(x, z) || rr() < 0.5) continue;
     const px = +(x + (rr() - 0.5) * 0.5).toFixed(2), pz = +(z + (rr() - 0.5) * 0.5).toFixed(2), face = Math.atan2(DJ.x - px, DJ.z - pz) * 0.6 + (rr() - 0.5) * 1.4;
@@ -231,7 +231,7 @@ export default {
   stairs: STAIRS.map(s => ({ ...s, yb: 0, n: 1 })), foot: FOOT, bombMust: BOMB_MUST, civMust: CIV_MUST, yAt,
   lobby: { x: 42, y: 1.5, z: -39, tx: 42, tz: -30 },
   brief: ['A crew holds Bodega Novena during its sunset party: 8 hostages, 3 bombs, the estate manager who let them in.', 'The roof terrace is packed and still dancing: nobody up there knows. Do not start a panic you cannot stop.',
-    'Up the drive to the front: the entrance, or the open stairs either side of it to the terrace. Round the sides: the crush pad, the loading dock, the back doors.', 'The estate manager is in his office upstairs in the east wing. One bomb is under the DJ\'s decks.'],
+    'Up the drive to the front: the entrance, or the open stairs either side of it to the terrace. Round the sides: the crush pad, the loading dock, the back doors.', 'The estate manager is in his office upstairs in the east wing. One bomb is at the foot of the DJ\'s decks.'],
   surfaces, floorRay, solidFloor, terrainY: () => 0, floorAt, extra,
   onStairs: (x, z) => { if (flightOf(x, z)) return true; const s = stairOf(x, z); return !!s && stairT(s, z) <= 0.85; },
   inside: (x, z, y) => inFoot(x, z) && (y < H - 0.3 || ((inWing(x, z) || inPav(x, z)) && y < 2 * H)), objective: (x, z) => inFoot(x, z) || !!flightOf(x, z) || onLanding(x, z),

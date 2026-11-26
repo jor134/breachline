@@ -404,8 +404,7 @@ export default {
       bulbs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.055, 0), MATS.bulb, pts.length); const m4 = new THREE.Matrix4(); pts.forEach((v, i) => bulbs.setMatrixAt(i, m4.makeTranslation(v.x, v.y, v.z))); bulbs.castShadow = false; root.add(bulbs);
       const lg = new THREE.BufferGeometry(), arr = []; for (let k = 0; k < poles.length; k++) for (let i = 0; i < 24; i++) { const a = wire[k * 25 + i], c = wire[k * 25 + i + 1]; arr.push(a.x, a.y, a.z, c.x, c.y, c.z); }
       lg.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); root.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x1a1a1a }))); }
-    // the DJ's decks: a lettered plate on the booth's front
-    plane(root, 'NOVENA SUNSET SESSIONS', 3.0, 0.32, DJ.x, H + 0.62, 31.6 - 0.015, Math.PI, { bg: '#111114', fg: '#ffb46a', pw: 768, ph: 82, lit: true });
+
     // ---- the Andes and the precordillera round the south and west; the low sun's glow over the range at dusk ----
     { const A = range(400, 0.3 * Math.PI, 1.3 * Math.PI, peaks, 0xffffff, 0x6e6472, 0x8e8690), F = range(250, 0.28 * Math.PI, 1.32 * Math.PI, hills, null, 0x5a4a3e, 0x766450);
       far.add(A, F); andes = [A, F];
