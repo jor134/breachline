@@ -235,6 +235,7 @@ const angd = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; wh
 // holstered with the light on (in the casino, right after the rappel through the suite window). TORCH_I: its brightness when on.
 const TORCH_I = 16, torch = new THREE.SpotLight(0xfff2dd, 0, 30, 0.44, 0.8, 1.6); scene.add(torch, torch.target);
 const xrc = [0, 1].map(i => { const ray = renderer.xr.getController(i), grip = renderer.xr.getControllerGrip(i); rig.add(ray, grip); const o = { ray, grip, src: null }; ray.addEventListener('connected', e => { o.src = e.data; }); ray.addEventListener('disconnected', () => { o.src = null; }); return o; });
+const TOOL_TILT = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 4);   // cutters, door cam, lockpick: 45 degrees up
 const tiltQ = new THREE.Quaternion(); const setTilt = d => { S.tilt = d; tiltQ.setFromAxisAngle(new THREE.Vector3(1, 0, 0), d * Math.PI / 180); localStorage.setItem('bl_tilt', d); }; setTilt(S.tilt);
 
 function resetLoadout() {
@@ -1004,7 +1005,7 @@ function handVR(h, o, dt) {
   }
   for (const k in h.mags) h.mags[k].visible = h.item === 'mag' && h.magKind === k;
   for (const k in h.nades) { const m = h.nades[k]; m.visible = h.item === k; if (m.visible) { m.position.copy(h.pos); m.quaternion.copy(h.quat); } }
-  for (const k in h.tools) { const m = h.tools[k]; m.visible = !h.item && S.tool === k && (!!OG || h.i === 0); if (m.visible) { m.position.copy(h.pos); m.quaternion.copy(h.quat); } }
+  for (const k in h.tools) { const m = h.tools[k]; m.visible = !h.item && S.tool === k && (!!OG || h.i === 0); if (m.visible) { m.position.copy(h.pos); m.quaternion.copy(h.quat).multiply(TOOL_TILT); } }   // tools sit tilted up out of the fist, not straight along the pointing line
   if (h.rackG && !h.rackDone) { const back = v1.set(0, 0, 1).applyQuaternion(h.rackG.mesh.quaternion); if (v2.copy(h.pos).sub(h.rackStart).dot(back) > 0.045) { rack(h.rackG.st); h.rackDone = true; sfx.rack(h.rackG.kind); buzz(h, 0.8, 50); buzz(o, 0.4, 50); } }
   const bar = bars[h.i]; bar.visible = !!h.hold;
   if (h.hold) {
@@ -1313,7 +1314,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q92';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q93';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
