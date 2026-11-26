@@ -1,16 +1,17 @@
-// Airport scenery: the kerb under a timber-soffit canopy on branching orange columns, the double-height glass front, the
-// concourse window wall, the apron with stand markings, the glass-banded maintenance hangar with its white trusses, the
-// grounded regional jet (built here: hull with door cut-outs, livery, wings, rear engines, T-tail, airstairs, cabin and hold
-// interiors), two light aircraft, the runway and a control tower in the distance. Two looks: day and night.
+// Airport scenery: the terminal's deep dark roof running on over the forecourt on white Y-shaped columns, its glass faces and
+// the floor band between them, the escalator bank with its glass balustrades, signs; around it the airport from the model
+// ("Airport_and Interior" by Pravin_9271, CC BY 4.0, laid out by tools/airport_kit.py: apron, airliners, jet bridges, the pier,
+// control and radar towers, runway) re-dressed in the game's materials; the apron behind with the glass-banded maintenance hangar,
+// the grounded regional jet (model, airstairs, cabin and hold interiors) and two light aircraft. Two looks: day and night.
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, vertexSheen } from '../mats.js';
 import { GLTFLoader } from '../../vendor/GLTFLoader.js';
 import { ObfLoader } from '../store/obf.js';   // quest-store: the jet ships obfuscated (Sketchfab Standard licence)
 import { envMap, pbrMats } from '../mats.js';
-import { H, FOOT, UP_Z, HALL, HANGAR, JET, CAB, HOLD, AIRSTAIR, CANOPY, TREES, GAPLANES, JX, JZ } from '../core/maps/airport.js';
+import { H, FOOT, STAIR, HANGAR, JET, CAB, HOLD, AIRSTAIR, CANOPY, TREES, GAPLANES, JX, JZ } from '../core/maps/airport.js';
 
 let tod = 'day', floodMat = null, signs = [];
-const LAMPS = [[32, 8, 43, 14, 24], [18, 3.9, 6, 9, 16], [46, 3.9, 6, 9, 16], [32, 13.5, -42, 18, 34], [32, CAB + 1.9, -40, 4, 9], [32, 8.4, 61, 8, 18], [6, H + 3.8, 44, 6, 12], [32, 3.9, 26, 7, 14]];
+const LAMPS = [[13.5, 6.6, 36, 14, 24], [13.5, 6.4, 22, 9, 16], [13.5, 6.2, 7, 7, 12], [32, 13.5, -42, 18, 34], [32, CAB + 1.9, -40, 4, 9], [13.5, 2 * H - 1.5, 66, 10, 22], [13.5, H + 5.5, 30, 10, 20], [13.5, H + 5.5, 50, 9, 18], [4.5, H + 5, 5, 6, 10]];
 const DAY = {
   sky: [[0, '#3f78c4'], [0.3, '#85b2e4'], [0.45, '#bcd3ea'], [0.5, '#c6d6e6'], [1, '#c6d6e6']], skyR: 470, moon: [160, 140, -40],
   fog: [0xc6d6e6], fogD: [0.0032, 0.006], sunAt: [32, -8], sunFrom: [60, 95, 40], shadow: 72, sunCol: 0xfff3dc, sunK: 1.6, hemi: 1.35, hemiSky: 0xd8e6f6, hemiGround: 0x8c867a,
@@ -37,18 +38,29 @@ export default {
   setTod(t) { tod = t === 'night' ? 'night' : 'day'; },
   // The BAe 146 (models/jet/bae146.glb): already scaled and cleaned by tools/jet_glb.py; placed with its own origin at (JX, 0, JZ).
   load() {
-    return new Promise((res, rej) => new ObfLoader().load('models/jet/bae146.glb', g => {
+    const jet = new Promise((res, rej) => new ObfLoader().load('models/jet/bae146.glb', g => {
       const m = g.scene; m.position.set(JX, 0, JZ);
       m.traverse(o => { if (!o.isMesh) return; const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const mt of mats) { mt.envMap = envMap; mt.userData.env = mt.envMapIntensity = 0.3; if (!pbrMats.includes(mt)) pbrMats.push(mt); if (mt.transparent) { mt.depthWrite = false; } }
         o.castShadow = true; o.receiveShadow = true; });
       res(m);
     }, undefined, rej));
+    // the airport around the terminal: each part's flat colour kept, in the game's own surfaces (tarmac and concrete textured)
+    const scene = new Promise(res => new ObfLoader().load('models/airport/scene.glb', g => {
+      const tarmac = sheen({ map: tex('#3a3c3f', 9000, grid(1, 1, 'rgba(255,255,255,0.05)')) }, 'matte'), cache = new Map();
+      g.scene.traverse(o => { if (!o.isMesh) return; const k = o.material.name, c = o.material.color.clone();
+        const key = k + c.getHexString(); let m = cache.get(key);
+        if (!m) { m = k === 'tarmac' ? tarmac : k === 'glass' ? sheen({ color: c.lerp(new THREE.Color(0x6f8fa8), 0.5), transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide }, 'glass')
+          : k === 'white' ? sheen({ color: c }, 'paint') : k === 'paint' ? sheen({ color: c, side: THREE.DoubleSide }, 'paint') : sheen({ map: tex('#ffffff', 600), color: c.multiplyScalar(1.15), side: o.material.side }, 'metal'); cache.set(key, m); }
+        o.material = m; o.receiveShadow = true; o.castShadow = k !== 'tarmac'; o.matrixAutoUpdate = false; o.updateMatrix(); });
+      res(g.scene);
+    }, undefined, () => res(null)));
+    return Promise.all([jet, scene]).then(([j, sc]) => { const g = new THREE.Group(); g.add(j); if (sc) g.add(sc); return g; });
   },
-  noshade: { apline: 1, flood: 1, star: 1, apyellow: 1 }, noCast: ['apron', 'road', 'apline', 'apyellow', 'kerbstone', 'grassA', 'epoxyW', 'runway'],
+  noshade: { apline: 1, flood: 1, star: 1, apyellow: 1 }, noCast: ['apron', 'road', 'apline', 'apyellow', 'kerbstone', 'grassA', 'epoxyW', 'runway', 'soffitG', 'glassRail'],
   tread: 'steel',
-  outer: w => w.f >= 1 || w.z0 > 55 ? 'apfacade' : 'apfacadeLow',
-  inner: w => w.f === 1 && w.x0 >= HALL.x0 - 0.2 && w.x1 <= HALL.x1 + 0.2 && w.z0 >= HALL.z0 - 0.2 ? 'lacquer' : 'plaster',
+  outer: w => w.f >= 1 ? 'apfacade' : 'apfacadeLow',
+  inner: w => w.f === 1 && w.z0 >= 15.9 && w.z1 <= 44.1 ? 'lacquer' : 'plaster',
   door: d => d.exterior ? 'steel' : 'door',
   mats(M) {
     if (M.apron) return;
@@ -62,6 +74,7 @@ export default {
       soffit: S(tex('#c78d52', 900, grid(1, 16, 'rgba(70,40,15,0.45)')), 'satin'), canopyTop: S(tex('#8d949b', 600), 'metal'), orange: S(tex('#c4521c', 300), 'paint'),
       seatM: S(tex('#203a5c', 800), 'satin'), jetwin: new THREE.MeshBasicMaterial({ color: 0x14181e }), tyreA: S(tex('#141414', 300), 'matte'), gear: S(tex('#c8ccd0', 200), 'metal'),
       cabinWall: S(tex('#e9e8e3', 600), 'satin'), bin: S(tex('#dcdbd6', 300, grid(1, 1, 'rgba(0,0,0,0.12)')), 'satin'), holdFloor: S(tex('#5a5f63', 900, grid(4, 4, 'rgba(0,0,0,0.4)')), 'metal'),
+      soffitG: S(tex('#3a3e44', 600, grid(1, 12, 'rgba(0,0,0,0.35)')), 'satin'), glassRail: sheen({ color: 0x9fb8c8, transparent: true, opacity: 0.25, depthWrite: false, side: THREE.DoubleSide }, 'glass'), handrail: S(tex('#15171a', 100), 'satin'),
       cessna: S(tex('#f1f1ee', 300), 'paint'), cstripe: S(tex('#b3392a', 300), 'paint'), tower: S(tex('#9aa0a6', 600, grid(1, 8, 'rgba(0,0,0,0.25)')), 'satin'),
     });
     floodMat = M.flood = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }); M.star = new THREE.MeshBasicMaterial({ color: 0xfff1d0, fog: false });
@@ -73,42 +86,43 @@ export default {
   scenery({ b, root, hills, hillM }) {
     signs = [];
     const flat = (m, x0, x1, z0, z1, y = 0, s = 0.2) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
-    // ---- ground: apron, kerb, road, grass to the horizon, the runway beyond ----
-    flat('grassA', -600, 660, -600, 640, -0.02, 0.05);
-    flat('apron', -30, 96, -72, 0, 0.001, 0.08); flat('apron', -30, 0, 0, 56, 0.001, 0.08); flat('apron', 64, 96, 0, 56, 0.001, 0.08);
-    flat('kerbstone', -30, 96, 56, 66, 0.15, 0.25); b('kerbstone').box(-30, 96, 0, 0.15, 65.8, 66, 'Z', 0.5);
-    flat('road', -30, 96, 66, 90, 0.002, 0.08);
-    for (let x = -28; x < 96; x += 6) flat('apline', x, x + 3, 77.9, 78.1, 0.004);
-    flat('apline', -30, 96, 69.1, 69.25, 0.004); flat('apline', -30, 96, 86.8, 86.95, 0.004);
-    flat('runway', -400, 500, -200, -155, 0.003, 0.05);
-    for (let x = -390; x < 500; x += 30) flat('apline', x, x + 15, -177.8, -177.2, 0.005);
-    for (const x0 of [-380, 470]) for (let k = 0; k < 8; k++) flat('apline', x0 + k * 0, x0 + 22, -197 + k * 5.2, -195 + k * 5.2, 0.005);
+    // ---- ground: grass to the horizon; the model's tarmac covers the airport, ours the apron behind it and the strip to the road ----
+    flat('grassA', -600, 660, -600, 640, -0.03, 0.05);
+    flat('apron', -30, 80, -72, -4.4, 0.001, 0.08); flat('apron', -30, -16.8, -4.4, 90, 0.001, 0.08);
+    flat('apron', -3, 0, -0.5, 55, 0.002, 0.08); flat('apron', 27, 30, -0.5, 55, 0.002, 0.08); flat('apron', 0, 27, -0.5, 0, 0.002, 0.08);
+    flat('kerbstone', -3, 30, 55, 77, 0.003, 0.25); flat('road', -30, -16.8, 56, 82, 0.004, 0.08);
+    for (let z = 57; z < 82; z += 6) flat('apline', -23.5, -23.3, z, z + 3, 0.006);
     // apron markings: a yellow lead-in line from the taxiway into the hangar, stand boxes, a service road
-    flat('apyellow', 31.85, 32.15, -64, -2, 0.004); flat('apyellow', -30, 96, -70.1, -69.8, 0.004);
-    for (const x of [8, 56]) flat('apyellow', x - 0.1, x + 0.1, -22, -2, 0.004);
-    flat('apline', -30, 96, -4.2, -4.0, 0.004); for (let x = -28; x < 96; x += 4) flat('apline', x, x + 2, -6.15, -6.0, 0.004);
+    flat('apyellow', 31.85, 32.15, -64, -5, 0.004); flat('apyellow', -30, 80, -70.1, -69.8, 0.004);
+    for (const x of [8, 56]) flat('apyellow', x - 0.1, x + 0.1, -22, -5, 0.004);
+    flat('apline', -30, 80, -6.2, -6.0, 0.004);
     flat('epoxyW', HANGAR.x0, HANGAR.x1, HANGAR.z0, HANGAR.z1, 0.006, 0.08);
-    // ---- terminal: roofs, the hall's tall glass front, signs ----
-    b('canopyTop').box(FOOT.x0, FOOT.x1, H, H + 0.3, FOOT.z0, UP_Z, 'Y', 0.2); b('canopyTop').box(FOOT.x0, FOOT.x1, 2 * H, 2 * H + 0.3, UP_Z, FOOT.z1, 'Y', 0.2);
-    b('apfacade').box(FOOT.x0 - 0.1, FOOT.x1 + 0.1, 2 * H, 2 * H + 0.8, FOOT.z1 - 0.1, FOOT.z1 + 0.1, 'xXYzZ', 0.5);   // parapet over the front
-    b('apfacadeLow').box(FOOT.x0 - 0.1, FOOT.x1 + 0.1, H, H + 0.6, FOOT.z0 - 0.1, FOOT.z0 + 0.1, 'xXYzZ', 0.5);
-    b('apfacade').box(FOOT.x0 - 0.1, FOOT.x1 + 0.1, H + 0.3, 2 * H, UP_Z - 0.1, UP_Z + 0.1, 'z', 0.5);            // the step up seen from the apron
-    plane(root, 'DEPARTURES', 14, 1.4, 32, 7.6, 56.2, 0, { bg: '#1b2430', pw: 1024, ph: 104, bar: '#f0c020' });
-    plane(root, 'GATE A1', 4, 0.7, 15, 3.2, 0.3, 0, { bg: '#f0c020', fg: '#111' }); plane(root, 'GATE A2', 4, 0.7, 49, 3.2, 0.3, 0, { bg: '#f0c020', fg: '#111' });
-    plane(root, 'GATE A1', 4, 0.7, 15, 3.6, 0.12, Math.PI, { bg: '#f0c020', fg: '#111' }); plane(root, 'GATE A2', 4, 0.7, 49, 3.6, 0.12, Math.PI, { bg: '#f0c020', fg: '#111' });
-    plane(root, 'SKYLINE BAR & GRILL', 9, 0.9, 9, 3.4, 12.14, Math.PI, { bg: '#5a3b22', pw: 1024, ph: 104 }); plane(root, 'DUTY FREE', 6, 0.8, 55, 3.4, 12.14, Math.PI, { bg: '#1e2a38' });
-    plane(root, 'SECURITY', 6, 0.8, 32, 3.6, 30.14, 0, { bg: '#1e2a38', bar: '#f0c020' });
-    for (const [x, t] of [[24, 'CHECK-IN 1-6'], [40, 'CHECK-IN 7-12']]) plane(root, t, 5, 0.6, x, 3.4, 42.3, 0, { bg: '#1b2430' });
-    b('fascia').box(HALL.x0, HALL.x1, 2 * H - 0.8, 2 * H - 0.012, 37, 37.3, 'zZy', 0.5); b('fascia').box(HALL.x0, HALL.x1, 2 * H - 0.8, 2 * H - 0.012, 47, 47.3, 'zZy', 0.5);   // ceiling beams over the hall
-    for (let x = HALL.x0 + 4; x < HALL.x1; x += 4) b('glow').box(x - 0.1, x + 0.1, 2 * H - 0.03, 2 * H - 0.02, HALL.z0 + 1, HALL.z1 - 1, 'y');   // light slots
-    // ---- kerbside canopy: a timber soffit with pin lights on orange branching columns ----
-    const C = CANOPY; b('soffit').box(C.x0, C.x1, C.y, C.y + 0.35, C.z0, C.z1, 'yxXzZ', 0.5); b('canopyTop').box(C.x0 - 0.2, C.x1 + 0.2, C.y + 0.35, C.y + 0.7, C.z0, C.z1 + 0.3, 'xXYzZ', 0.3);
-    for (let i = 0; i < 160; i++) { const x = C.x0 + 1 + ((i * 37) % 157) / 157 * (C.x1 - C.x0 - 2), z = C.z0 + 1 + ((i * 61) % 97) / 97 * (C.z1 - C.z0 - 2); b('star').box(x - 0.04, x + 0.04, C.y - 0.005, C.y, z - 0.04, z + 0.04, 'y'); }
-    { const trunk = new THREE.CylinderGeometry(0.28, 0.34, 5.2, 10), branch = new THREE.CylinderGeometry(0.16, 0.24, 1, 8); const tm = new THREE.InstancedMesh(trunk, sheen({ color: 0xc4521c }, 'paint'), TREES.length), bm = new THREE.InstancedMesh(branch, tm.material, TREES.length * 4);
-      const o = new THREE.Object3D(); let k = 0;
-      TREES.forEach(([x, z], i) => { o.position.set(x, 2.6, z); o.rotation.set(0, 0, 0); o.scale.set(1, 1, 1); o.updateMatrix(); tm.setMatrixAt(i, o.matrix);
-        for (const [ax, az] of [[1, 0.35], [-1, 0.35], [0.3, 1], [-0.3, -1]]) { const tx = x + ax * 2.6, tz = z + az * 2.2, dx = tx - x, dz = tz - z, dy = C.y - 5.1, L = Math.hypot(dx, dy, dz);
-          o.position.set((x + tx) / 2, 5.1 + dy / 2, (z + tz) / 2); o.scale.set(1, L, 1); o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx / L, dy / L, dz / L)); o.updateMatrix(); bm.setMatrixAt(k++, o.matrix); } });
+    // ---- terminal: the deep roof over the building and the forecourt, the floor band, the escalator bank ----
+    const RY = 2 * H + 0.3, C = CANOPY;
+    b('canopyTop').box(C.x0, C.x1, RY, RY + 0.9, FOOT.z0 - 1, C.z1, 'xXYzZ', 0.2);
+    b('soffitG').box(C.x0, C.x1, RY - 0.01, RY, FOOT.z1, C.z1, 'y', 0.25); b('soffitG').box(C.x0, FOOT.x0, RY - 0.01, RY, FOOT.z0 - 1, FOOT.z1, 'y', 0.25); b('soffitG').box(FOOT.x1, C.x1, RY - 0.01, RY, FOOT.z0 - 1, FOOT.z1, 'y', 0.25);
+    for (let i = 0; i < 60; i++) { const x = C.x0 + 1.5 + (i % 10) * (C.x1 - C.x0 - 3) / 9, z = C.z0 + 2 + Math.floor(i / 10) * (C.z1 - C.z0 - 4) / 5; b('star').box(x - 0.15, x + 0.15, RY - 0.02, RY - 0.01, z - 0.15, z + 0.15, 'y'); }
+    // the band where the upper floor meets the glass, all round
+    b('apfacade').box(FOOT.x0 - 0.12, FOOT.x1 + 0.12, H - 0.35, H + 0.25, FOOT.z1 + 0.02, FOOT.z1 + 0.12, 'xXyYZ', 0.5);
+    b('apfacade').box(FOOT.x0 - 0.12, FOOT.x0 - 0.02, H - 0.35, H + 0.25, FOOT.z0, FOOT.z1 + 0.12, 'xyYzZ', 0.5); b('apfacade').box(FOOT.x1 + 0.02, FOOT.x1 + 0.12, H - 0.35, H + 0.25, FOOT.z0, FOOT.z1 + 0.12, 'XyYzZ', 0.5);
+    // escalators: two moving stairs and a fixed one between, glass balustrades with black handrails, the well's railing upstairs
+    { const S = STAIR, run = (x, y0, y1) => { b('glassRail').quad([x, y0, S.z1], [x, y1, S.z0 + 2.1], [x, y1 + 1.0, S.z0 + 2.1], [x, y0 + 1.0, S.z1], [1, 0, 0], 1);
+        b('handrail').box(x - 0.05, x + 0.05, y0 + 1.0, y0 + 1.08, S.z1 - 0.3, S.z1, 'xXyYzZ', 1);
+        const L = Math.hypot(S.z1 - S.z0 - 2.1, y1 - y0), m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, L), sheen({ color: 0x15171a }, 'satin')); m.position.set(x, (y0 + y1) / 2 + 1.04, (S.z1 + S.z0 + 2.1) / 2); m.rotation.x = Math.atan2(y1 - y0, S.z1 - S.z0 - 2.1); root.add(m); };
+      for (const x of [S.x0 + 0.05, S.x0 + 1.6, S.x1 - 1.6, S.x1 - 0.05]) run(x, 0, H);
+      for (const x of [S.x0 - 0.04, S.x1 + 0.04]) { b('glassRail').quad([x, H, S.z0 + 2.1], [x, H, S.z1], [x, H + 1.1, S.z1], [x, H + 1.1, S.z0 + 2.1], [1, 0, 0], 1); b('handrail').box(x - 0.04, x + 0.04, H + 1.05, H + 1.12, S.z0 + 2.1, S.z1, 'xXyYzZ', 1); }
+      b('steel').box(S.x0 - 0.1, S.x1 + 0.1, H - 0.6, H, S.z0 + 2.0, S.z0 + 2.1, 'zZy', 0.5); }
+    plane(root, 'DEPARTURES', 16, 1.6, 13.5, RY + 0.45, C.z1 + 0.02, 0, { bg: '#1b2430', pw: 1024, ph: 104, bar: '#f0c020' });
+    plane(root, 'CHECK-IN 1-6', 5, 0.6, 4.5, 3.4, 16.1, 0, { bg: '#1b2430' }); plane(root, 'CHECK-IN 7-12', 5, 0.6, 22.5, 3.4, 16.1, 0, { bg: '#1b2430' });
+    plane(root, 'GATES 1-2  \u2191', 6, 0.7, 13.5, 5.2, 16.1, 0, { bg: '#f0c020', fg: '#111' });
+    plane(root, 'GATE 1', 3, 0.6, 0.12, H + 3.2, 29.8, Math.PI / 2, { bg: '#f0c020', fg: '#111' }); plane(root, 'GATE 2', 3, 0.6, 26.88, H + 3.2, 29.8, -Math.PI / 2, { bg: '#f0c020', fg: '#111' });
+    plane(root, 'SKYLINE CAFE', 7, 0.8, 7, H + 3.4, 54.85, Math.PI, { bg: '#5a3b22', pw: 1024, ph: 104 }); plane(root, 'VIP', 2, 0.6, 9.02, H + 2.6, 3.5, Math.PI / 2, { bg: '#1e2a38' });
+    // ---- the forecourt's Y-shaped columns ----
+    { const trunk = new THREE.CylinderGeometry(0.32, 0.4, 7.5, 12), branch = new THREE.CylinderGeometry(0.18, 0.28, 1, 10), wm = sheen({ color: 0xeceeef }, 'paint');
+      const tm = new THREE.InstancedMesh(trunk, wm, TREES.length), bm = new THREE.InstancedMesh(branch, wm, TREES.length * 2); const o = new THREE.Object3D(); let k = 0;
+      TREES.forEach(([x, z], i) => { o.position.set(x, 3.75, z); o.rotation.set(0, 0, 0); o.scale.set(1, 1, 1); o.updateMatrix(); tm.setMatrixAt(i, o.matrix);
+        for (const s2 of [-1, 1]) { const tx = x + s2 * 3.2, tz = z - 0.5, dx = tx - x, dz = tz - z, dy = CANOPY.y - 7.4, L = Math.hypot(dx, dy, dz);
+          o.position.set((x + tx) / 2, 7.4 + dy / 2, (z + tz) / 2); o.scale.set(1, L, 1); o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx / L, dy / L, dz / L)); o.updateMatrix(); bm.setMatrixAt(k++, o.matrix); } });
       tm.castShadow = bm.castShadow = true; root.add(tm, bm); }
     // ---- hangar: clad shell, a glass band over the door, white trusses inside, light strips ----
     const Hg = HANGAR, t = 0.3;
@@ -148,10 +162,8 @@ export default {
       for (const [wx, wz] of [[-1.1, 0.2], [1.1, 0.2], [0, 2.4]]) bx(0.16, 0.5, 0.5, wx, 0.25, wz, md);
       g.position.set(x, 0, z); g.rotation.y = yaw; root.add(g);
     }
-    // ---- apron floodlights, the control tower and a far terminal on the horizon ----
+    // ---- apron floodlights (the control tower is the model's) ----
     for (const [x, z] of [[-10, -20], [74, -20], [-10, -60], [74, -60]]) { b('gear').box(x - 0.2, x + 0.2, 0, 18, z - 0.2, z + 0.2, 'xXzZ', 1); b('fascia').box(x - 1.5, x + 1.5, 18, 19, z - 0.4, z + 0.4, 'xXyYzZ', 1); b('flood').box(x - 1.4, x + 1.4, 17.98, 18, z - 0.35, z + 0.35, 'y', 1); }
-    b('tower').box(118, 124, 0, 38, -120, -114, 'xXzZ', 0.3); b('glass').box(116.5, 125.5, 38, 42.5, -121.5, -112.5, 'xXzZ', 1); b('fascia').box(116, 126, 42.5, 43.4, -122, -112, 'xXyYzZ', 0.5);
-    b('apfacadeLow').box(-180, -90, 0, 14, -110, -80, 'xXYzZ', 0.1); b('glass').box(-180, -90, 2, 12, -80.02, -80, 'Z', 1);
     for (const [x, z, r, h] of [[-220, -320, 140, 30], [260, -300, 160, 36], [80, 320, 170, 32], [-260, 160, 130, 26]]) { const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7, 1), hillM); m.position.set(x, h / 2 - 3, z); hills.add(m); }
   },
 };

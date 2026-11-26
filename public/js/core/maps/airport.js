@@ -1,16 +1,18 @@
-// AIRPORT: Operation TAILWIND. An armed crew holds a regional terminal and a grounded jet in the maintenance hangar.
-// Curbside under a timber canopy on branching columns -> double-height departures hall with check-in islands and a glass
-// gallery above -> security lanes -> airside concourse with a bar, duty free and gate seating behind a glass wall to the
-// apron -> across the apron into a glass-banded hangar where the jet stands on its airstairs. Bomb always in the jet's
+// AIRPORT: Operation TAILWIND. An armed crew holds a small regional terminal and a grounded jet in the maintenance hangar.
+// The terminal follows "Airport_and Interior" by Pravin_9271 (CC BY 4.0) at twice its size: a two-storey glass box under a deep
+// cantilevered roof that shelters the forecourt on Y-shaped columns. Ground floor: the check-in hall, with the escalator bank,
+// baggage room and security office behind the desks. Upper floor: two gate lounges either side of a glazed concourse, the cafe
+// over the entrance, the VIP lounge at the back. Around it, the model's apron (airliners, jet bridges, the pier, control tower,
+// radar towers) is scenery from tools/airport_kit.py; what stands in the yard is solid (./airport-scene.js).
+// Behind the terminal, across the apron, the maintenance hangar where the jet stands on its airstairs. Bomb always in the jet's
 // cargo hold. The high-value target waits in the VIP lounge upstairs and runs for the jet when he hears the squad.
 // Generic engine: ../level.js.
 import { park, carBox } from './cars.js';
-export const H = 4.6, DOOR_H = 2.1;
-export const FOOT = { x0: 0, z0: 0, x1: 64, z1: 56 };
-export const UP_Z = 22;                         // the upper floor covers the building from here to the front
-export const HALL = { x0: 12, x1: 52, z0: 30, z1: 56 };   // double height: no upper floor over it
-export const YARD = { x0: -30, z0: -72, x1: 96, z1: 90 };
-export const STAIR = { x0: 1, x1: 2.5, z0: 23, z1: 28.6 };
+import { SCENE_BOXES } from './airport-scene.js';
+export const H = 7.5, DOOR_H = 2.4;
+export const FOOT = { x0: 0, z0: 0, x1: 27, z1: 55 };
+export const YARD = { x0: -30, z0: -72, x1: 80, z1: 90 };
+export const STAIR = { x0: 10.5, x1: 16.5, z0: 2, z1: 16 };      // the escalator bank: up from the hall (z 16) to the back (z 2)
 export const HANGAR = { x0: 6, x1: 58, z0: -66, z1: -24, h: 16, door: [12, 52], doorH: 10 };
 // the jet: a BAe 146 model (models/jet/bae146.glb, made by tools/jet_glb.py at scale JS), nose to the hangar door. The model's
 // own coordinates (metres before scaling, x across, z along with the nose toward +z) are placed at x = JX, z = JZ.
@@ -21,69 +23,61 @@ export const CAB = 1.615 * JS, CF = CAB / H, HOLD = 1.1;
 export const JET = { cx: JX, w: 2.05, skin: 2.35, nose: mz(13.04), tail: mz(-12.81), c0: JZ - 8.4, c1: JZ + 11.5, door: [mz(8.5), mz(9.1)], hatch: [mz(-4.0), mz(-2.6)], roof: CAB + 2.85,
   seats: [JZ - 7.19, JZ + 9.59], left: [JX - 2.0, JX - 0.6], right: [JX + 0.4, JX + 1.95] };
 export const AIRSTAIR = { x0: JX + JET.skin, x1: JX + JET.skin + 4, z0: JET.door[0], z1: JET.door[1] };   // stair truck at the door, down the left side
-export const BREAKER = { x: 58, y: 1.4, z: 47.87 };
-export const SPAWN = [[28, 73], [29.5, 73], [31, 73], [32.5, 73]];
-export const EXIT = { x0: 22, x1: 38, z0: 68, z1: 82 };
-export const CANOPY = { x0: -8, x1: 72, z0: 56, z1: 67, y: 9 };
-export const TREES = [-2, 10, 22, 34, 46, 58, 70].map(x => [x, 63]);    // branching columns along the kerb
+export const BREAKER = { x: 26.87, y: 1.4, z: 4 };
+export const SPAWN = [[-15, 64], [-15, 65.5], [-15, 67], [-15, 68.5]];
+export const EXIT = { x0: -24, x1: -8, z0: 58, z1: 76 };
+export const CANOPY = { x0: -3, x1: 30, z0: 55, z1: 75, y: 2 * H + 0.3 };   // the roof runs on over the forecourt
+export const TREES = [[2, 72], [13.5, 72], [25, 72]];                       // Y-shaped columns holding its front edge
 
-// [floor, name, x0, z0, x1, z1, floor finish]; finish 'void' = no floor (the hall's double height)
+// [floor, name, x0, z0, x1, z1, floor finish]
 export const ROOMS = [
-  [0, 'Gate concourse', 0, 0, 64, 12, 'tile'], [0, 'Bar & grill', 0, 12, 18, 22, 'wood'], [0, 'Airside hall', 18, 12, 46, 22, 'tile'], [0, 'Duty free', 46, 12, 64, 22, 'tile'],
-  [0, 'Staff stairs', 0, 22, 12, 30, 'tile'], [0, 'Security', 12, 22, 52, 30, 'tile'], [0, 'Staff room', 52, 22, 64, 30, 'carpet'],
-  [0, 'Departures hall', 12, 30, 52, 56, 'hallstone'],
-  [0, 'Baggage office', 0, 30, 12, 42, 'tile'], [0, 'Restrooms', 0, 42, 12, 56, 'tile'],
-  [0, 'Airport police', 52, 30, 64, 42, 'tile'], [0, 'Electrical', 52, 42, 64, 48, 'tile'], [0, 'Airline office', 52, 48, 64, 56, 'carpet'],
-  [1, 'Stair landing', 0, 22, 12, 30, 'tile'], [1, 'Upper gallery', 12, 26, 52, 30, 'carpet'], [1, 'Admin offices', 12, 22, 32, 26, 'carpet'], [1, 'Security control', 32, 22, 52, 26, 'carpet'],
-  [1, 'Ops room', 52, 22, 64, 30, 'carpet'], [1, 'VIP lounge', 0, 30, 12, 56, 'carpet'], [1, 'Airline ops', 52, 30, 64, 56, 'carpet'], [1, 'hall void', 12, 30, 52, 56, 'void'],
+  [0, 'Check-in hall', 0, 16, 27, 55, 'hallstone'], [0, 'Baggage room', 0, 0, 9, 16, 'tile'], [0, 'Escalator hall', 9, 0, 18, 16, 'tile'],
+  [0, 'Security office', 18, 0, 27, 8, 'tile'], [0, 'Staff room', 18, 8, 27, 16, 'carpet'],
+  [1, 'VIP lounge', 0, 0, 9, 9, 'carpet'], [1, 'Landing', 9, 0, 27, 16, 'tile'], [1, 'Landing west', 0, 9, 9, 16, 'tile'],
+  [1, 'Gate lounge west', 0, 16, 10, 44, 'carpet'], [1, 'Concourse', 10, 16, 17, 44, 'tile'], [1, 'Gate lounge east', 17, 16, 27, 44, 'carpet'], [1, 'Cafe', 0, 44, 27, 55, 'wood'],
 ];
 // [floor, x0, z0, x1, z1, kind, 'ext' | 'hidden']
 export const OPENINGS = [
-  [0, 2, 12, 16, 12, 'gap'], [0, 19, 12, 45, 12, 'gap'], [0, 48, 12, 62, 12, 'gap'],                 // bar, airside hall, duty free open onto the concourse
-  [0, 14, 0, 16, 0, 'door', 'ext'], [0, 48, 0, 50, 0, 'door', 'ext'],                                // gate doors to the apron
-  [0, 20, 22, 44, 22, 'gap'],                                                                         // security exits airside
-  [0, 16, 30, 19, 30, 'gap'], [0, 24, 30, 27, 30, 'gap'], [0, 33, 30, 36, 30, 'gap'], [0, 41, 30, 44, 30, 'gap'],   // four screening lanes
-  [0, 20, 56, 22, 56, 'door', 'ext'], [0, 31, 56, 33, 56, 'door', 'ext'], [0, 42, 56, 44, 56, 'door', 'ext'],      // hall entrances from the kerb
-  [0, 12, 35, 12, 36, 'door'], [0, 12, 48, 12, 49, 'door'], [0, 52, 36, 52, 37, 'door'], [0, 52, 51, 52, 52, 'door'], [0, 54, 42, 55, 42, 'door'],
-  [0, 60, 56, 61, 56, 'door', 'ext'], [0, 0, 25, 0, 26, 'door', 'ext'],
-  [0, 12, 27, 12, 28, 'door'], [0, 5, 22, 6, 22, 'door'], [0, 52, 24, 52, 25, 'door'], [0, 58, 22, 59, 22, 'door'],
-  [1, 8, 30, 9, 30, 'door'], [1, 12, 27, 12, 28, 'door'], [1, 22, 26, 23, 26, 'door'], [1, 41, 26, 42, 26, 'door'], [1, 32, 23.5, 32, 24.5, 'door'],
-  [1, 52, 27, 52, 28, 'door'], [1, 56, 30, 57, 30, 'door'],
+  [0, 9.5, 16, 17.5, 16, 'gap'],                                                                       // the escalator hall opens onto the check-in hall
+  [0, 4, 16, 5, 16, 'door'], [0, 9, 6, 9, 7, 'door'], [0, 18, 3, 18, 4, 'door'], [0, 18, 12, 18, 13, 'door'], [0, 21, 8, 22, 8, 'door'], [0, 23, 16, 24, 16, 'door'],
+  [0, 8, 55, 10, 55, 'door', 'ext'], [0, 12.5, 55, 14.5, 55, 'door', 'ext'], [0, 17, 55, 19, 55, 'door', 'ext'],   // the entrance from the forecourt
+  [0, 2, 0, 4, 0, 'door', 'ext'], [0, 12.5, 0, 14.5, 0, 'door', 'ext'], [0, 24, 0, 25, 0, 'door', 'ext'],            // airside doors to the apron
+  [0, 0, 40, 0, 42, 'door', 'ext'], [0, 27, 36, 27, 38, 'door', 'ext'],                                             // side doors
+  [1, 9, 3, 9, 4, 'door'], [1, 4, 9, 5, 9, 'door'], [1, 9, 9.5, 9, 15.5, 'gap'],
+  [1, 1, 16, 9, 16, 'gap'], [1, 18, 16, 26, 16, 'gap'],
+  [1, 10, 29, 10, 31, 'gap'], [1, 17, 29, 17, 31, 'gap'],
+  [1, 10, 44, 17, 44, 'gap'], [1, 2, 44, 8, 44, 'gap'], [1, 19, 44, 25, 44, 'gap'],
 ];
 export const GLASS = [
-  [0, 12, 56, 20, 56], [0, 22, 56, 31, 56], [0, 33, 56, 42, 56], [0, 44, 56, 52, 56],               // hall front
-  [0, 0, 0, 14, 0], [0, 16, 0, 48, 0], [0, 50, 0, 64, 0],                                            // concourse window wall
-  [1, 12, 56, 52, 56], [1, 12, 30, 52, 30], [1, 12, 31, 12, 55], [1, 52, 31, 52, 55],                 // the hall's upper glass: front, gallery, VIP lounge and airline ops look down
+  [0, 0, 55, 8, 55], [0, 10, 55, 12.5, 55], [0, 14.5, 55, 17, 55], [0, 19, 55, 27, 55],            // the glass front
+  [0, 27, 20, 27, 36], [0, 27, 38, 27, 52], [0, 0, 20, 0, 40], [0, 0, 42, 0, 52],                  // side glazing over the apron and the road
+  [1, 0, 55, 27, 55], [1, 27, 16, 27, 54], [1, 0, 16, 0, 54],                                       // upstairs: glazed all round but the back
+  [1, 10, 16, 17, 16],                                                                               // over the escalator well
+  [1, 10, 17, 10, 29], [1, 10, 31, 10, 43], [1, 17, 17, 17, 29], [1, 17, 31, 17, 43],              // the concourse's glass partitions
 ];
 
 // [floor, x0, z0, x1, z1, height, kind, face]
 const F = [];
-for (const x of [2, 21, 35, 53]) F.push([0, x, 4, x + 8, 4.6, 0.85, 'seats', '-z'], [0, x, 4.6, x + 8, 5.2, 0.85, 'seats', '+z'], [0, x, 7.6, x + 8, 8.2, 0.85, 'seats', '-z']);
-F.push([0, 13, 1.2, 17, 2, 1.05, 'counter', '+z'], [0, 47, 1.2, 51, 2, 1.05, 'counter', '+z']);                       // gate podiums
-F.push([0, 3, 19, 15, 20, 1.1, 'counter', '-z'], [0, 3, 21.4, 15, 21.9, 1.9, 'shelf', '-z'],                           // bar
-  ...[[3.4, 13.6], [8.4, 13.6], [13.4, 13.6], [5.9, 16.2], [10.9, 16.2]].map(([x, z]) => [0, x, z, x + 1.2, z + 1.2, 0.76, 'table']));
-F.push([0, 24, 15, 28, 17, 1.1, 'counter', '+z'], [0, 36, 15, 40, 17, 1.1, 'counter', '+z'], [0, 30, 19.6, 34, 20.2, 0.85, 'seats', '-z']);   // kiosks
-F.push([0, 48, 14, 62, 14.6, 1.6, 'shelf', '+z'], [0, 48, 17, 54, 17.6, 1.6, 'shelf', '+z'], [0, 56, 20.5, 62, 21.4, 1.0, 'counter', '-z']);  // duty free
-for (const x of [16, 24, 33, 41]) F.push([0, x + 0.2, 23.4, x + 1.0, 28.6, 1.2, 'xray', '+x']);                         // x-ray belts beside each lane
-F.push([0, 46, 23, 50, 24.2, 0.76, 'table'], [0, 13, 23, 15, 24.2, 0.76, 'table']);
-for (const [x0, x1] of [[18, 30], [34, 46]]) for (const z of [38, 46]) F.push([0, x0, z, x1, z + 1.2, 1.05, 'counter', '+z']);   // check-in islands
-for (const [x, z] of [[22, 42.6], [42, 42.6], [22, 51], [42, 51], [32, 34.4]]) F.push([0, x - 0.45, z - 0.45, x + 0.45, z + 0.45, 2 * H, 'column']);
-F.push([0, 14, 53, 18, 53.6, 0.85, 'seats', '+z'], [0, 46, 53, 50, 53.6, 0.85, 'seats', '+z']);
-F.push([0, 0.3, 23, 0.8, 29.5, 1.9, 'shelf', '+x'], [0, 8, 27, 11, 28.2, 0.76, 'table']);                                // staff stairs: lockers
-F.push([0, 0.3, 31, 0.9, 41, 1.9, 'shelf', '+x'], [0, 4, 35, 7, 36.2, 0.76, 'table'], [0, 9, 31, 11.6, 32.4, 0.9, 'crate'], [0, 2, 39.6, 4.4, 41.4, 0.9, 'crate']);   // baggage office: lost bags
-F.push([0, 0.3, 44, 1, 54, 0.9, 'counter', '+x']);                                                                        // restrooms: basins
-F.push([0, 56, 32, 60, 33.4, 0.76, 'table'], [0, 63, 31, 63.7, 35, 1.9, 'cabinet', '-x'], [0, 58, 40.6, 62, 41.6, 1.2, 'console', '-z']);   // police
-F.push([0, 56, 47.4, 62, 47.9, 1.9, 'cabinet', '-z'], [0, 63.2, 43, 63.8, 46, 1.9, 'cabinet', '-x']);                  // electrical
-F.push([0, 55, 50, 59, 51.2, 0.76, 'table'], [0, 61, 53, 63.7, 55.6, 1.2, 'console', '-x']);                           // airline office
-F.push([0, 56, 24, 60, 25.2, 0.76, 'table'], [0, 61, 28.6, 63.8, 29.6, 0.8, 'sofa', '-z']);                            // staff room
-F.push([1, 7, 23, 11, 24.2, 0.9, 'cabinet', '+z'],
-  [1, 14, 22.4, 18, 23.4, 0.76, 'table'], [1, 25, 22.4, 29, 23.4, 0.76, 'table'], [1, 34, 22.3, 50, 23, 1.2, 'console', '+z'], [1, 38, 24.2, 42, 25.2, 0.76, 'table'],
-  [1, 55, 22.3, 63.7, 23, 1.2, 'console', '+z'], [1, 57, 25.6, 60, 26.8, 0.76, 'table'],
-  [1, 2, 34, 4.8, 34.9, 0.8, 'sofa', '+z'], [1, 2.2, 36, 4.6, 37.2, 0.45, 'table'], [1, 7, 38, 9.8, 38.9, 0.8, 'sofa', '+z'], [1, 7.2, 40, 9.6, 41.2, 0.45, 'table'],
-  [1, 0.3, 44, 1, 51, 1.1, 'counter', '+x'], [1, 3, 53, 7, 54.2, 0.76, 'table'], [1, 9, 46, 11.4, 47, 0.8, 'sofa', '-x'],
-  [1, 56, 33, 60, 34.2, 0.76, 'table'], [1, 63.2, 38, 63.8, 46, 1.4, 'console', '-x'], [1, 56, 48, 60, 49.2, 0.76, 'table']);
+// check-in hall: desks along the back, two islands, kiosks, seat rows, benches by the doors, four columns
+F.push([0, 1, 16.3, 8, 17.3, 1.05, 'counter', '+z'], [0, 19, 16.3, 26, 17.3, 1.05, 'counter', '+z']);
+F.push([0, 4, 26, 11, 27.2, 1.05, 'counter', '+z'], [0, 16, 26, 23, 27.2, 1.05, 'counter', '+z']);
+for (const z of [29, 33, 44, 48]) F.push([0, 26.1, z, 26.8, z + 1, 1.6, 'console', '-x']);
+for (const [x0, x1] of [[3, 10], [17, 24]]) F.push([0, x0, 38, x1, 38.6, 0.85, 'seats', '-z'], [0, x0, 38.6, x1, 39.2, 0.85, 'seats', '+z']);
+F.push([0, 1, 52.8, 7, 53.4, 0.85, 'seats', '-z'], [0, 20, 52.8, 26, 53.4, 0.85, 'seats', '-z']);
+for (const [x, z] of [[9, 33], [18, 33], [9, 46], [18, 46]]) F.push([0, x - 0.4, z - 0.4, x + 0.4, z + 0.4, 2 * H, 'column']);
+// behind the desks: bag belt and lost bags, the security office, the staff room
+F.push([0, 1.5, 3, 2.5, 14, 1.0, 'xray', '+x'], [0, 5, 2, 7.4, 3.6, 0.9, 'crate'], [0, 6, 11, 8.4, 12.4, 0.9, 'crate'], [0, 0.3, 0.6, 1.2, 2, 1.9, 'shelf', '+x']);
+F.push([0, 20, 0.3, 26, 1, 1.2, 'console', '+z'], [0, 21, 4, 24, 5.2, 0.76, 'table'], [0, 26.2, 5.5, 26.8, 7.6, 1.9, 'cabinet', '-x']);
+F.push([0, 20, 11, 23, 12.2, 0.76, 'table'], [0, 24, 14.8, 26.8, 15.6, 0.8, 'sofa', '-z'], [0, 18.4, 8.6, 19.2, 10.6, 1.9, 'shelf', '+x']);
+// upstairs: lounge seat rows, a gate desk each, the concourse info desk, the cafe, the VIP lounge
+for (const z of [20, 24.5, 33.5, 38]) for (const [x0, x1] of [[1.5, 8.5], [18.5, 25.5]]) F.push([1, x0, z, x1, z + 0.6, 0.85, 'seats', '-z'], [1, x0, z + 0.6, x1, z + 1.2, 0.85, 'seats', '+z']);
+F.push([1, 1, 29.2, 4, 30.4, 1.05, 'counter', '+x'], [1, 23, 29.2, 26, 30.4, 1.05, 'counter', '-x'], [1, 12, 35, 15, 36.2, 1.05, 'counter', '+z']);
+F.push([1, 2, 53, 12, 54, 1.1, 'counter', '-z'], [1, 2, 54.3, 12, 54.8, 1.9, 'shelf', '-z']);
+for (const [x, z] of [[15, 47], [19, 47], [23, 47], [15, 51], [19, 51], [23, 51], [4, 47.5], [8, 47.5]]) F.push([1, x, z, x + 1.2, z + 1.2, 0.76, 'table']);
+F.push([1, 1, 2, 3.8, 2.9, 0.8, 'sofa', '+z'], [1, 1.2, 4, 3.6, 5.2, 0.45, 'table'], [1, 5.5, 1, 8.3, 1.9, 0.8, 'sofa', '+z'], [1, 0.3, 6, 1, 8.6, 1.1, 'counter', '+x']);
+F.push([1, 20, 1, 26, 1.8, 1.2, 'console', '+z'], [1, 2, 11, 5, 12.2, 0.76, 'table']);
 // apron: baggage carts and a tug for cover on the way to the hangar
-for (const [x, z] of [[10, -10], [20, -16], [46, -9], [52, -17], [30, -14]]) F.push([0, x, z, x + 2.4, z + 1.4, 1.2, 'crate']);
+for (const [x, z] of [[6, -8], [20, -14], [34, -9], [46, -16], [-8, -10]]) F.push([0, x, z, x + 2.4, z + 1.4, 1.2, 'crate']);
 // hangar: workbenches, tool chests, spare parts on pallets
 F.push([0, 6.4, -62, 7.4, -50, 0.95, 'counter', '+x'], [0, 56.6, -62, 57.6, -50, 0.95, 'counter', '-x'], [0, 6.4, -44, 7.4, -42, 1.1, 'cabinet', '+x'], [0, 56.6, -40, 57.6, -38, 1.1, 'cabinet', '-x'],
   [0, 20, -64, 26, -62.6, 1.9, 'shelf', '+z'], [0, 38, -64, 44, -62.6, 1.9, 'shelf', '+z'], [0, 18, -36, 20.4, -34.6, 1.0, 'crate'], [0, 44, -30, 46.4, -28.6, 1.0, 'crate']);
@@ -92,28 +86,26 @@ export const FURNITURE = F;
 export const GAPLANES = [[14, -50, 0.3], [50, -50, -0.3]];   // two light aircraft parked in the hangar: [x, z, yaw]; a box under each for collision
 
 export const SUSPECT_SPOTS = [
-  [0, 6, 9.5], [0, 26, 9.5], [0, 40, 2.6], [0, 60, 9.5], [0, 30, 2.6], [0, 10, 15], [0, 16.5, 19], [0, 22, 18], [0, 43, 19], [0, 50, 16], [0, 60, 19],
-  [0, 14, 26], [0, 30, 28], [0, 48, 26.5], [0, 6, 24], [0, 58, 27], [0, 16, 34], [0, 30, 43], [0, 48, 52], [0, 26, 52], [0, 37, 34],
-  [0, 6, 38], [0, 6, 52], [0, 58, 36], [0, 60, 45], [0, 58, 53],
-  [0, 20, -8], [0, 44, -14], [0, 32, -20], [0, 10, -40], [0, 54, -44], [0, 22, -58], [0, 44, -58], [0, 26, -30], [0, 40, -34],
-  [1, 8, 25], [1, 20, 28], [1, 44, 28], [1, 16, 24.6], [1, 28, 24.6], [1, 36, 24.6], [1, 48, 24.6], [1, 58, 28], [1, 4, 40], [1, 6, 50], [1, 58, 40], [1, 60, 52],
+  [0, 4, 20], [0, 22, 20], [0, 13.5, 22], [0, 2.5, 30], [0, 24.5, 30], [0, 13.5, 32], [0, 6, 42], [0, 21, 42], [0, 13.5, 50], [0, 3, 50], [0, 24, 50],
+  [0, 4, 8], [0, 7, 14], [0, 10, 2], [0, 17, 2], [0, 22, 6], [0, 24, 12], [0, 20, 14.6],
+  [0, 10, -6], [0, 30, -12], [0, -10, -14], [0, 10, -40], [0, 54, -44], [0, 22, -58], [0, 44, -58], [0, 26, -30], [0, 40, -34], [0, -6, 30], [0, 32, 40], [0, 8, 64], [0, 20, 64],
+  [1, 6, 12], [1, 20, 6], [1, 24, 12], [1, 5, 22.6], [1, 22, 22.6], [1, 5, 36], [1, 22, 36], [1, 13.5, 20], [1, 13.5, 40], [1, 6, 50], [1, 21, 50], [1, 13.5, 48], [1, 3, 41.5], [1, 24, 41.5],
   [CF, JX - 0.25, -36], [CF, JX - 0.25, -46],
 ];
-export const CIV_SPOTS = [[0, 3, 6], [0, 60, 6], [0, 5, 17.6], [0, 52, 19], [0, 28, 26.5], [0, 20, 42.6], [0, 44, 50], [0, 4, 33.6], [0, 60, 38], [0, 56, 53.6],
-  [1, 22, 24.6], [1, 4, 52], [1, 60, 44]];
+export const CIV_SPOTS = [[0, 2, 18.5], [0, 25, 18.5], [0, 6.5, 37.4], [0, 20.5, 40.4], [0, 3, 54.1], [0, 4, 6], [0, 22, 11], [0, 25, 3],
+  [1, 4, 26], [1, 22, 26], [1, 13.5, 30], [1, 18, 49.5], [1, 6, 49.5], [1, 3, 7]];
 export const CIV_MUST = [[CF, JX - 0.25, -41]];         // a passenger kept in the jet's cabin
 export const SUS_MUST = [[CF, JX - 0.8, -31.3]];       // and a gunman at the cabin door
-export const BOMB_SPOTS = [[0, 9, 19.5, 1.1], [0, 59, 20.95, 1.0], [0, 24, 38.6, 1.05], [0, 40, 46.6, 1.05], [0, 5.5, 35.6, 0.76], [0, 58, 32.7, 0.76],
-  [0, 15, 1.6, 1.05], [0, 6.9, -56, 0.95], [1, 40, 24.7, 0.76], [1, 5, 53.6, 0.76], [0, 57, 50.6, 0.76]];
+export const BOMB_SPOTS = [[0, 4.5, 16.8, 1.05], [0, 22.5, 26.6, 1.05], [0, 22.5, 4.6, 0.76], [0, 6.2, 2.8, 0.9], [0, 21.5, 11.6, 0.76],
+  [1, 13.5, 35.6, 1.05], [1, 7, 53.5, 1.1], [1, 2.4, 4.6, 0.45], [1, 24.5, 29.8, 1.05], [0, 6.9, -56, 0.95]];
 export const BOMB_MUST = [0, JX - 1.6, (JET.hatch[0] + JET.hatch[1]) / 2, HOLD];      // always one in the cargo hold, just inside the open hatch
-export const HVT = { at: [1, 4, 47], guards: [[1, 7, 43], [1, 8, 52]], flee: [CF, JX - 0.25, JZ - 7.8] };
+export const HVT = { at: [1, 4, 6.5], guards: [[1, 7, 6], [1, 6, 13]], flee: [CF, JX - 0.25, JZ - 7.8] };
 
 // ---- shape helpers ----
 export const inFoot = (x, z) => x >= FOOT.x0 && x <= FOOT.x1 && z >= FOOT.z0 && z <= FOOT.z1;
 export const inStair = (x, z) => x > STAIR.x0 && x < STAIR.x1 && z > STAIR.z0 && z < STAIR.z1;
-const inHall = (x, z) => x > HALL.x0 && x < HALL.x1 && z > HALL.z0 && z < HALL.z1;
-const upHere = (x, z) => inFoot(x, z) && z >= UP_Z && !inHall(x, z);
 export const inHangar = (x, z) => x > HANGAR.x0 && x < HANGAR.x1 && z > HANGAR.z0 && z < HANGAR.z1;
+const inCanopy = (x, z) => x > CANOPY.x0 && x < CANOPY.x1 && z > CANOPY.z0 && z < CANOPY.z1;
 const doorZ = z => z > JET.door[0] && z < JET.door[1];
 export const inJet = (x, z) => z > JET.c0 && z < JET.c1 && x > JX - JET.w && (x < JX + JET.w || (doorZ(z) && x < AIRSTAIR.x0));
 const inAir = (x, z) => x >= AIRSTAIR.x0 && x < AIRSTAIR.x1 && z > AIRSTAIR.z0 && z < AIRSTAIR.z1;
@@ -121,7 +113,7 @@ const stairT = z => (STAIR.z1 - z) / (STAIR.z1 - STAIR.z0), stairUp = z => Math.
 export const airY = x => CAB * (AIRSTAIR.x1 - x) / (AIRSTAIR.x1 - AIRSTAIR.x0);
 // Every walkable surface over (x, z) as [height, nav layer]. Layers: 0 ground, 1 upper floor (and the jet's cabin).
 function surfaces(x, z) {
-  if (inFoot(x, z)) { if (inStair(x, z)) return stairT(z) > 0.85 ? [[H, 1]] : [[stairUp(z), 0]]; return upHere(x, z) ? [[0, 0], [H, 1]] : [[0, 0]]; }
+  if (inFoot(x, z)) { if (inStair(x, z)) return stairT(z) > 0.85 ? [[H, 1]] : [[stairUp(z), 0]]; return [[0, 0], [H, 1]]; }
   if (inJet(x, z)) return [[CAB, 1]];
   if (inAir(x, z)) return [[airY(x), 0]];
   return [[0, 0]];
@@ -129,13 +121,13 @@ function surfaces(x, z) {
 function floorRay(ox, oy, oz, dx, dy, dz, best) {
   if (Math.abs(dy) > 1e-9) for (const py of [0, H, 2 * H]) {
     const t = (py - oy) / dy; if (t <= 1e-6 || t >= best) continue; const x = ox + dx * t, z = oz + dz * t;
-    if (py === 0 || (py === H && ((upHere(x, z) && !inStair(x, z)) || (inFoot(x, z) && z < UP_Z))) || (py === 2 * H && inFoot(x, z) && z >= UP_Z)) best = t;
+    if (py === 0 || (py === H && inFoot(x, z) && !inStair(x, z)) || (py === 2 * H && inFoot(x, z))) best = t;
   }
   return best;
 }
 function solidFloor(x, y, z) {
   if (y < 0) return true;
-  if (inFoot(x, z)) { if (z < UP_Z) return y > H - 0.2 && y < H + 0.3; if (inHall(x, z)) return y > 2 * H - 0.2 && y < 2 * H + 0.3; return !inStair(x, z) && ((y < H && y > H - 0.2) || (y < 2 * H + 0.3 && y > 2 * H - 0.2)); }
+  if (inFoot(x, z)) return (!inStair(x, z) && y < H && y > H - 0.2) || (y < 2 * H + 0.3 && y > 2 * H - 0.2);
   if (inAir(x, z)) return y < airY(x);
   return false;
 }
@@ -145,11 +137,11 @@ function floorAt(x, z, y) {
   if (inAir(x, z)) return 'metal';
   return 'concrete';
 }
-export const PARKED = park([[4, 70.5, Math.PI / 2], [10, 70.5, Math.PI / 2], [46, 70.5, -Math.PI / 2], [56, 70.5, Math.PI / 2], [62, 77.5, -Math.PI / 2], [16, 77.5, Math.PI / 2], [-4, 77.5, -Math.PI / 2], [40, 77.5, Math.PI / 2]], 4);
-// Solids that are not room walls: the hangar shell, the jet (fuselage, floor, wings), the light aircraft, the canopy columns and the parked cars.
+export const PARKED = park([[-26.5, 10, 0], [-26.5, 18, 0], [-26.5, 34, Math.PI], [-26.5, 42, 0], [-26.5, 50, Math.PI], [-26.5, 80, 0]], 4);
+// Solids that are not room walls: the hangar shell, the jet (fuselage, floor, wings), the light aircraft, the forecourt columns, the
+// railings round the escalator well, the scenery standing in the yard and the parked cars.
 function extra({ boxes }) {
   const box = (kind, x0, x1, y0, y1, z0, z1, o = {}) => boxes.push(Object.assign({ f: 0, kind, x0, x1, y0, y1, z0, z1 }, o));
-  const furn = (sub, x0, x1, y0, y1, z0, z1, face) => box('furn', x0, x1, y0, y1, z0, z1, { sub, face });
   const Hg = HANGAR, t = 0.3;
   box('hangar', Hg.x0 - t, Hg.x0, 0, Hg.h, Hg.z0, Hg.z1); box('hangar', Hg.x1, Hg.x1 + t, 0, Hg.h, Hg.z0, Hg.z1); box('hangar', Hg.x0 - t, Hg.x1 + t, 0, Hg.h, Hg.z0 - t, Hg.z0);
   box('hangar', Hg.x0 - t, Hg.door[0], 0, Hg.h, Hg.z1, Hg.z1 + t); box('hangar', Hg.door[1], Hg.x1 + t, 0, Hg.h, Hg.z1, Hg.z1 + t); box('hangar', Hg.door[0], Hg.door[1], Hg.doorH, Hg.h, Hg.z1, Hg.z1 + t);
@@ -170,7 +162,9 @@ function extra({ boxes }) {
   // cabin seats: two blocks either side of the aisle
   box('jetseat', J.left[0], J.left[1], CAB, CAB + 1.12, J.seats[0], J.seats[1]); box('jetseat', J.right[0], J.right[1], CAB, CAB + 1.12, J.seats[0], J.seats[1]);
   for (const [x, z, yaw] of GAPLANES) box('gaplane', x - 0.6, x + 0.6, 0.4, 1.9, z - 3.6, z + 3.6, { yaw });
-  for (const [x, z] of TREES) box('trunk', x - 0.3, x + 0.3, 0, CANOPY.y, z - 0.3, z + 0.3);
+  for (const [x, z] of TREES) box('trunk', x - 0.4, x + 0.4, 0, CANOPY.y, z - 0.4, z + 0.4);
+  box('fence', STAIR.x0 - 0.08, STAIR.x0, H, H + 1.1, STAIR.z0 + 2.1, STAIR.z1, { f: 1 }); box('fence', STAIR.x1, STAIR.x1 + 0.08, H, H + 1.1, STAIR.z0 + 2.1, STAIR.z1, { f: 1 });   // glass balustrades round the escalator well
+  for (const [x0, x1, y0, y1, z0, z1] of SCENE_BOXES) box('scene', x0, x1, y0, y1, z0, z1);
   for (const c of PARKED) { const b = carBox(c); box('pcar', b.x0, b.x1, 0, b.h, b.z0, b.z1); }
 }
 export default {
@@ -178,10 +172,11 @@ export default {
   spawn: SPAWN, exit: EXIT, breaker: BREAKER, cars: [], parked: PARKED, rooms: ROOMS, openings: OPENINGS, glass: GLASS, furniture: FURNITURE,
   spots: { s: SUSPECT_SPOTS, c: CIV_SPOTS, b: BOMB_SPOTS }, hvt: HVT, veg: null, counts: { s: 17, c: 8, b: 3 }, time: 1080, patrolMax: 26,
   stairs: [{ ...STAIR, yb: 0, n: 1 }], foot: FOOT, bombMust: BOMB_MUST, civMust: CIV_MUST, susMust: SUS_MUST,
-  lobby: { x: 34.5, y: 1.5, z: 76.5, tx: 30, tz: 73 },
-  brief: ['Armed crew hold the terminal and a grounded jet: 8 hostages, 3 bombs.', 'One bomb is in the jet\'s cargo hold, out in the maintenance hangar.', 'The target is in the VIP lounge upstairs. He will run for the jet', 'the moment he hears you: cut him off or follow him across the apron.'],
+  lobby: { x: -19.5, y: 1.6, z: 63, tx: -15, tz: 66 },
+  hint: 'Lights out: MAIN BREAKER in the security office behind the escalators.',
+  brief: ['Armed crew hold the terminal and a grounded jet: 8 hostages, 3 bombs.', 'One bomb is in the jet\'s cargo hold, out in the maintenance hangar behind the terminal.', 'The target is in the VIP lounge upstairs. He will run for the jet', 'the moment he hears you: cut him off or follow him across the apron.'],
   surfaces, floorRay, solidFloor, terrainY: () => 0, floorAt, extra,
-  indoor: (f, x, z) => inFoot(x, z) && (f === 0 || z >= UP_Z), onStairs: (x, z) => inStair(x, z) || inAir(x, z),
-  inside: (x, z, y) => (inFoot(x, z) && y < (z < UP_Z ? H : 2 * H)) || inHangar(x, z) || inJet(x, z), objective: (x, z) => inFoot(x, z) || inHangar(x, z) || z < 0,
-  roofY: (x, z) => inFoot(x, z) ? (z < UP_Z ? H + 0.3 : 2 * H + 0.3) : inHangar(x, z) ? HANGAR.h : (x > CANOPY.x0 && x < CANOPY.x1 && z > CANOPY.z0 && z < CANOPY.z1) ? CANOPY.y : 0,
+  indoor: (f, x, z) => inFoot(x, z), onStairs: (x, z) => inStair(x, z) || inAir(x, z),
+  inside: (x, z, y) => (inFoot(x, z) && y < 2 * H) || inHangar(x, z) || inJet(x, z), objective: (x, z) => inFoot(x, z) || inHangar(x, z) || z < 0,
+  roofY: (x, z) => inFoot(x, z) ? 2 * H + 0.3 : inHangar(x, z) ? HANGAR.h : inCanopy(x, z) ? CANOPY.y : 0,
 };
