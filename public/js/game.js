@@ -1,7 +1,7 @@
 // BREACHLINE client: WebXR rig, manual weapon handling, interactions, networking, HUD.
 import * as THREE from '../vendor/three.module.min.js';
 import { buildWorld, label } from './gfx.js';
-import { Human, Officer, Bomb, Body, RIG, GOG, SELF_BACK, GROUND, SUPP, setSuppressor, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
+import { Human, Officer, Bomb, Body, RIG, GOG, SELF_BACK, GROUND, SUPP, GUN_LOD, setSuppressor, makeRifle, makePistol, makeMag, makeTool, makeNade } from './actors.js';
 import { loadCar, loadParkedCars } from './car.js';
 import { setEnvInside } from './mats.js';
 import { gfxMode, gfxLabel, toggleGfx, applyGfx } from './store/gfxmode.js';
@@ -1196,6 +1196,7 @@ function frame(t) {
   }
   if (S.spawnIn && --S.spawnIn === 0) { headWorld(); placeAtSpawn(); showLobbyPanel(); }
   carry(dt);
+  GUN_LOD.eye.copy(head.pos); GUN_LOD.quality = gfxMode() === 'quality';   // others' guns: detailed up close in QUALITY only
   if (TUT && S.mode && !S.spawnIn && S.me.id) { TUT = false; tut.start('core'); }   // the tutorial starts once you stand in the facility
   if (S.mode === 'vr') { readVR(); headWorld(); if (S.watch) watchMove(dt); else { moveVR(dt); collide(); } for (const h of hands) if (h.active) { (h.xr.src && h.xr.src.gripSpace ? h.xr.grip : h.xr.ray).getWorldPosition(h.pos); h.xr.ray.getWorldQuaternion(h.quat).multiply(tiltQ); } if (!S.watch) { ropes.tick(dt, hands[0].in); ledgePull(); } }
   else if (S.mode === 'desktop') {
@@ -1314,7 +1315,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q99';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q100';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

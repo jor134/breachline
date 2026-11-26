@@ -70,16 +70,25 @@ export function makeRifle(holo = false, hq = false) {   // built-in M4-pattern c
   if (holo) { ret = makeReticle(g, 0.126, 0.0165, 0.0125, -0.05, false); const lens = new THREE.Mesh(new THREE.PlaneGeometry(0.036, 0.028), new THREE.MeshBasicMaterial({ color: 0x40708a, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide })); lens.position.set(0, 0.126, -0.07); lens.userData.lens = true; g.add(lens); }
   g.userData = { kind: 'rifle', mag, bolt, flash, ret, muzzle: new THREE.Vector3(0, 0.05, -0.65), light: new THREE.Vector3(0.04, 0.05, -0.45), magwell: new THREE.Vector3(0, -0.05, -0.1), rack: new THREE.Vector3(0, 0.078, 0.075), fore: new THREE.Vector3(0, -0.01, -0.3), sightY: 0.126 };
   if (hq && HQ) loadM4().then(({ body, magGeo, magMat }) => {   // swap in the model; every handling point moves to where it is on the real rifle
+    const U0 = g.userData, keep = () => ({ pts: ['muzzle', 'light', 'magwell', 'rack', 'fore'].map(k => U0[k].clone()), sightY: U0.sightY, bolt: bolt.position.clone(), flash: flash.position.clone(), geo: mag.geometry, mat: mag.material }), lo = keep(), n0 = g.children.length;
     g.children[0].visible = false; g.add(body.clone());
     if (magGeo) { mag.geometry = magGeo; mag.material = magMat; }
     const light = merge([[CYL(0.013, 0.1), 0x17181a, 0, 0, 0, HP], [CYL(0.016, 0.028), 0x17181a, 0, 0, -0.06, HP], [CYL(0.011, 0.004), 0xfff4d0, 0, 0, -0.075, HP], [BOX(0.012, 0.02, 0.03), 0x17181a, -0.012, 0.004, 0.0]], 'metal'); light.position.set(0.036, 0.064, -0.46); g.add(light);   // weapon light on the right rail
     const U = g.userData, Y = 0.151; U.muzzle.set(0, 0.064, -0.665); U.light.set(0.036, 0.064, -0.54); U.magwell.set(0, -0.02, -0.14); U.rack.set(0, 0.09, 0.03); U.fore.set(0, -0.03, -0.31); U.sightY = Y;
     bolt.position.set(0.022, 0.07, -0.11); flash.position.set(0, 0.064, -0.7);
     if (ret) { ret.position.y = Y; ret.material.uniforms.uWin.value.set(0, Y, 0.0185, 0.0142); ret.material.uniforms.uZ.value = -0.054; g.children.forEach(c => { if (c.userData.lens) c.visible = false; }); }
+    if (hq === 'lod') {   // someone else's rifle: the detailed model only when GUN_LOD says so (setGunDetail)
+      const hi = keep(), extra = g.children.slice(n0), base = g.children[0];
+      U.detail = on => { const v = on ? hi : lo; base.visible = !on; for (const o of extra) o.visible = on; ['muzzle', 'light', 'magwell', 'rack', 'fore'].forEach((k, i) => U[k].copy(v.pts[i])); U.sightY = v.sightY; bolt.position.copy(v.bolt); flash.position.copy(v.flash); mag.geometry = v.geo; mag.material = v.mat; U.hi = on; };
+      U.detail(false);
+    }
   }).catch(e => console.warn('rifle model not loaded', e));
   return g;
 }
 let pistolGeo = null;
+// Other people's guns (players and AI squadmates): the light built-in models, or the detailed downloads up close in QUALITY graphics.
+// Your own guns are always the detailed ones. game.js keeps eye (where you look from) and quality up to date.
+export const GUN_LOD = { eye: new THREE.Vector3(0, -1e4, 0), quality: false, near: 2.5, far: 3.5 };
 // quest-store: the pistol's suppressor, an option (MENU > SUPPRESSOR), kept on this headset. Only your own pistol shows it; with it on
 // the muzzle (shot origin and flash) moves to its end and the shot is quieter (audio.js).
 export const SUPP = { on: (() => { try { return localStorage.getItem('ych_supp') === '1'; } catch (e) { return false; } })() };
@@ -97,11 +106,17 @@ export function makePistol(holo = false, hq = false) {   // built-in pistol; hq:
   const flash = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 4), basic(0xffd070)); flash.position.set(0, 0.045, -0.18); flash.visible = false; g.add(flash);
   g.userData = { kind: 'pistol', mag, slide, slideZ: -0.05, flash, muzzle: new THREE.Vector3(0, 0.045, -0.15), light: new THREE.Vector3(0, 0.02, -0.15), magwell: new THREE.Vector3(0, -0.09, 0.03), rack: new THREE.Vector3(0, 0.05, 0.03), sightY: 0.074 };
   if (hq && HQ) loadSidearm().then(({ frame, slide: sl, plate, pts: P, supp }) => {   // the downloaded pistol: frame with the red dot, the bolt that locks back, the magazine
+    const U0 = g.userData, keep = () => ({ pts: ['muzzle', 'light', 'magwell', 'rack'].map(k => U0[k].clone()), sightY: U0.sightY, slide: U0.slide, slideZ: U0.slideZ, flash: flash.position.clone(), geo: mag.geometry, mat: mag.material, mp: mag.position.clone() }), lo = keep();
     g.children[0].visible = false; slide.visible = false; const f2 = frame.clone(); g.add(f2); const s2 = sl.clone(); g.add(s2);
     mag.geometry = plate.geo; mag.material = plate.mat; mag.position.set(0, 0, 0);
     const U = g.userData; U.slide = s2; U.slideZ = 0; U.muzzle.copy(P.muzzle); U.light.copy(P.light); U.magwell.copy(P.magwell); U.rack.copy(P.rack); U.sightY = P.sightY; flash.position.copy(P.muzzle).add(new THREE.Vector3(0, 0, -0.02));
     if (holo) { U.ret = makeReticle(f2, P.sightY, P.sightW, P.sightH, P.sightZ, true); U.ret.visible = false; }
     if (holo && supp.children.length && P.suppTip) { U.supp = supp.clone(); g.add(U.supp); U.muzzle0 = P.muzzle.clone(); U.muzzleS = P.suppTip.clone(); OWN_PISTOLS.push(g); setSuppressor(SUPP.on); }
+    if (hq === 'lod') {   // someone else's pistol: the detailed model only when GUN_LOD says so
+      const hi = keep(), base = g.children[0];
+      U.detail = on => { const v = on ? hi : lo; base.visible = !on; slide.visible = !on; f2.visible = s2.visible = on; ['muzzle', 'light', 'magwell', 'rack'].forEach((k, i) => U[k].copy(v.pts[i])); U.sightY = v.sightY; U.slide = v.slide; U.slideZ = v.slideZ; flash.position.copy(v.flash); mag.geometry = v.geo; mag.material = v.mat; mag.position.copy(v.mp); U.hi = on; };
+      U.detail(false);
+    }
   }).catch(e => console.warn('pistol model not loaded', e));
   return g;
 }
@@ -634,7 +649,7 @@ export class Officer {   // another player
     this.g = new THREE.Group();
     this.head = merge([[SPH(0.125), 0x20242a, 0, 0.01, 0], [BOX(0.2, 0.06, 0.03), 0x0a0a0a, 0, 0.0, -0.11], [BOX(0.15, 0.09, 0.02), 0xc79a7b, 0, -0.06, -0.1], [BOX(0.27, 0.06, 0.1), 0x15181d, 0, 0.0, 0]], 'plastic');
     this.body = new Body();
-    this.items = [0, 1].map(() => { const g = new THREE.Group(), r = makeRifle(false, true), p = makePistol(false, true), m = makeMag('rifle', true); r.visible = p.visible = m.visible = false; g.add(r, p, m); g.userData = { items: [null, r, p, m] }; return g; });
+    this.items = [0, 1].map(() => { const g = new THREE.Group(), r = makeRifle(false, 'lod'), p = makePistol(false, 'lod'), m = makeMag('rifle', false); r.visible = p.visible = m.visible = false; g.add(r, p, m); g.userData = { items: [null, r, p, m] }; return g; });
     this.tag = tag; tag.position.y = 0.3; this.head.add(tag);
     this.g.add(this.head, this.body.g, ...this.items); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ'); this.hp = [{ pos: new THREE.Vector3(), quat: new THREE.Quaternion() }, { pos: new THREE.Vector3(), quat: new THREE.Quaternion() }];
   }
@@ -655,7 +670,10 @@ export class Officer {   // another player
     this.head.position.set(lp(a.h[0], b.h[0]), lp(a.h[1], b.h[1]), lp(a.h[2], b.h[2])); this.head.quaternion.set(a.h[3], a.h[4], a.h[5], a.h[6]).slerp(this.q.set(b.h[3], b.h[4], b.h[5], b.h[6]), k); this.e.setFromQuaternion(this.head.quaternion, 'YXZ');
     const hands = [0, 1].map(i => { const g = this.items[i], A = i ? a.r : a.l, B = i ? b.r : b.l, X = B || A; g.visible = !!X; if (!X) return null; const o = this.hp[i], P = A && B ? A : X;
       o.pos.set(lp(P[0], X[0]), lp(P[1], X[1]), lp(P[2], X[2])); o.quat.set(P[3], P[4], P[5], P[6]).slerp(_q.set(X[3], X[4], X[5], X[6]), k); g.position.copy(o.pos); g.quaternion.copy(o.quat);
-      g.userData.items.forEach((m, j) => { if (m) m.visible = j === (b.items ? b.items[i] : 0); }); return o; });
+      g.userData.items.forEach((m, j) => { if (m) m.visible = j === (b.items ? b.items[i] : 0); });
+      // level of detail: performance mode keeps teammates on the light guns; quality mode swaps in the detailed one up close (2.5 m in, 3.5 m out)
+      for (const m of g.userData.items) if (m && m.visible && m.userData.detail) { const d = o.pos.distanceTo(GUN_LOD.eye), on = GUN_LOD.quality && (m.userData.hi ? d < GUN_LOD.far : d < GUN_LOD.near); if (on !== !!m.userData.hi) m.userData.detail(on); }
+      return o; });
     const hp = this.head.position, gy = GROUND.y ? GROUND.y(hp.x, hp.z, hp.y - (b.down ? 0.1 : 0.9)) : null, feet = gy !== null && Number.isFinite(gy) && hp.y - gy < 2.2 ? gy : hp.y - (b.down ? 0.3 : 1.7);
     this.body.update(hp, this.e.y, hands, feet, this.head.quaternion, { down: b.down, nvg: b.nvg ?? GOG.night });
     if (this.body.skin && !this.hid) { this.hid = true; this.head.material = new THREE.MeshBasicMaterial({ visible: false }); }
