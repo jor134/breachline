@@ -4,10 +4,10 @@ All recorded sounds here are CC0 (public domain) or under the Pixabay Content Li
 
 | Sounds | Source | Licence |
 |---|---|---|
-| Pistol shot (`pistol_u1`), rifle shots (`rifle_u1`, `rifle_u2`), bullet impacts (`impact_u1`) | "Pistol Shot" (278821), "Gunshot" (352466) and "Combat Impact" (352458) by Universfield; the last of "Gun Shots 6 Times Fast" (230509) by ribhavagrawal; from https://pixabay.com/sound-effects/ (trimmed of their silence, levelled) | Pixabay Content License |
-| Magazine in/out, charging handle, bolt and slide release, dry fire, selector (`pistol_*` reloads, `mag*`, `rack`, `bolt*`, `click`, `selector*`, `lock`) | **The Free Firearm Sound Library** (AR-15 and Walther PPQ recordings), mirrored at https://github.com/buddingmonkey/FreeFirearmsSFXLibrary | CC0 |
+| Rifle and pistol shots, magazine in/out, charging handle, bolt and slide release, dry fire, selector (`rifle*`, `pistol*`, `mag*`, `rack`, `bolt*`, `click`, `selector*`, `lock`) | **The Free Firearm Sound Library** (AR-15 and Walther PPQ recordings), mirrored at https://github.com/buddingmonkey/FreeFirearmsSFXLibrary | CC0 |
 | Doors, lock rattle, unlock, cuffs, wire snip (`door_*`, `locked*`, `unlock`, `cuff*`, `snip*`) | **RPG Audio** by Kenney (kenney.nl), via https://github.com/Boyquotes/kenney-rpg-audio-for-godot | CC0 |
-| Door kicks, grenade bounces, being hit, breaker clunk, footsteps (`kick*`, `impact_glass*`, `clink*`, `hurt*`, `power*`, `step_*`) | **Impact Sounds** by Kenney, via https://github.com/Boyquotes/kenney-impact-sounds-for-godot | CC0 |
+| Being hit by a bullet (`hurt_u1`) | "Combat Impact" (352458) by Universfield, from https://pixabay.com/sound-effects/ (trimmed of its silence, levelled) | Pixabay Content License |
+| Door kicks, bullet impacts, grenade bounces, breaker clunk, footsteps (`kick*`, `impact*`, `clink*`, `hurt*`, `power*`, `step_*`) | **Impact Sounds** by Kenney, via https://github.com/Boyquotes/kenney-impact-sounds-for-godot | CC0 |
 | Explosions, flashbang (`boom*`, `flashbang*`) | **Sci-Fi Sounds** by Kenney, via https://github.com/Boyquotes/kenney-sci-fi-sounds-for-godot | CC0 |
 | Menu and confirmation tones (`ui*`, `ok`, `error`) | **Interface Sounds** by Kenney, via https://github.com/Calinou/kenney-interface-sounds | CC0 |
 | Race-car engine (`engine_f1`) | **grandprix** by freesound_community, from Pixabay (the file was named freesound_community-grandprix-61253) | Pixabay Content License |

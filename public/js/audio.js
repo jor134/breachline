@@ -120,7 +120,7 @@ const P = k => k === 'pistol' ? 'pistol_' : '';
 export const sfx = {
   // weapons (Free Firearm Sound Library: AR-15 and Walther PPQ recordings)
   shot(pos, kind) {
-    const far = false;   // (the distant rifle recording went with the old set; the room's echo carries distance now)
+    const far = kind !== 'pistol' && dist(pos) > 16 && samples.rifle_far;   // distant rifle fire: the recording made further from the gun
     if (sample(far ? 'rifle_far' : kind === 'pistol' ? 'pistol' : 'rifle', pos, pos ? (far ? 1.4 : 1.15) : 0.85, { wet: pos ? 1 : 0.8 })) return;
     burst(pos, 0.2, 2400, 1.6); tone(pos, 160, 40, 0.14, 1.2);
   },
