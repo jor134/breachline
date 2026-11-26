@@ -70,7 +70,17 @@ export class Sim {
     // Most suspects will turn on a hostage once a firefight has gone on for a few rounds. Drawn from their own stream so the rest of the layout per seed is unchanged.
     { const rr = rng32(this.seed ^ 0x51ed27); for (const n of this.npcs) if (n.kind === 's') { n.ruthless = rr() < 0.75; n.fired = 0; n.execAfter = 3 + Math.floor(rr() * 5); n.exec = null; } }
     // about half the suspects defend the room they are in: they take cover there when they hear trouble and wait for you to come through the door
-    { const rd = rng32(this.seed ^ 0x2d0f3a); for (const n of this.npcs) if (n.kind === 's') { n.defend = n.hvt || n.guard || rd() < 0.55; if (n.defend) n.patrol = null; } }
+    { const rd = rng32(this.seed ^ 0x2d0f3a); for (const n of this.npcs) if (n.kind === 's') { n.defend = n.hvt || n.guard || rd() < 0.55; n.patrol = null; } }
+    // patrols: most suspects walk a beat instead of standing at one spot, round two or three points (their post and the nearest free
+    // suspect spots): a defender keeps to his own room's neighbourhood (8 m), the rest range further (map.patrolMax, else 22 m). The
+    // HVT and his guards hold their posts. Drawn from their own stream so the rest of the layout per seed is unchanged.
+    { const rp = rng32(this.seed ^ 0x7a7e11), taken = new Set(this.npcs.filter(n => n.post).map(n => n.post[0] + ',' + n.post[1])), free = M.spots.s.filter(([f, x, z]) => !taken.has(x + ',' + z));
+      for (const n of this.npcs) { if (n.kind !== 's' || n.hvt || n.guard || rp() > 0.8) continue; const f = Math.round(n.post[2] / M.H), sp0 = M.spawn, reach = n.defend ? 8 : Math.min(M.patrolMax || 22, 22);
+        const near = free.map(sp => [Math.hypot(sp[1] - n.post[0], sp[2] - n.post[1]) + Math.abs(sp[0] - f) * 8, sp]).filter(([d, sp]) => d > 2.5 && d <= reach && M.spawn.every(([sx, sz]) => Math.hypot(sp[1] - sx, sp[2] - sz) >= Math.min(25, Math.hypot(n.post[0] - sx, n.post[1] - sz))))   // (no beat brings him nearer where the squad starts).sort((a, b) => a[0] - b[0]).slice(0, 4);
+        for (let i = near.length - 1; i > 0; i--) { const j = Math.floor(rp() * (i + 1)); [near[i], near[j]] = [near[j], near[i]]; }
+        const pts = near.slice(0, 1 + (rp() < 0.5 ? 1 : 0)).map(([, [f2, x, z]]) => [x, z, this.yAt(f2, x, z)]);
+        if (!pts.length) { const a = rp() * 6.28, L = this.level; for (let k = 0; k < 8 && !pts.length; k++) { const x = n.post[0] + Math.cos(a + k) * 4, z = n.post[1] + Math.sin(a + k) * 4; if (!circleHits(L, null, x, z, 0.3, n.post[2]) && sp0.every(([sx, sz]) => Math.hypot(x - sx, z - sz) >= Math.min(25, Math.hypot(n.post[0] - sx, n.post[1] - sz)))) pts.push([x, z, n.post[2]]); } }   // nowhere listed nearby: a few steps to and fro
+        if (pts.length) { n.patrol = [n.post, ...pts]; n.pt = 0; n.pwait = 2 + rp() * 7; } } }
     this.doorOpen = this.level.doors.map(d => !d.exterior && rnd() < 0.3);
     this.gren = []; this.smokes = [];
     this.doorLocked = this.level.doors.map((d, i) => d.pad !== undefined ? true : d.hidden ? false : d.exterior ? rnd() < 0.6 : !this.doorOpen[i] && rnd() < 0.3);   // containers are all padlocked
@@ -446,14 +456,15 @@ export class Sim {
     if (hv && hv.flee && !n.fled && n.st !== 'g') { const [f, x, z] = hv.flee; n.fled = true; n.cov = null; n.crouch = false; n.exec = null; n.strafe = false; if (this.goto(n, x, z, f * this.M.H)) { n.fleeing = true; this.ev({ e: 'hvtrun', n: n.id, i: n.hvi || 0 }); } }
     if (n.fleeing) { const [f, x, z] = hv.flee; if (!n.path && Math.hypot(n.x - x, n.z - z) > 1.5 && !this.goto(n, x, z, f * this.M.H)) n.fleeing = false; if (n.fleeing && !this.walk(n, dt, 3.3)) { n.fleeing = false; n.post = [x, z, f * this.M.H]; n.st = 'a'; n.tA = 0; n.hold = true; n.crouch = true; n.lk = [x, z + 6, n.y]; } return; }
     let seen = null, best = 1e9;
-    for (const p of this.players.values()) { if (p.down || !p.has || p.team === 'tango') continue; const d = Math.hypot(p.hx - n.x, p.hy - n.y - 1.5, p.hz - n.z); if (d < best && this.sees(n, p, d)) { seen = p; best = d; } }   // human terrorists are on their side
+    const E = this.M.exit, atVan = p => n.st === 'g' && E && p.hx > E.x0 && p.hx < E.x1 && p.hz > E.z0 && p.hz < E.z1;   // a suspect on his beat doesn't spot the squad still at its van (the staging area): the fight starts when they move in
+    for (const p of this.players.values()) { if (p.down || !p.has || p.team === 'tango' || atVan(p)) continue; const d = Math.hypot(p.hx - n.x, p.hy - n.y - 1.5, p.hz - n.z); if (d < best && this.sees(n, p, d)) { seen = p; best = d; } }   // human terrorists are on their side
     if (n.st !== 'g') n.gyaw = null;
     if (n.st === 'g') {
       if (seen) return this.engage(n, seen, 0.6 + this.rnd() * 0.5);
       // standing guard: the body sways gently either side of the way it faces (the head looks further, client side) instead of
       // turning round and round like a top
       if (n.path) { n.gyaw = null; if (!this.walk(n, dt, 1.3)) n.pwait = 4 + this.rnd() * 8; }
-      else { if (n.gyaw == null) n.gyaw = n.yaw; n.gph = (n.gph ?? n.id * 1.7) + dt * (0.25 + Math.abs(n.sweep) * 0.4); n.yaw = n.gyaw + Math.sin(n.gph) * 0.45; if (n.patrol) { n.pwait -= dt; if (n.pwait <= 0) { n.pt = 1 - n.pt; const t = n.pt ? [n.patrol[1], n.patrol[2], n.patrol[0] * this.M.H] : n.post; if (!this.goto(n, t[0], t[1], t[2])) n.pwait = 5; } } }
+      else { if (n.gyaw == null) n.gyaw = n.yaw; n.gph = (n.gph ?? n.id * 1.7) + dt * (0.25 + Math.abs(n.sweep) * 0.4); n.yaw = n.gyaw + Math.sin(n.gph) * 0.45; if (n.patrol) { n.pwait -= dt; if (n.pwait <= 0) { n.pt = (n.pt + 1) % n.patrol.length; const t = n.patrol[n.pt]; n.pwait = 4 + this.rnd() * 6; if (!this.goto(n, t[0], t[1], t[2])) n.pwait = 5; } } }   // round the beat, a pause at each point
     } else if (n.st === 'a') {
       if (seen) return this.engage(n, seen, 0.35 + this.rnd() * 0.35);
       n.tA += dt;

@@ -647,6 +647,12 @@ await t('club: every spot reachable from the van; front, dock and fire exit all 
   assert.ok(s.bombs.some(b => Math.abs(b.x - 20) < 0.1 && Math.abs(b.z - 30.6) < 0.1), 'one in the DJ booth');
 });
 const C_noOverlap = R => R.every(a => R.every(b => a === b || a[0] !== b[0] || a[6] === 'void' || b[6] === 'void' || !(a[2] < b[4] - 0.01 && b[2] < a[4] - 0.01 && a[3] < b[5] - 0.01 && b[3] < a[5] - 0.01)));
+await t('suspects walk beats: most of them on every mission map, none toward where the squad starts; the HVT and his guards hold', async () => {
+  for (const id of ['mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club', 'winery']) { const s = new Sim(id); s.addPlayer(1, 'A'); s.start(3, false, 'clear', id);
+    const sus = s.npcs.filter(n => n.kind === 's'), beats = sus.filter(n => n.patrol); assert.ok(beats.length >= sus.length * 0.4, id + ': ' + beats.length + ' of ' + sus.length + ' walk a beat');
+    assert.ok(!sus.some(n => (n.hvt || n.guard) && n.patrol), id + ': the HVT and guards hold');
+    for (const n of beats) for (const [x, z] of n.patrol.slice(1)) for (const [sx, sz] of s.M.spawn) assert.ok(Math.hypot(x - sx, z - sz) >= Math.min(25, Math.hypot(n.post[0] - sx, n.post[1] - sz)) - 0.01, id + ': a beat toward the start'); }
+});
 await t('winery: every spot reachable from the van; up either open stair to the terrace and into both wings from it; the terrace party clear of the doors', async () => {
   const { buildLevel: BL, findPath: FP } = await import('../public/js/core/level.js'), W = await import('../public/js/core/maps/winery.js');
   const L = BL('winery'), M = L.map, near = (p, x, z) => { const e = p && p[p.length - 1]; return !!p && Math.hypot(e[0] - x, e[1] - z) < 1.2; };
