@@ -107,12 +107,12 @@ function furnish(b, w) {
     case 'counter': P('fascia', 0.03, len - 0.03, 0.03, dep - 0.03, 0, 0.1); P('lacquer', 0, len, 0, dep, 0.1, h - 0.04); P('top', 0, len, 0, dep, h - 0.04, h); break;
     case 'car': break;   // drawn by the loaded car model (car.js)
     case 'car-box': P('car', 0, len, 0, dep, 0.28, 0.9); P('dark', len * 0.2, len * 0.82, 0.12, dep - 0.12, 0.9, h - 0.04); P('car', len * 0.2, len * 0.82, 0.1, dep - 0.1, h - 0.04, h);
-      for (const u of [len * 0.12, len * 0.74]) { P('dark', u, u + 0.68, 0, 0.24, 0, 0.66); P('dark', u, u + 0.68, dep - 0.24, dep, 0, 0.66); } P('glow', len - 0.02, len, 0.2, 0.5, 0.6, 0.72); P('glow', len - 0.02, len, dep - 0.5, dep - 0.2, 0.6, 0.72); break;
+      for (const u of [len * 0.12, len * 0.74]) { P('dark', u, u + 0.68, 0, 0.24, 0, 0.66); P('dark', u, u + 0.68, dep - 0.24, dep, 0, 0.66); } P('glow', len - 0.02, len + 0.008, 0.2, 0.5, 0.6, 0.72); P('glow', len - 0.02, len + 0.008, dep - 0.5, dep - 0.2, 0.6, 0.72); break;
     case 'pool': P('pooltile', 0, len, 0, dep, 0, h, 'xXzZ'); P('pooltile', 0, len, 0, 0.18, h - 0.001, h, 'Y'); P('pooltile', 0, len, dep - 0.18, dep, h - 0.001, h, 'Y'); P('pooltile', 0, 0.18, 0.18, dep - 0.18, h - 0.001, h, 'Y'); P('pooltile', len - 0.18, len, 0.18, dep - 0.18, h - 0.001, h, 'Y');
       P('water', 0.18, len - 0.18, 0.18, dep - 0.18, h - 0.05, h - 0.03, 'Y', 0.2); break;
     case 'hedge': P('hedge', 0, len, 0, dep, 0, h); break;
     case 'crate': P('wood', 0, len, 0, dep, 0, h, ALL, 1); P('fascia', -0.01, len + 0.01, dep * 0.3, dep * 0.34, 0, h + 0.005, 'xXYzZ'); P('fascia', -0.01, len + 0.01, dep * 0.66, dep * 0.7, 0, h + 0.005, 'xXYzZ'); break;
-    case 'console': P('fascia', 0, len, 0, dep, 0, h - 0.25); P('top', 0, len, 0.05, dep, h - 0.25, h, ALL, 1); P('glow', len * 0.08, len * 0.92, dep - 0.02, dep, h - 0.6, h - 0.32, 'xXzZ'); break;
+    case 'console': P('fascia', 0, len, 0, dep, 0, h - 0.25); P('top', 0, len, 0.05, dep, h - 0.25, h, ALL, 1); P('glow', len * 0.08, len * 0.92, dep - 0.02, dep + 0.008, h - 0.6, h - 0.32, 'xXzZ'); break;   // the screen stands 8 mm proud of the face (flush, the two flickered)
     case 'binnacle': P('fascia', len * 0.3, len * 0.7, dep * 0.3, dep * 0.7, 0, h - 0.2); P('steel', 0, len, 0, dep, h - 0.2, h); break;
     case 'seats': { const n = Math.max(1, Math.round(len / 0.62)), cw = len / n;   // gate seating: a beam on legs with moulded seats
       P('fascia', 0, len, dep * 0.3, dep * 0.45, 0.32, 0.38); for (const u of [0.15, len - 0.25]) P('fascia', u, u + 0.08, dep * 0.25, dep * 0.5, 0, 0.32);
