@@ -83,7 +83,7 @@ export default {
     // a slim pit wall: painted concrete with a steel cap, open at the marshals' gate (the circuit's rails stop either side of the paddock)
     for (const [x0, x1] of [[PITWALL.x0, PITWALL.gate[0]], [PITWALL.gate[1], PITWALL.x1]]) {
       b('pitwallM').box(x0, x1, 0, PITWALL.h - 0.05, PITWALL.z0, PITWALL.z1, 'xXzZ', 0.5);
-      b('mast').box(x0, x1, PITWALL.h - 0.05, PITWALL.h, PITWALL.z0 - 0.03, PITWALL.z1 + 0.03, 'xXzZy', 1);
+      b('mast').box(x0, x1, PITWALL.h - 0.05, PITWALL.h, PITWALL.z0 - 0.03, PITWALL.z1 + 0.03, 'xXzZyY', 1);
     }
     // floodlight towers behind the far rail; at night they light the track with soft beams
     for (let x = YARD.x0 + 15; x < YARD.x1; x += 40) {
