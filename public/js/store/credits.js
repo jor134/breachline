@@ -34,7 +34,7 @@ export const CREDITS = [
   { use: 'Plants', title: 'low poly nature pack', by: 'flo-bit', lic: 'CC0', url: 'https://github.com/flo-bit/low-poly-asset-packs' },
   { use: 'Gun sounds', title: 'The Free Firearm Sound Library', by: 'its recordists (mirror by buddingmonkey)',lic: 'CC0', url: 'https://github.com/buddingmonkey/FreeFirearmsSFXLibrary' },
   { use: 'Doors, impacts, explosions, interface', title: 'RPG Audio, Impact Sounds, Sci-Fi Sounds, Interface Sounds', by: 'Kenney', lic: 'CC0', url: 'https://kenney.nl' },
-  { use: 'Winery music', title: 'EDM short (Pixabay track 504668)', by: 'djdoblina', lic: 'Pixabay Content License', url: 'https://pixabay.com/music/' },
+  { use: 'Winery music', title: 'Deep House (Pixabay track 448912)', by: 'dimdel', lic: 'Pixabay Content License', url: 'https://pixabay.com/music/' },
   { use: 'Winery stone walls', title: 'Photoscanned Old Stone Wall (2x4m)', by: 'chrisg4919', lic: BY, url: 'https://sketchfab.com/3d-models/photoscanned-old-stone-wall-2x4m-594513b103034bffa48370b4ef521106', chg: 'textures only, reduced and tinted' },
   { use: 'Winery concrete', title: 'Concrete material', by: 'roko', lic: BY, url: 'https://sketchfab.com/3d-models/concrete-material-ebe968851be0443e9392ad87cbf64eab', chg: 'textures only, reduced and tinted' },
   { use: 'Winery corten steel', title: 'Kellen Metallo Corten Steel', by: 'Hardscape', lic: BY, url: 'https://sketchfab.com/3d-models/kellen-metallo-corten-steel-1d2c38521ed342d286ca8c81819ebc2f', chg: 'texture only, reduced' },

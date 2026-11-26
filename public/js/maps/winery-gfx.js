@@ -231,7 +231,7 @@ export default {
   envs: { dusk: DUSK, night: NIGHT },
   setTod(t) { tod = t === 'night' ? 'night' : 'dusk'; },
   load() {
-    setVenueMusic('sfx/winery_music.blx', true);   // "EDM short" by djdoblina (Pixabay licence)
+    setVenueMusic('sfx/winery_music.blx', true);   // "Deep House" by dimdel (Pixabay licence)
     const wkit = new Promise(res => new ObfLoader().load('models/winery/kit.glb', gl => res(useKit(gl.scene)), undefined, () => res(null)));
     const kit = new Promise(res => new ObfLoader().load('models/club/kit.glb', gl => res(placeKits(gl.scene, root0)), undefined, () => res(null)));
     // "Swat Van" by maregajavier (CC BY 4.0), as at the club: nose to the winery at the head of the drive, its light bar on its roof
