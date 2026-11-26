@@ -1,12 +1,13 @@
 // Grand Prix scenery: the circuit model around the playable area (track, pit lane, guard rails, the circuit's own garages
-// east of ours, the hairpin, hills and forest), and the game's own pieces: the paddock ground, team boxes, the marshals' gate,
-// timing stands, floodlight towers, the pit building's facade and team colours, parked cars in the garages and the
+// east of ours, the hairpin, hills and forest; its buildings rebuilt in our style), and the game's own pieces: the paddock
+// ground, team boxes, a slim pit wall with the marshals' gate, floodlight towers, the pit building's facade and team colours, parked cars in the garages and the
 // motorhomes in the paddock. Two looks: an afternoon race and a floodlit night race.
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid } from '../mats.js';
 import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H, YARD } from '../core/maps/grandprix.js';
 import { TRACK } from '../core/maps/circuit.js';
 import { ObfLoader } from '../store/obf.js';
+import { makeBuildings } from './gp-buildings.js';
 import { raceCar } from '../racecar.js';
 import { TRUCK, makeTruck, truckAt } from '../truck.js';
 
@@ -40,7 +41,7 @@ export default {
       gl.scene.traverse(q => { if (!q.isMesh) return; q.castShadow = false; q.receiveShadow = true; q.matrixAutoUpdate = false; q.updateMatrix(); const m = q.material; if (m.map) m.map.anisotropy = 4; if (m.alphaTest) m.transparent = false; m.roughness = 0.95; });
       res(gl.scene);
     }, undefined, () => res(null)));
-    return Promise.all([trucks, circuit]).then(([ts, c]) => { const g = new THREE.Group(); for (const t of ts) g.add(t); if (c) g.add(c); return g; });
+    return Promise.all([trucks, circuit]).then(([ts, c]) => { const g = new THREE.Group(); for (const t of ts) g.add(t); if (c) g.add(c); g.add(makeBuildings()); return g; });
   },
   get env() { return tod === 'night' ? NIGHT : DAY; },
   envs: { day: DAY, night: NIGHT },
@@ -56,7 +57,7 @@ export default {
       tarmac: S(tex('#2f3134', 12000), 'matte'), pitlane: S(tex('#45474a', 9000), 'matte'), grass: S(tex('#3d6b34', 6000), 'matte'), gpline: sheen({ color: 0xeeeeea }, 'matte'),
       kerb: S(tex('#ffffff', 0, stripes('#d42a22', '#f2f2ee', 2)), 'matte'), epoxy: S(tex('#c9ccd0', 1200, grid(1, 1, 'rgba(0,0,0,0.08)')), 'gloss'),
       facade: S(tex('#c8ccd2', 600, grid(2, 1, 'rgba(40,44,50,0.35)')), 'metal'), facadeLow: S(tex('#2b2f35', 600, grid(2, 1, 'rgba(0,0,0,0.4)')), 'metal'),
-      clubwall: S(tex('#e6e1d8', 800), 'satin'), barrier: S(tex('#d8d8d2', 400, stripes('#d8d8d2', '#c43028', 8)), 'paint'), pitwallM: S(tex('#e4e4de', 300, grid(4, 1, 'rgba(0,0,0,0.2)')), 'paint'),
+      clubwall: S(tex('#e6e1d8', 800), 'satin'), barrier: S(tex('#d8d8d2', 400, stripes('#d8d8d2', '#c43028', 8)), 'paint'), pitwallM: S(tex('#e4e4de', 300, grid(2, 1, 'rgba(0,0,0,0.12)')), 'paint'),
       stand: S(tex('#7d848c', 800, grid(1, 4, 'rgba(0,0,0,0.3)')), 'satin'), seatR: S(tex('#2a4d9a', 400, grid(8, 1, 'rgba(0,0,0,0.35)')), 'satin'), tyreM: S(tex('#151515', 300, grid(1, 3, 'rgba(80,80,80,0.6)')), 'matte'),
       mast: S(tex('#8e949a', 300), 'metal'), gantry: S(tex('#1d2024', 300), 'metal'),
     });
@@ -75,12 +76,15 @@ export default {
     const flat = (m, x0, x1, z0, z1, y = 0, s = 0.2) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
     // the circuit itself (track, kerbs, pit lane, guard rails, the circuit's garages east of ours, hills, trees) is the model, loaded
     // in load(); here: the paddock's own ground, our team boxes in the pit lane, the marshals' gate, timing stands, floodlights
-    flat('pitlane', YARD.x0, YARD.x1, -4.05, YARD.z1, 0.004, 0.1);
+    // the paddock's own ground, round the pit building (its garages keep their own floor)
+    flat('pitlane', YARD.x0, FOOT.x0, -4.05, YARD.z1, 0.004, 0.1); flat('pitlane', FOOT.x1, YARD.x1, -4.05, YARD.z1, 0.004, 0.1); flat('pitlane', FOOT.x0, FOOT.x1, FOOT.z1, YARD.z1, 0.004, 0.1);
     flat('grass', -1400, 1400, -1400, 1400, -52, 0.01);   // far below the model's lowest valley: where the model has no ground, distance and fog
     for (let i = 0; i < 6; i++) { const x = i * 9; for (const [a, c, d, e] of [[x + 1, x + 1.12, -8.9, -4.2], [x + 7.88, x + 8, -8.9, -4.2], [x + 1, x + 8, -8.9, -8.78]]) b('team' + i).quad([a, 0.012, d], [c, 0.012, d], [c, 0.012, e], [a, 0.012, e], [0, 1, 0], 1); }
-    const pz = (PITWALL.z0 + PITWALL.z1) / 2;
-    for (const x of PITWALL.gate) b('mast').box(x - 0.06, x + 0.06, 0, 1.6, pz - 0.06, pz + 0.06, 'xXzZ', 1);   // gate posts in the gap cut through the rails
-    for (const x of [8, 40, 60]) { b('gantry').box(x - 2.5, x + 2.5, 1.1, 2.4, PITWALL.z1, PITWALL.z1 + 1.2, 'xXyYzZ', 1); b('gantry').box(x - 2.4, x + 2.4, 2.4, 2.5, PITWALL.z1 - 0.2, PITWALL.z1 + 1.6, 'xXyYzZ', 1); }
+    // a slim pit wall: painted concrete with a steel cap, open at the marshals' gate (the circuit's rails stop either side of the paddock)
+    for (const [x0, x1] of [[PITWALL.x0, PITWALL.gate[0]], [PITWALL.gate[1], PITWALL.x1]]) {
+      b('pitwallM').box(x0, x1, 0, PITWALL.h - 0.05, PITWALL.z0, PITWALL.z1, 'xXzZ', 0.5);
+      b('mast').box(x0, x1, PITWALL.h - 0.05, PITWALL.h, PITWALL.z0 - 0.03, PITWALL.z1 + 0.03, 'xXzZy', 1);
+    }
     // floodlight towers behind the far rail; at night they light the track with soft beams
     for (let x = YARD.x0 + 15; x < YARD.x1; x += 40) {
       const z = TRACK.z0 - 5;

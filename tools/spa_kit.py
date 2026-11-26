@@ -24,12 +24,12 @@ YK, YB = 0.035, 328.3                       # track height along the straight: y
 UCLAMP = ((-150 - GX) / S, (230 - GX) / S)  # flattened over game x -150..230 (the whole straight, the paddock, the hairpin)
 YARD = (-61.0, 101.0, -4.05, 40.6)          # cut: x0, x1, z0, z1 (game frame): the paddock behind the pit lane; the model's own track and pit lane stay
 KEEP_PITS = ('bldnbbldnb', 'bldgrptopsel', 'bldnc1', 'mtlamtla0051')   # the model's pit building ...
-PITS_GAP = (-14.0, 62.0)                    # ... kept east of the game's own building (an 8 m alley between them)
+PITS_GAP = (-70.0, 62.0)                    # ... kept east of the game's own building only (an alley between them); rebuilt by the game
 GROUND = ('grass', 'road', 'rmbl', 'grvl', 'hill', 'segwide', 'gbrm', 'rdgrass', 'blyat')
 DROP = ('Drssign',)
 WORLD = 650.0                               # nothing whose every corner is further than this from the pits (the camera sees 640 m; fog hides it before)
 DETAIL, FAR = ('twall', 'twtp', 'fncposts', 'grdrl'), 350.0   # tyre walls, fence posts, guard rails: only within this of the pits
-GATE = (25.6, 28.4)                         # the game's marshals' gate (x) through the pit wall
+PWX = (-61.0, 101.0)                        # the circuit's pit-wall rails go along the paddock: the game draws its own slim wall there
 YOFF = 0.0                                  # lift so the straight's tarmac lands on y = 0
 CT = {5126: np.float32, 5125: np.uint32, 5123: np.uint16, 5121: np.uint8}; NC = {'SCALAR': 1, 'VEC2': 2, 'VEC3': 3, 'VEC4': 4}
 d = open(SRC, 'rb').read(); L = struct.unpack('<I', d[12:16])[0]; j = json.loads(d[20:20 + L]); B = d[20 + L + 8:]
@@ -118,7 +118,7 @@ for mi, lst in parts.items():
     for P, N, UV, I in lst:
         R = np.c_[P, N, UV]; Q = R[I]; mn_ = Q[:, :, [0, 2]].min(1); mx_ = Q[:, :, [0, 2]].max(1)
         tch = (mx_[:, 0] > X0) & (mn_[:, 0] < X1) & (mx_[:, 1] > Z0) & (mn_[:, 1] < Z1)
-        if rail: tch |= (mx_[:, 0] > GATE[0]) & (mn_[:, 0] < GATE[1]) & (mx_[:, 1] > -17.5) & (mn_[:, 1] < -13)
+        if rail: tch |= (mx_[:, 0] > PWX[0]) & (mn_[:, 0] < PWX[1]) & (mx_[:, 1] > -17.5) & (mn_[:, 1] < -13)
         if detail: tch_far = np.hypot(Q[:, :, 0].mean(1) - 20, Q[:, :, 2].mean(1)) > FAR
         else: tch_far = np.zeros(len(Q), bool)
         tch_far |= np.hypot(Q[:, :, 0] - 20, Q[:, :, 2]).min(1) > WORLD; tch = tch & ~tch_far
@@ -127,7 +127,7 @@ for mi, lst in parts.items():
         for ti in np.nonzero(tch)[0]:
             q = Q[ti]; cx, cz = q[:, 0].mean(), q[:, 2].mean(); cut += 1
             if pits and -5 < cz < 15 and not (PITS_GAP[0] < cx < PITS_GAP[1]): polys = [list(q)]
-            elif rail and q[:, 0].max() > GATE[0] and q[:, 0].min() < GATE[1] and -17.5 < cz < -13: polys = [pg for pg in (clip(list(q), 0, GATE[0], True), clip(list(q), 0, GATE[1], False)) if len(pg) >= 3]   # the marshals' gate through the pit-wall rails
+            elif rail and q[:, 0].max() > PWX[0] and q[:, 0].min() < PWX[1] and -17.5 < cz < -13: polys = [pg for pg in (clip(list(q), 0, PWX[0], True), clip(list(q), 0, PWX[1], False)) if len(pg) >= 3]   # the pit-wall rails, along the paddock
             elif ground: polys = outside_pieces(q)
             elif X0 < cx < X1 and Z0 < cz < Z1: polys = []
             else: polys = [list(q)]
@@ -138,6 +138,52 @@ for mi, lst in parts.items():
         V = np.array(V); Ix = np.array(Ix); key = np.round(V * [1e3, 1e3, 1e3, 1e2, 1e2, 1e2, 1e4, 1e4]).astype(np.int64)
         _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True); out_parts[mi] = (V[first], inv.reshape(-1)[Ix]); kept += len(Ix)
 print('triangles kept', kept, 'touched by the cut', cut)
+
+# ---- the buildings: taken out of the model and handed to the game as boxes it rebuilds in its own style ----
+# every building piece (bldg*/bldn*, not the tyre walls) is drawn onto a 0.5 m grid from above; touching pieces make one
+# building; each gets its smallest turned rectangle, its height (ground to top) and a kind from what most of it is made of
+import cv2
+BUILD = lambda mn: (mn.replace('Meshes', '').startswith('bldg') or mn.replace('Meshes', '').startswith('bldn')) and not any(k in mn for k in ('twtp', 'objwall', 'concrt'))
+G0, GR = -700.0, 0.5
+grid_ = np.zeros((int(1400 / GR), int(1400 / GR)), np.uint8); btris = []
+for mi in [m for m in out_parts if BUILD(j['materials'][m]['name'])]:
+    V, I = out_parts.pop(mi); mn = j['materials'][mi]['name']
+    for t in I:
+        q = V[t, :3]; pts = np.round((q[:, [0, 2]] - G0) / GR).astype(np.int32)
+        cv2.fillConvexPoly(grid_, pts, 255); cv2.polylines(grid_, [pts], True, 255, 1)
+        btris.append((q, mn))
+grid_ = cv2.dilate(grid_, np.ones((3, 3), np.uint8))
+ncomp, lab = cv2.connectedComponents(grid_, connectivity=8)
+comp = {}
+for q, mn in btris:
+    cxp, czp = np.round((q[:, [0, 2]].mean(0) - G0) / GR).astype(int); k = lab[czp, cxp]
+    a = 0.5 * np.linalg.norm(np.cross(q[1] - q[0], q[2] - q[0]))
+    e = comp.setdefault(k, {'y0': 1e9, 'y1': -1e9, 'm': {}}); e['y0'] = min(e['y0'], q[:, 1].min()); e['y1'] = max(e['y1'], q[:, 1].max()); e['m'][mn] = e['m'].get(mn, 0) + a
+BLD = []
+tri_c = np.array([q[:, [0, 2]].mean(0) for q, mn in btris]); tri_k = lab[np.round((tri_c[:, 1] - G0) / GR).astype(int), np.round((tri_c[:, 0] - G0) / GR).astype(int)]
+tri_y = np.array([(q[:, 1].min(), q[:, 1].max()) for q, mn in btris]); tri_m = [mn for q, mn in btris]
+for k, e in comp.items():
+    if k == 0: continue
+    ys, xs = np.nonzero(lab == k)
+    (cx_, cz_), (w_, d_), ang = cv2.minAreaRect(np.c_[xs, ys].astype(np.float32))
+    cx_ = cx_ * GR + G0; cz_ = cz_ * GR + G0; w_ = max(0.3, w_ * GR - 1.0); d_ = max(0.3, d_ * GR - 1.0); r_ = math.radians(ang)   # the dilation backed off
+    dom = max(e['m'], key=e['m'].get)
+    if w_ * d_ < 12 or 'gurder' in dom: continue                                # girders and scraps
+    if PWX[0] < cx_ < PWX[1] and -17.5 < cz_ < -13: continue                   # the circuit's pit-wall booth: the game's wall replaces it
+    if d_ > w_: w_, d_, r_ = d_, w_, r_ + math.pi / 2                           # width is the long side
+    ux, uz = math.cos(r_), math.sin(r_); sel = np.nonzero(tri_k == k)[0]
+    along = (tri_c[sel, 0] - cx_) * ux + (tri_c[sel, 1] - cz_) * uz
+    n = max(1, math.ceil(w_ / 24)); sw = w_ / n                                 # long ones in pieces, each with its own ground and top (they climb hills)
+    for i in range(n):
+        a0 = -w_ / 2 + i * sw; m_ = sel[(along >= a0 - 0.5) & (along <= a0 + sw + 0.5)]
+        if not len(m_): continue
+        y0_, y1_ = tri_y[m_, 0].min(), tri_y[m_, 1].max(); mc = a0 + sw / 2
+        dm = max(set(tri_m[t] for t in m_), key=lambda mm: sum(1 for t in m_ if tri_m[t] == mm))
+        px_, pz_ = cx_ + ux * mc, cz_ + uz * mc
+        kind = 'tent' if 'tent' in dm else 'pits' if (-6 < pz_ < 16 and 50 < px_ < 160) else 'stand' if 'bldgpc' in dm or 'gsbars' in dm else 'canopy' if y0_ > 2.0 and abs(pz_) < 60 and -160 < px_ < 240 else 'block'
+        BLD.append((round(px_, 2), round(pz_, 2), round(sw, 2), round(d_, 2), round(r_, 4), round(float(y0_), 2), round(float(y1_), 2), kind, dm.replace('Meshes', '')[4:24]))
+BLD.sort(key=lambda b: b[0])
+print(len(BLD), 'building pieces:', {k: sum(1 for b in BLD if b[7] == k) for k in ('pits', 'block', 'stand', 'tent', 'canopy')})
 
 # ---- the race line: out of the bus-stop chicane, down the pit straight, round the hairpin, down the hill behind the paddock ----
 # Hand-placed on the model's tarmac (centre of the track), the hairpin an arc; heights from the model's road under each point;
@@ -203,7 +249,9 @@ keep.append(len(line) - 1)
 pts = ','.join(f'{line[k, 0]:.1f},{line[k, 1]:.1f},{H_[k]:.2f},{tt[k]:.2f}' for k in keep)
 open(PATHJS, 'w').write('// Generated by tools/spa_kit.py from the circuit model: the race line as x, z, y, seconds from its start, every few metres.\n'
     '// Out of the bus-stop chicane, down the pit straight (along z = -23), round the hairpin, down the hill behind the paddock.\n'
-    f'export const LINE = [{pts}];\n')
+    f'export const LINE = [{pts}];\n'
+    '// The circuit\'s buildings, rebuilt by the game: centre x, z, width (the long side), depth, rotation about y (three.js), lowest y, top y, kind.\n'
+    'export const BUILDINGS = ' + json.dumps([[*b_[:4], round(-b_[4], 4), *b_[5:8]] for b_ in BLD], separators=(',', ':')) + ';\n')
 print(PATHJS, len(keep), 'points')
 LINE_DBG = line
 
@@ -264,4 +312,8 @@ if len(sys.argv) > 4:
     dr.rectangle(((0 - bx0) * px, (-4 - bz0) * px, (54 - bx0) * px, (16 - bz0) * px), outline=(255, 0, 0))
     dr.rectangle(((X0 - bx0) * px, (Z0 - bz0) * px, (X1 - bx0) * px, (Z1 - bz0) * px), outline=(0, 200, 255))
     dr.line([((x - bx0) * px, (z - bz0) * px) for x, z in LINE_DBG], fill=(255, 40, 40), width=2)
+    KC = {'pits': (255, 60, 60), 'block': (255, 255, 255), 'stand': (60, 160, 255), 'tent': (255, 200, 0), 'canopy': (200, 0, 200)}
+    for cx_, cz_, w_, d_, r_, y0_, y1_, kd, dm in BLD:
+        cr, sr = math.cos(r_), math.sin(r_); cs = [(cx_ + a * w_ / 2 * cr - b * d_ / 2 * sr, cz_ + a * w_ / 2 * sr + b * d_ / 2 * cr) for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        dr.polygon([((x - bx0) * px, (z - bz0) * px) for x, z in cs], outline=KC[kd]); dr.text(((cx_ - bx0) * px, (cz_ - bz0) * px), f'{kd[0]}{y1_ - y0_:.0f} {dm[:8]}', fill=KC[kd])
     im.save(sys.argv[9])

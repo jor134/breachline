@@ -5,11 +5,12 @@
 // own pit garages east of ours, the hairpin, the hills), drawn by ../../maps/grandprix-gfx.js. Generic engine: ../level.js; the race: ./circuit.js.
 import { park, carBox } from './cars.js';
 import { TRACK } from './circuit.js';
+import { BUILDINGS } from './spa-path.js';
 export const H = 3.6, DOOR_H = 2.1;
 export const FOOT = { x0: 0, z0: -4, x1: 54, z1: 16 };
 export const YARD = { x0: -60, z0: -40, x1: 100, z1: 42 };   // east edge short of the circuit's own pit garages' far end and the road down from the hairpin
 export const STAIR = { x0: 12.4, x1: 13.9, z0: 10.8, z1: 15.8 };   // climbs toward -z: bottom at the back wall, top beside the upper corridor
-export const PITWALL = { x0: -60, x1: 100, z0: -16.4, z1: -14.2, h: 1.0, gate: [26, 28] };   // the circuit's two guard rails between track and pit lane; a marshals' gate across from the bomb on the far side
+export const PITWALL = { x0: -60, x1: 100, z0: -15.35, z1: -15.05, h: 1.05, gate: [26, 28] };   // a slim concrete wall between track and pit lane, the length of the paddock; a marshals' gate across from the bomb on the far side
 export const FAR_BOMB = [0, 29.8, -29.55, 0.9];   // always one bomb here, on a marshal's flight case against the far barrier: cross the live track to reach it
 export const BREAKER = { x: 33, y: 1.4, z: 15.87 };
 export const SPAWN = [[24, 33], [25.5, 33], [27, 33], [28.5, 33]];
@@ -118,11 +119,12 @@ export const PARKED = park([[14.8, 24.7, Math.PI], [17.6, 24.7, Math.PI], [20.4,
   [14.8, 31.2, 0], [17.6, 31.2, 0], [34.4, 31.2, 0], [37.2, 31.2, 0],
   [-0.4, 27.5, Math.PI], [2.4, 27.5, Math.PI], [5.2, 27.5, Math.PI], [46, 27.5, Math.PI], [48.8, 27.5, Math.PI], [51.6, 27.5, Math.PI]], 2, ['sedan', 'suv', 'hatch', 'wagon', 'compact', 'minivan', 'coupe', 'offroad']);
 // Solids that are not room walls: the pit wall, the barrier on the far side of the track, trucks, parked cars, the fence.
-// (The circuit's own pit garages east of ours are open sheds: a roof on posts, walked under.)
+// The circuit's own pit garages east of ours are closed.
 function extra({ boxes }) {
   const box = (kind, x0, x1, y0, y1, z0, z1, o = {}) => boxes.push(Object.assign({ f: 0, kind, x0, x1, y0, y1, z0, z1 }, o));
   box('pitwall', PITWALL.x0, PITWALL.gate[0], 0, PITWALL.h, PITWALL.z0, PITWALL.z1); box('pitwall', PITWALL.gate[1], PITWALL.x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1);
   box('barrier', YARD.x0, YARD.x1, 0, 1.2, TRACK.z0 - 1.2, TRACK.z0 - 0.4);
+  for (const [x, z, w, d, , , , kind] of BUILDINGS) if (kind === 'pits' && x - w / 2 < YARD.x1) box('pitsM', Math.max(YARD.x0, x - w / 2), Math.min(YARD.x1 + 1, x + w / 2), 0, 4.4, z - d / 2, z + d / 2);   // the circuit's garages next door (rebuilt, closed)
   for (const t of TRUCKS) box('truck', t.x0, t.x1, 0, 4.1, t.z0, t.z1, { team: t.team });
   for (const c of PARKED) { const b = carBox(c); box('pcar', b.x0, b.x1, 0, b.h, b.z0, b.z1); }
   box('fence', YARD.x0, EXIT.x0, 0, 2.4, 40, 40.08); box('fence', EXIT.x1, YARD.x1, 0, 2.4, 40, 40.08);
