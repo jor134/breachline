@@ -161,8 +161,12 @@ export function buildLevel(id = 'mansion') {
   const surf = map.surfaces;
   level.surfaces = surf;
   level.cellY = (li, x, z) => { for (const s of surf(x, z)) if (s[1] === li) return s[0]; return NaN; };
-  // the walking height under (x, z) for something whose feet are at prevY: the highest surface it can step onto
-  level.groundY = (x, z, prevY) => { const ss = surf(x, z); let best = -Infinity, low = Infinity; for (const [h] of ss) { if (h <= prevY + 0.6 && h > best) best = h; if (h < low) low = h; } return best > -Infinity ? best : low < Infinity ? low : prevY; };   // nowhere to stand (open water): stay level
+  // the walking height under (x, z) for something whose feet are at prevY: the highest surface it can step onto. When every surface
+  // there is out of reach overhead (walking under a staircase) it stays where it is rather than popping up on top, as long as the
+  // ground is not above it; nowhere to stand (open water): stay level too.
+  level.groundY = (x, z, prevY) => { const ss = surf(x, z); let best = -Infinity, low = Infinity; for (const [h] of ss) { if (h <= prevY + 0.6 && h > best) best = h; if (h < low) low = h; }
+    if (best > -Infinity) return best; if (low === Infinity) return prevY;
+    const ty = map.terrainY ? map.terrainY(x, z) : 0; return ty <= prevY + 0.6 || (prevY > 0.3 && map.solidFloor && map.solidFloor(x, prevY - 0.05, z)) ? prevY : low; };   // under it with solid ground (or a floor) beneath: stay; below the ground itself (dug in): up to the surface
   level.layerOf = (x, z, y) => { let best = 0, bd = Infinity; for (const [h, li] of surf(x, z)) { const d = Math.abs(h - y); if (d < bd) { bd = d; best = li; } } return best; };
   level.onStairs = map.onStairs || (() => false);
   level.inside = map.inside; level.objective = map.objective; level.floorAt = map.floorAt; level.roofY = map.roofY;
