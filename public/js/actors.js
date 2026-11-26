@@ -181,6 +181,9 @@ export class Human {
       gp.add(new THREE.Vector3(0, 0, 0.04));
       const iq = Hq.clone().invert(); gun.parent.remove(gun); sk.bones[hi].add(gun);
       gun.position.copy(gp.sub(Hp).applyQuaternion(iq).multiplyScalar(1 / s)); gun.quaternion.copy(iq.multiply(gq)); gun.scale.setScalar(1 / s);
+      if (gun.userData.kind === 'rifle') {   // a rifle is held like the squad's (holdRifle): it lives in the model's frame; this is its place in the hand otherwise
+        this.gunHand = { p: gun.position.clone(), q: gun.quaternion.clone(), s: gun.scale.x }; sk.bones[hi].remove(gun); g.add(gun); gun.matrixAutoUpdate = false; this.gunToHand(sk, r);
+      }
     }
     g.position.copy(keepP); g.quaternion.copy(keepQ);
   }
@@ -199,6 +202,7 @@ export class Human {
     // model right (-x) <- rig +x side (index 1); model left <- rig index 0
     for (const [S, k] of [['R', 1], ['L', 0]]) { put(r.up[S], D.sh[k]); put(r.fore[S], D.el[k]); put(r.hand[S], D.el[k]); put(r.thigh[S], D.hp[k]); put(r.shin[S], D.kn[k]); put(r.foot[S], D.kn[k]); }
     sk.solve(W);
+    if (!rest && this.gun && this.gun.parent === this.g) { if (this.hold) this.holdRifle(sk, r, W); else this.gunToHand(sk, r); }
   }
   // A new server position arrives ~15 times a second: glide to it at constant speed over one interval instead of chasing it.
   target(x, y, z, yaw, st, flags) {   // flags: 1 armed, 2 crouched, 4 changing magazines, 8 working on someone (kneeling)
@@ -259,6 +263,11 @@ export class Human {
     this.upper.rotation.set(c.spine + 0.07 * w * Math.max(0, F) - 0.04 * w * Math.max(0, -F) + 0.12 * run + br + fl * 0.25, Math.sin(ph) * 0.07 * w + fl * 0.4 + look + scared * 0.6 + check * 0.25, -Math.sin(ph) * 0.03 * w - sway + scared * 0.05);
     const [la, ra] = this.arms, bob = Math.sin(ph * 2) * 0.04 * w;
     la.sh.rotation.set(c.slx + bob + br + hurt - kick, 0, c.slz); la.el.rotation.x = c.el; ra.sh.rotation.set(c.srx + bob + br - kick - check * 0.5, 0, c.srz); ra.el.rotation.x = c.er - kick - check * 0.4;
+    // the support hand on the handguard, like the squad's: the left arm reaches (two-bone) for the rifle's fore grip wherever the
+    // right arm points it (low ready on his beat, shouldered in a fight). Not while reloading, working on someone or stunned.
+    this.hold = !!(up && this.fl & 1 && this.gun && this.gun.userData.kind === 'rifle'); this.support = this.hold && st !== 'z' && !(this.fl & 12);
+    if (this.skin) { const r = this.skin.role; if (!this.support) this.skin.str[r.fore.L] = this.skin.str[r.hand.L] = 1; if (!this.hold) this.skin.str[r.fore.R] = this.skin.str[r.hand.R] = 1; }
+    if (this.support && !this.skin) this.supportHand(la, ra);
     // changing magazines: the off hand goes to the magazine, down to the belt, back up, back to the handguard
     if (this.fl & 4 && up) { this.rlT += dt; const u = (this.rlT % 2.4) / 2.4, e2 = v => v * v * (3 - 2 * v), MW = [-1.15, -1.7], BELT = [-0.15, -0.35], k0 = [c.slx, c.el];
       const at2 = u < 0.25 ? lerp2(k0, MW, e2(u / 0.25)) : u < 0.5 ? lerp2(MW, BELT, e2((u - 0.25) / 0.25)) : u < 0.75 ? lerp2(BELT, MW, e2((u - 0.5) / 0.25)) : lerp2(MW, k0, e2((u - 0.75) / 0.25));
@@ -269,6 +278,50 @@ export class Human {
     this.blob.position.set(p.x + Math.sin(this.g.rotation.y) * off, baseY + 0.024, p.z + Math.cos(this.g.rotation.y) * off); this.blob.scale.set(1 + lying * 0.3, 1, 1 + lying * 0.9); this.blob.rotation.y = this.g.rotation.y;
     if (this.gun) { if (this.flashT > 0) this.flashT -= dt; this.gun.userData.flash.visible = this.flashT > 0; }
     if (this.skin) { try { this.poseSkin(false); } catch (e) { console.error('character pose failed', e); this.skin.dispose(); this.skin = null; this.g.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) o.visible = true; }); } }
+  }
+  // On the model, like the squad: the rifle is placed against the right shoulder and pointed where the chest faces (level in a fight,
+  // muzzle lowered when alert, low ready on his beat), then each arm reaches for it with a two-bone solve on the model's own arm:
+  // the right hand on the pistol grip, the left on the handguard (not while changing magazines, working on someone or stunned).
+  // Arms a little short for the reach stretch, up to 30 %.
+  gunToHand(sk, r) {   // not held (lying, kneeling): the rifle stays where it sat in the right hand
+    const hi = r.hand.R, H = this.gunHand, gun = this.gun;
+    gun.quaternion.copy(sk.gq[hi]).multiply(H.q); gun.position.copy(H.p).multiplyScalar(sk.sc[hi]).applyQuaternion(sk.gq[hi]).add(sk.gp[hi]); gun.scale.setScalar(1); gun.updateMatrix();
+  }
+  holdRifle(sk, r, W) {
+    const gun = this.gun, U = this.HU || (this.HU = (() => {
+      const P = sk.restP, arm = S => { const [L1, L2] = sk.len(S); return { S, L1, L2, up0: P[r.fore[S]].clone().sub(P[r.up[S]]).normalize(), fo0: P[r.hand[S]].clone().sub(P[r.fore[S]]).normalize(),
+        pole: new THREE.Vector3(S === 'L' ? 0.55 : -0.6, -0.7, S === 'L' ? -0.45 : -0.2).normalize(), T: new THREE.Vector3(), el: new THREE.Vector3(), q: new THREE.Quaternion(), qf: new THREE.Quaternion(), k: 1 }; };
+      return { L: arm('L'), R: arm('R'), pole0: new THREE.Vector3(0, 0, -1), a: new THREE.Vector3(), b: new THREE.Vector3(), f: new THREE.Vector3(), up: new THREE.Vector3(), rt: new THREE.Vector3(), m: new THREE.Matrix4(), qa: new THREE.Quaternion(), qb: new THREE.Quaternion(),
+        grip: new THREE.Vector3(0, -0.06, 0.035), fore: new THREE.Vector3(0, -0.035, -0.15), butt: new THREE.Vector3(0, 0.035, 0.285) };
+    })());
+    // where the chest faces, and the muzzle's drop for the state
+    const st = this.st, aim = st === 'c' || st === 'h', pitch = aim ? -0.04 : st === 'a' ? -0.3 : -0.55, low = aim ? 0 : st === 'a' ? 0.05 : 0.12, across = aim ? 0.04 : st === 'a' ? 0.25 : 0.45;   // across: the muzzle turned in across the body
+    U.f.set(0, 0, 1).applyQuaternion(this.D.u); U.f.y = 0; U.f.normalize().applyAxisAngle(UPY, across); U.rt.set(-U.f.z, 0, U.f.x);   // rt: the model's right (-x when facing +z)
+    U.f.applyAxisAngle(U.rt, pitch).normalize(); U.up.crossVectors(U.rt, U.f).normalize();
+    // the gun's frame: its -z along f, +y up; the butt in the right shoulder pocket (in from the shoulder, a little forward and down)
+    U.qa.setFromRotationMatrix(U.m.makeBasis(U.rt, U.up, U.a.copy(U.f).negate()));
+    const sh = sk.gp[r.up.R]; U.b.copy(sh).addScaledVector(U.rt, -0.07).addScaledVector(U.f, 0.06).add(_v2.set(0, -0.05 - low, 0));
+    gun.quaternion.copy(U.qa); gun.position.copy(U.b).sub(_v2.copy(U.butt).applyQuaternion(U.qa)); gun.scale.setScalar(1); gun.updateMatrix();
+    for (const A of this.support ? [U.R, U.L] : [U.R]) {
+      const S = A.S; A.T.copy(S === 'R' ? U.grip : U.fore).applyMatrix4(gun.matrix); A.T.addScaledVector(_v2.copy(A.T).sub(sk.gp[r.up[S]]).normalize(), -0.06);   // the wrist, a palm short of the grip
+      const d = A.T.distanceTo(sk.gp[r.up[S]]); A.k = Math.min(1.3, Math.max(1, d / (A.L1 + A.L2 - 0.01))); sk.str[r.fore[S]] = sk.str[r.hand[S]] = A.k;
+      W.set(r.up[S], gp => { const L1 = A.L1 * A.k, L2 = A.L2 * A.k, dd = U.a.copy(A.T).sub(gp), len = Math.max(0.02, dd.length()); dd.multiplyScalar(1 / len);
+        const l = Math.min(len, L1 + L2 - 0.002), along = (L1 * L1 - L2 * L2 + l * l) / (2 * l), h = Math.sqrt(Math.max(0, L1 * L1 - along * along));
+        U.b.copy(A.pole).addScaledVector(dd, -A.pole.dot(dd)).normalize(); A.el.copy(gp).addScaledVector(dd, along).addScaledVector(U.b, h);
+        return A.q.copy(align2(A.up0, U.pole0, U.a.copy(A.el).sub(gp), A.pole)).multiply(sk.restQ[r.up[S]]); });
+      W.set(r.fore[S], gp => A.qf.copy(align2(A.fo0, U.pole0, U.a.copy(A.T).sub(gp), A.pole)).multiply(sk.restQ[r.fore[S]]));
+      W.set(r.hand[S], (gp, PQ) => _q1.copy(PQ).multiply(_q2.copy(sk.restQ[r.fore[S]]).invert()).multiply(sk.restQ[r.hand[S]]));   // the hand straight on from the forearm
+    }
+    sk.solve(W);
+  }
+  supportHand(la, ra) {
+    ra.sh.updateMatrix(); ra.el.updateMatrix();
+    const T = _v1.copy(this.gun.userData.fore).applyMatrix4(GUN_ON_ARM).applyMatrix4(ra.el.matrix).applyMatrix4(ra.sh.matrix);   // the fore grip, in the torso's frame
+    const S = la.sh.position, L1 = 0.3, L2 = 0.29, dv = _v2.copy(T).sub(S), d = Math.min(L1 + L2 - 0.005, Math.max(Math.abs(L1 - L2) + 0.02, dv.length()));
+    const e = -(Math.PI - Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2)))));   // elbow bend (negative: the forearm comes forward)
+    la.el.rotation.set(e, 0, 0);
+    const h = _v3.set(0, -L1 - L2 * Math.cos(e), -L2 * Math.sin(e)).normalize();   // where the hand points from the shoulder with that bend, arm hanging
+    la.sh.quaternion.setFromUnitVectors(h, dv.normalize());   // swing the whole arm onto the grip (the elbow stays low and out)
   }
   muzzle(out) { return out.set(this.g.position.x + Math.sin(this.g.rotation.y) * 0.6, this.g.position.y + 1.35, this.g.position.z + Math.cos(this.g.rotation.y) * 0.6); }
 }
@@ -301,6 +354,7 @@ export const SELF_BACK = { d: 0.02, tilt: 0.25, wide: 7 / 6, up: 0, gear: 0, gup
 export const GOG = { night: false };
 export const RIG = { pistol: [0.24, -0.72, 0.02], rifle: [0.0, -0.76, -0.2], pouch: [-0.2, -0.62, -0.16], radio: [-0.13, -0.3, -0.1], flash: [0.155, -0.62, -0.1], smoke: [0.04, -0.62, -0.11] };
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _qPi = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI), _eul = new THREE.Euler(), _ax = new THREE.Vector3(1, 0, 0), _kneeFwd = new THREE.Vector3(0, 0, 1), GRIP = { i: 0.7, g: 0.8, t: 0.5 };
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), GUN_ON_ARM = new THREE.Matrix4().compose(new THREE.Vector3(0, -0.3, 0.03), new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, Math.PI)), new THREE.Vector3(1, 1, 1));   // where a suspect's rifle sits on his right forearm (the stick rig)
 const UPY = new THREE.Vector3(0, 1, 0), a1 = new THREE.Vector3(), a2 = new THREE.Vector3(), a3 = new THREE.Vector3(), a4 = new THREE.Vector3();
 let torsoGeo = null, legGeo = null, gloveGeo = null, limbGeo = null, TORSO = null, gearParts = null, gearG = null;
 const NADE_COLS = [0x5a6048, 0x9aa0a8, 0x6a6e72, 0xd8d8d8], isVestNade = p => NADE_COLS.includes(p[1]) && [0.125, 0.185, 0.04].includes(p[2]);   // the built-in vest grenades, replaced by the M84/M18 models
