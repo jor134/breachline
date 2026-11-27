@@ -107,3 +107,14 @@ export const grid = (nx, ny, col, off, shade) => (g, s) => {
   g.strokeStyle = col; g.lineWidth = 2;
   for (let j = 0; j <= ny; j++) { g.beginPath(); g.moveTo(0, j * s / ny); g.lineTo(s, j * s / ny); g.stroke(); for (let i = 0; i <= nx; i++) { const x = (i + (off && j % 2 ? 0.5 : 0)) * s / nx; g.beginPath(); g.moveTo(x, j * s / ny); g.lineTo(x, (j + 1) * s / ny); g.stroke(); } }
 };
+// Drop triangles that lie exactly on top of another one of the same mesh (either winding). Downloaded models often carry a back
+// copy of each foliage card for two-sidedness; drawn double sided, the two copies z-fight. Returns how many were dropped.
+export function dedupeTris(geo, tol = 0.002) {   // tol: how close (m) two corners must be to count as the same
+  const P = geo.attributes.position, I = geo.index; if (!I) return 0;
+  const q = i => Math.round(P.getX(i) / tol) + ',' + Math.round(P.getY(i) / tol) + ',' + Math.round(P.getZ(i) / tol);
+  const seen = new Set(), keep = []; let n = 0;
+  for (let t = 0; t < I.count; t += 3) { const a = I.getX(t), b = I.getX(t + 1), c = I.getX(t + 2), k = [q(a), q(b), q(c)].sort().join('|');
+    if (seen.has(k)) { n++; continue; } seen.add(k); keep.push(a, b, c); }
+  if (n) geo.setIndex(keep);
+  return n;
+}

@@ -129,7 +129,7 @@ const PROPS = { bottle: [], glass: [] };
 const prop = (k, W, u, v, y) => PROPS[k].push(W(u + (k === 'glass' ? 0.035 : 0.04), v + (k === 'glass' ? 0.035 : 0.04), y));
 const ff = fn => fn[0] > 0 ? 'X' : fn[0] < 0 ? 'x' : fn[2] > 0 ? 'Z' : 'z';   // the world face letter of a piece's front
 const furn = {
-  tank() { }, dancer() { }, stool() { }, tspeaker() { },   // instanced or kit (scenery / load)
+  tank() { }, leg() { }, dancer() { }, stool() { }, tspeaker() { },   // instanced or kit (scenery / load); (a tank's legs were drawn twice, instanced and as plain boxes, and flickered)
   barrels({ P, len, dep }) { for (const v of [0.12, dep - 0.2]) P('steelD', 0, len, v, v + 0.08, 0, 0.12); for (let u = 0.3; u < len; u += 1.5) P('steelD', u, u + 0.06, 0.12, dep - 0.12, 0.08, 0.13); },
   barreltable({ P, len, dep, h }) { P('oakL', -0.05, len + 0.05, -0.05, dep + 0.05, h - 0.04, h); },   // its barrel is instanced
   destemmer({ P, len, dep, h }) { for (const [u, v] of [[0.1, 0.1], [len - 0.2, 0.1], [0.1, dep - 0.2], [len - 0.2, dep - 0.2]]) P('steelD', u, u + 0.1, v, v + 0.1, 0, 0.5); P('steelG', 0, len, 0.2, dep - 0.2, 0.5, h - 0.5); P('steelG', 0.3, len - 0.3, 0, dep, h - 0.5, h); P('grapes', 0.4, len - 0.4, 0.1, dep - 0.1, h - 0.06, h + 0.005, 'Y'); },

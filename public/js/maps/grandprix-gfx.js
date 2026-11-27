@@ -3,7 +3,7 @@
 // ground, team boxes, a slim pit wall with the marshals' gate, lamp heads and night beams on the circuit's light poles, the pit building's facade and team colours, parked cars in the garages and the
 // motorhomes in the paddock. Two looks: an afternoon race and a floodlit night race.
 import * as THREE from '../../vendor/three.module.min.js';
-import { sheen, tex, grid } from '../mats.js';
+import { sheen, tex, grid, dedupeTris } from '../mats.js';
 import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H, YARD } from '../core/maps/grandprix.js';
 import { TRACK } from '../core/maps/circuit.js';
 import { POLES, LINE } from '../core/maps/spa-path.js';
@@ -38,9 +38,13 @@ export default {
   // the transporters' tractors and chassis (js/truck.js) in team colours, once the model has loaded
   // and the circuit around it all: "Circuit de Spa-Francorchamps 1992 layout" by Dave Love (CC BY 4.0), laid out by tools/spa_kit.py
   load() {
+    // the circuit model stacks its ground layers (grass, verges, old and new tarmac, pit lane, kerbs) in the same plane in places,
+    // which z-fought; each layer gets its own depth bias so the upper one always wins
+    const layerRank = n => /rmbl|grdrl|bldg/.test(n) ? 8 : /roadpit|xroadpit/.test(n) ? 7 : /road3x|roadjx|roadgrdx/.test(n) ? 6 : /road1x|road2x/.test(n) ? 5 : /rold2/.test(n) ? 4 : /rold/.test(n) ? 3 : /grvl/.test(n) ? 2 : /rdgrass|gbrm/.test(n) ? 1 : 0;
     const trucks = Promise.all(TRUCKS.map(t => makeTruck(tspot(t), TEAMS[t.team])));
     const circuit = new Promise(res => new ObfLoader().load('models/grandprix/spa.glb', gl => {
-      gl.scene.traverse(q => { if (!q.isMesh) return; q.castShadow = false; q.receiveShadow = true; q.matrixAutoUpdate = false; q.updateMatrix(); const m = q.material; if (m.map) m.map.anisotropy = 4; if (m.alphaTest) m.transparent = false; m.roughness = 0.95; });
+      gl.scene.traverse(q => { if (!q.isMesh) return; q.castShadow = false; q.receiveShadow = true; q.matrixAutoUpdate = false; q.updateMatrix(); const m = q.material; if (m.map) m.map.anisotropy = 4; if (m.alphaTest) { m.transparent = false; dedupeTris(q.geometry, 0.08); }   /* the pines' cards came with back copies that z-fought */
+        m.roughness = 0.95; const r = layerRank(m.name || ''); if (r) { m.polygonOffset = true; m.polygonOffsetFactor = -r; m.polygonOffsetUnits = -2 * r; } });
       res(gl.scene);
     }, undefined, () => res(null)));
     return Promise.all([trucks, circuit]).then(([ts, c]) => { const g = new THREE.Group(); for (const t of ts) g.add(t); if (c) g.add(c); g.add(makeBuildings()); return g; });
@@ -80,6 +84,10 @@ export default {
     // in load(); here: the paddock's own ground, our team boxes in the pit lane, the marshals' gate, timing stands, floodlights
     // the paddock's own ground, round the pit building (its garages keep their own floor)
     flat('pitlane', YARD.x0, FOOT.x0, -4.05, YARD.z1, 0.004, 0.1); flat('pitlane', FOOT.x1, YARD.x1, -4.05, YARD.z1, 0.004, 0.1); flat('pitlane', FOOT.x0, FOOT.x1, FOOT.z1, YARD.z1, 0.004, 0.1);
+    // seal the slits in the circuit model: between its pit-lane apron (cut at z -4.05) and our garage floors, and either side of
+    // the old pit wall's footprint (removed from the model), where the grass far below showed through
+    flat('pitlane', FOOT.x0 - 0.5, FOOT.x1 + 0.5, -4.2, -3.85, 0.02, 0.1);
+    flat('pitlane', YARD.x0 - 30, YARD.x1 + 30, -16.8, -13.8, -0.02, 0.1);
     flat('grass', -1400, 1400, -1400, 1400, -52, 0.01);   // far below the model's lowest valley: where the model has no ground, distance and fog
     for (let i = 0; i < 6; i++) { const x = i * 9; for (const [a, c, d, e] of [[x + 1, x + 1.12, -8.9, -4.2], [x + 7.88, x + 8, -8.9, -4.2], [x + 1, x + 8, -8.9, -8.78]]) b('team' + i).quad([a, 0.012, d], [c, 0.012, d], [c, 0.012, e], [a, 0.012, e], [0, 1, 0], 1); }
     // a slim pit wall: painted concrete with a steel cap, open at the marshals' gate (the circuit's rails stop either side of the paddock)

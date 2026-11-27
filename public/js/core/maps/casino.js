@@ -61,7 +61,7 @@ export const OPENINGS = [
   [0, 60, 9, 60, 18, 'gap'],                                                                   // the cage window: counter below, bars above
   [0, 68, 8, 69.5, 8, 'door'],                                                                 // vault (from the cage)
   [0, 20, 8, 21.5, 8, 'door'], [0, 36, 8, 37.5, 8, 'door'], [0, 50, 8, 51.5, 8, 'door'],       // STAFF ONLY doors into back of house
-  [0, 16, 5, 16, 6.2, 'door'], [0, 26, 6.8, 26, 7.9, 'door'], [0, 60, 5, 60, 6.2, 'door'],      // count room, fire stairs, staff room
+  [0, 16, 5, 16, 6.2, 'door'], [0, 26, 6.7, 26, 7.8, 'door'], [0, 60, 5, 60, 6.2, 'door'],      // count room, fire stairs, staff room
   [0, 40, 3, 40, 8, 'gap'], [0, 43, 3, 43, 8, 'gap'], [0, 40.5, 3, 42.5, 3, 'gap'],         // lift landing; the lift's own door is added in extra()
   [FS, 32, 1.2, 32, 2.3, 'door'],                                                              // linen store
   [2, 26, 8, 32, 8, 'gap'], [2, 28.4, 20, 29.6, 20, 'door', 'ext'],                            // roof access: open to the stair landing; a door onto the casino roof

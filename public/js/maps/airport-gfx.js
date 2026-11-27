@@ -113,8 +113,8 @@ export default {
       for (const x of [S.x0 - 0.04, S.x1 + 0.04]) { b('glassRail').quad([x, H, S.z0 + 2.1], [x, H, S.z1], [x, H + 1.1, S.z1], [x, H + 1.1, S.z0 + 2.1], [1, 0, 0], 1); b('handrail').box(x - 0.04, x + 0.04, H + 1.05, H + 1.12, S.z0 + 2.1, S.z1, 'xXyYzZ', 1); }
       b('steel').box(S.x0 - 0.1, S.x1 + 0.1, H - 0.6, H, S.z0 + 2.0, S.z0 + 2.1, 'zZy', 0.5); }
     plane(root, 'DEPARTURES', 16, 1.6, 13.5, RY + 0.45, C.z1 + 0.02, 0, { bg: '#1b2430', pw: 1024, ph: 104, bar: '#f0c020' });
-    plane(root, 'CHECK-IN 1-6', 5, 0.6, 4.5, 3.4, 16.1, 0, { bg: '#1b2430' }); plane(root, 'CHECK-IN 7-12', 5, 0.6, 22.5, 3.4, 16.1, 0, { bg: '#1b2430' });
-    plane(root, 'GATES 1-2  \u2191', 6, 0.7, 13.5, 5.2, 16.1, 0, { bg: '#f0c020', fg: '#111' });
+    plane(root, 'CHECK-IN 1-6', 5, 0.6, 4.5, 3.4, 16.13, 0, { bg: '#1b2430' }); plane(root, 'CHECK-IN 7-12', 5, 0.6, 22.5, 3.4, 16.13, 0, { bg: '#1b2430' });
+    plane(root, 'GATES 1-2  \u2191', 6, 0.7, 13.5, 5.2, 16.13, 0, { bg: '#f0c020', fg: '#111' });
     plane(root, 'GATE 1', 3, 0.6, 0.12, H + 3.2, 29.8, Math.PI / 2, { bg: '#f0c020', fg: '#111' }); plane(root, 'GATE 2', 3, 0.6, 26.88, H + 3.2, 29.8, -Math.PI / 2, { bg: '#f0c020', fg: '#111' });
     plane(root, 'SKYLINE CAFE', 7, 0.8, 7, H + 3.4, 54.85, Math.PI, { bg: '#5a3b22', pw: 1024, ph: 104 }); plane(root, 'VIP', 2, 0.6, 9.02, H + 2.6, 3.5, Math.PI / 2, { bg: '#1e2a38' });
     // ---- the forecourt's Y-shaped columns ----

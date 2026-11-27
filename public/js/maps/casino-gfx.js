@@ -368,7 +368,7 @@ export default {
     // ---- the fire stairs: three flights of a scissor stair and the landings between them ----
     { const N = 16, RUN = SHAFT.s - SHAFT.n;
       for (let k = 0; k < 2; k++) { const west = k % 2 === 0, x0 = west ? SHAFT.x0 + 0.08 : SHAFT.mid + 0.1, x1 = west ? SHAFT.mid - 0.1 : SHAFT.x1 - 0.08;
-        for (let i = 0; i < N; i++) { const top = k * H + (i + 1) * H / N, za = west ? SHAFT.s - (i + 1) * RUN / N : SHAFT.n + i * RUN / N, zb = za + RUN / N; B('concrete', x0, x1, top - 0.04, top, za, zb, 'xXYzZ', 1); B('padY', x0, x1, top - 0.002, top + 0.001, west ? zb - 0.05 : za, west ? zb : za + 0.05, 'Y', 1); }
+        for (let i = 0; i < N; i++) { const top = k * H + (i + 1) * H / N, za = west ? SHAFT.s - (i + 1) * RUN / N : SHAFT.n + i * RUN / N, zb = za + RUN / N; B('concrete', x0, x1, top - 0.04, top, za, zb, 'xXYzZ', 1); B('padY', x0, x1, top - 0.002, top + 0.005, west ? zb - 0.05 : za, west ? zb : za + 0.05, 'Y', 1); }
         const zl = west ? SHAFT.s : SHAFT.n, zh = west ? SHAFT.n : SHAFT.s, y0 = k * H - 0.2, y1 = k * H + H - 0.2; b('concrete').quad([x0, y0, zl], [x1, y0, zl], [x1, y1, zh], [x0, y1, zh], [0, -0.857, west ? -0.514 : 0.514], 0.5); }
       for (const [y, z0, z1] of [[H, SHAFT.z0, SHAFT.n], [2 * H, SHAFT.s, SHAFT.z1]]) B('concrete', SHAFT.x0, SHAFT.x1, y - 0.2, y, z0, z1, 'Yy' + (z0 > 0 ? 'z' : 'Z'), 0.5);
       plane(root, 'ROOF ACCESS', 1.6, 0.3, 29, POD + 2.55, WING.z1 + 0.13, 0, { bg: '#c22a24' }); plane(root, 'CASINO \u25BC', 1.4, 0.3, 26.13, POD + 2.3, 10, Math.PI / 2, { bg: '#c22a24' }); plane(root, 'CASINO 1', 1.0, 0.26, SHAFT.x0 + 0.13, 2.5, 7.35, Math.PI / 2, { bg: '#c22a24' });   /* on the shaft's face of the wall (half a wall is 0.1 m), over the door */ }

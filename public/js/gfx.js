@@ -120,14 +120,14 @@ function furnish(b, w) {
     case 'aseat': { const half = len / 2;   // a pair of aircraft seats: cushion, tall back with a headrest cover, arm rests
       for (const u of [0, half]) { P('fabric', u + 0.03, u + half - 0.03, 0.12, dep, 0.18, 0.46); P('fabric', u + 0.03, u + half - 0.03, 0, 0.14, 0.18, h); P('linen', u + 0.08, u + half - 0.08, -0.004, 0.06, h - 0.25, h - 0.02, 'zY'); }
       P('fascia', 0, 0.04, 0.12, dep, 0.46, 0.62); P('fascia', len - 0.04, len, 0.12, dep, 0.46, 0.62); P('fascia', 0.1, len - 0.1, 0.2, dep - 0.1, 0, 0.18); break; }
-    case 'xray': P('lacquer', 0, len, 0, dep, 0.55, 1.0); P('dark', 0.02, len - 0.02, 0.4, dep - 0.4, 0.55, h); P('lacquer', 0, len, dep * 0.35, dep * 0.65, 1.0, h); P('top', 0, len, 0, dep, 0.5, 0.55); P('fascia', 0.05, len - 0.05, 0.05, dep - 0.05, 0, 0.5, 'xXzZ'); break;
+    case 'xray': if (h < 1.05) { P('lacquer', 0, len, 0, dep, 0.55, h); P('dark', 0.02, len - 0.02, 0.4, dep - 0.4, h, h + 0.006, 'Y'); } /* a bare belt: its rubber 6 mm proud of the casing (flush, they flickered) */ else { P('lacquer', 0, len, 0, dep, 0.55, 1.0); P('dark', 0.02, len - 0.02, 0.4, dep - 0.4, 0.55, h); P('lacquer', 0, len, dep * 0.35, dep * 0.65, 1.0, h); } P('top', 0, len, 0, dep, 0.5, 0.55); P('fascia', 0.05, len - 0.05, 0.05, dep - 0.05, 0, 0.5, 'xXzZ'); break;
     case 'column': P('lacquer', 0, len, 0, dep, 0, h, 'xXzZ'); P('fascia', -0.02, len + 0.02, -0.02, dep + 0.02, 0, 0.12, 'xXzZ'); break;
     case 'booth': P('lacquer', 0, len, 0, dep, 0, h); break;
     case 'guard': P('lacquer', 0, len, 0, dep, 0, h - 0.1); P('fascia', -0.1, len + 0.1, -0.1, dep + 0.1, h - 0.1, h); P('glass', 0.05, len - 0.05, -0.002, dep + 0.002, 1.0, 2.1, 'xXzZ'); break;
     case 'baffle': P('steelplate', 0, len, 0, dep, 0, h); break;
     case 'berm': P('rubber', 0, len, 0, dep, 0, h, ALL, 0.5); for (let u = 0.5; u < len; u += 1) P('steelplate', u, u + 0.05, dep, dep + 0.01, 0, h, 'Z'); break;
     case 'racecar': break;   // drawn as a car model by the map's scenery
-    case 'tyres': { const n = Math.max(1, Math.round(h / 0.34)); for (let k = 0; k < n; k++) { P('tyreM', 0.04, len - 0.04, 0.04, dep - 0.04, k * h / n, (k + 1) * h / n - 0.03); P('dark', 0.2, len - 0.2, 0.2, dep - 0.2, (k + 1) * h / n - 0.031, (k + 1) * h / n - 0.029, 'Y'); } break; }
+    case 'tyres': { const n = Math.max(1, Math.round(h / 0.34)); for (let k = 0; k < n; k++) { P('tyreM', 0.04, len - 0.04, 0.04, dep - 0.04, k * h / n, (k + 1) * h / n - 0.03); P('dark', 0.2, len - 0.2, 0.2, dep - 0.2, (k + 1) * h / n - 0.03, (k + 1) * h / n - 0.025, 'Y');   /* 5 mm proud of the tyre top: 1 mm z-fought */ } break; }
     case 'pot': P('top', 0.02, len - 0.02, 0.02, dep - 0.02, 0, h - 0.04, 'xXzZ'); P('top', 0, len, 0, dep, h - 0.08, h, 'xXzZyY'); P('walnut', 0.03, len - 0.03, 0.03, dep - 0.03, h - 0.03, h - 0.02, 'Y'); break;
     default: P('stone', 0, len, 0, dep, 0, h);
   }
@@ -167,7 +167,8 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     const cy = f * H + H - 0.012; for (const [a, c, e, g] of cut([x0, z0, x1, z1], holes[f + 1])) b('ceiling').quad([a, cy, c], [e, cy, c], [e, cy, g], [a, cy, g], [0, -1, 0], 0.5);
     const inHole = (hs, x, z, m) => (hs || []).some(([a, c, e, g]) => x > a - m && x < e + m && z > c - m && z < g + m);
     for (let x = x0 + 1.5; x < x1 - 0.7; x += 3) for (let z = z0 + 1.5; z < z1 - 0.7; z += 3) { if (inHole(holes[f + 1], x, z, 0.2) || inHole(holes[f], x, z, 0.5) || (G.noFit && G.noFit(f, x, z))) continue; b('glow').quad([x - 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z - 0.08], [x + 0.08, cy - 0.004, z + 0.08], [x - 0.08, cy - 0.004, z + 0.08], [0, -1, 0]);
-      if (!vd) ao('lightpool', [x - 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z - 1.5], [x + 1.5, y + 0.03, z + 1.5], [x - 1.5, y + 0.03, z + 1.5], [0, 1, 0]); }   // pool of light on the floor under each fitting
+      if (!vd) { const a = Math.max(x - 1.5, x0 + 0.12), e = Math.min(x + 1.5, x1 - 0.12), c = Math.max(z - 1.5, z0 + 0.12), g = Math.min(z + 1.5, z1 - 0.12), u = t => (t - x + 1.5) / 3, v = t => (t - z + 1.5) / 3;   // kept inside the room: through the walls it crossed the window sills and flickered
+        b('lightpool').quad([a, y + 0.03, c], [e, y + 0.03, c], [e, y + 0.03, g], [a, y + 0.03, g], [0, 1, 0], 1, [[u(a), v(c)], [u(e), v(c)], [u(e), v(g)], [u(a), v(g)]]); } }   // pool of light on the floor under each fitting
   }
   // walls: plaster inside, the map's cladding outside, glass with dark mullions
   for (const w of level.boxes) {
@@ -203,12 +204,12 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
     } else if (w.kind === 'furn') { furnish(b, w); if (!['pool', 'hedge', 'wall', 'dancer'].includes(w.sub)) {   // (a dancer's own blob shadow is drawn with the crowd; a square here floated under each one)
       const e = 0.28, y = w.y0 + 0.016; ao('aoBlob', [w.x0 - e, y, w.z0 - e], [w.x1 + e, y, w.z0 - e], [w.x1 + e, y, w.z1 + e], [w.x0 - e, y, w.z1 + e], [0, 1, 0]); } }
   }
-  // stairs: floating treads, one flight stacked over the next
+  // stairs: floating treads, one flight stacked over the next (full width: a 10 cm slot each side showed the floor below)
   for (const st of map.stairs || []) {
     const run = (st.z1 - st.z0) * 0.85, N = 16, m = G.tread || 'walnut';
     for (let k = 0; k < st.n; k++) { const off = st.yb + k * H;
-      for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N + off; b(m).box(st.x0 + 0.1, st.x1 - 0.1, top - 0.06, top, st.z1 - (i + 1) * run / N, st.z1 - i * run / N, ALL, 1); }
-      b(m).box(st.x0 + 0.1, st.x1 - 0.1, H - 0.2 + off, H + off, st.z0, st.z1 - run, 'YZy', 1);
+      for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N + off; b(m).box(st.x0 + 0.02, st.x1 - 0.02, top - 0.06, top, st.z1 - (i + 1) * run / N, st.z1 - i * run / N, ALL, 1); }
+      b(m).box(st.x0 + 0.02, st.x1 - 0.02, H - 0.2 + off, H + off, st.z0, st.z1 - run, 'YZy', 1);
     }
   }
   const NOSHADE = { glass: 1, water: 1, glow: 1, ao: 1, aoBlob: 1, lightpool: 1, ocean: 1, ...(G.noshade || {}) };

@@ -218,9 +218,9 @@ export default {
       B('chrome', r.x - 0.1, r.x + 0.1, ROOF, ROOF + 1.7, pz - 0.6, pz - 0.4, 'xXzZ', 1); B('chrome', r.x - 0.06, r.x + 0.06, ROOF + 1.6, ROOF + 1.72, pz - 0.6, r.z + 0.05, 'xXyYzZ', 1);
       B('ropeM', r.x - 0.025, r.x + 0.025, r.bot + 0.05, ROOF + 1.6, r.z - 0.025, r.z + 0.025, 'xXzZ', 1); }
     // floodlight banks along the roof's front edges (the model's roof ring), all four sides; they light the pitch (the 'sun')
-    { const yL = 24.6, rect = [P.x0 - 12, P.z0 - 33.5, P.x1 + 12, P.z1 + 30];
-      const bank = (x, z, rx, rz) => { B('standC', x - 2.2, x + 2.2, yL, yL + 1.4, z - 0.3, z + 0.3, 'xXyYzZ', 1); b('flood').quad([x - 2.0, yL + 0.1, z + rz * 0.31], [x + 2.0, yL + 0.1, z + rz * 0.31], [x + 2.0, yL + 1.3, z + rz * 0.31], [x - 2.0, yL + 1.3, z + rz * 0.31], [0, 0, rz], 1); };
-      const bankX = (x, z, rx) => { B('standC', x - 0.3, x + 0.3, yL, yL + 1.4, z - 2.2, z + 2.2, 'xXyYzZ', 1); b('flood').quad([x + rx * 0.31, yL + 0.1, z - 2.0], [x + rx * 0.31, yL + 0.1, z + 2.0], [x + rx * 0.31, yL + 1.3, z + 2.0], [x + rx * 0.31, yL + 1.3, z - 2.0], [rx, 0, 0], 1); };
+    { const yL = 24.6, rect = [P.x0 - 12, P.z0 - 33.5, P.x1 + 12, P.z1 + 30];   // (the lamp faces 8 cm proud of the housing: 1 cm z-fought at 150 m)
+      const bank = (x, z, rx, rz) => { B('standC', x - 2.2, x + 2.2, yL, yL + 1.4, z - 0.3, z + 0.3, 'xXyYzZ', 1); b('flood').quad([x - 2.0, yL + 0.1, z + rz * 0.38], [x + 2.0, yL + 0.1, z + rz * 0.38], [x + 2.0, yL + 1.3, z + rz * 0.38], [x - 2.0, yL + 1.3, z + rz * 0.38], [0, 0, rz], 1); };
+      const bankX = (x, z, rx) => { B('standC', x - 0.3, x + 0.3, yL, yL + 1.4, z - 2.2, z + 2.2, 'xXyYzZ', 1); b('flood').quad([x + rx * 0.38, yL + 0.1, z - 2.0], [x + rx * 0.38, yL + 0.1, z + 2.0], [x + rx * 0.38, yL + 1.3, z + 2.0], [x + rx * 0.38, yL + 1.3, z - 2.0], [rx, 0, 0], 1); };
       for (let x = rect[0] + 8; x < rect[2] - 4; x += 9) { if (x < DECK.x0 - 3 || x > DECK.x1 + 3) bank(x, rect[1] + 2, 0, 1); bank(x, rect[3] - 2, 0, -1); }
       for (let z = rect[1] + 10; z < rect[3] - 6; z += 9) { bankX(rect[0] + 2, z, 1); bankX(rect[2] - 2, z, -1); } }
     // ---- the stair: one straight flight from the club (z 14) up to the suites (z 8), concrete treads with a nosing strip, the

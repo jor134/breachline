@@ -208,7 +208,7 @@ export default {
     const B = (m, x0, x1, y0, y1, z0, z1, f = 'xXyYzZ', s = 0.5) => b(m).box(x0, x1, y0, y1, z0, z1, f, s);
     const flat = (m, x0, x1, z0, z1, y = 0, s = 0.2) => b(m).quad([x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1], [0, 1, 0], s);
     // ---- outside: the lot (bays, kerb, a planter strip), the alleys, the street; the fences; dumpsters; the van ----
-    flat('lot', -1, 64, -34, 0, 0.004, 0.08); flat('lot', 58, 64, 0, 48, 0.004, 0.08); flat('lot', -1, 58, 42, 48, 0.004, 0.08);
+    flat('lot', -1, 64, -34, 0, 0.004, 0.08); flat('lot', 58, 64, 0, 48, 0.004, 0.08); flat('lot', -1, 58, 42, 48, 0.004, 0.08); flat('lot', -1, FOOT.x0, 0, 42, 0.004, 0.08);   // (and the slot between the west fence and the building: it had no ground)
     for (let x = 2; x <= 56; x += 2.7) { if (x > 22 && x < 36) continue; for (const [z0, z1] of [[-9, -4], [-30, -25]]) flat('lotLine', x - 0.06, x + 0.06, z0, z1, 0.01, 1); }
     B('kerb', -1, 64, 0, 0.15, -34.3, -34, 'yYzZ', 0.5);
     for (const w of level.boxes) {
