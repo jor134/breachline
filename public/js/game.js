@@ -42,6 +42,7 @@ const ERRS = []; const noteErr = m => { m = String(m).replace(/\s+/g, ' ').slice
 for (const k of ['error', 'warn']) { const f = console[k].bind(console); console[k] = (...a) => { f(...a); const t = a.map(x => x && x.message ? x.message : String(x)).join(' '); if (k === 'error' || /not loaded|failed/i.test(t)) noteErr(t); }; }
 addEventListener('error', e => noteErr(e.message)); addEventListener('unhandledrejection', e => noteErr(e.reason && e.reason.message || e.reason));
 renderer.domElement.addEventListener('webglcontextlost', () => noteErr('GPU context lost (out of graphics memory?)'));
+renderer.domElement.addEventListener('webglcontextrestored', () => { renderer.shadowMap.needsUpdate = true; scene.traverse(o => { for (const m of [].concat(o.material || [])) for (const k of ['map', 'envMap', 'emissiveMap', 'alphaMap']) if (m[k]) m[k].needsUpdate = true; }); });   // back: everything re-sent from its (kept) pictures, the sun's shadows redrawn
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.setSize(innerWidth, innerHeight); renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
 renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1.08;   // rolls off hot spots (flashlight, glass glare) without washing out colour
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;   // static sun shadows, drawn once
@@ -1315,7 +1316,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q106';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q107';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

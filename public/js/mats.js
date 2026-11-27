@@ -1,6 +1,13 @@
 // Surfaces: every lit material is made here so each gets a highlight and a little reflection of its surroundings
 // (same approach as Kerbside: Phong shine + one tiny built-in reflection picture, cheap in the headset).
 import * as THREE from '../vendor/three.module.min.js';
+// Every 2D canvas the game paints its textures on is kept in ordinary memory (willReadFrequently). A GPU-backed canvas loses its
+// picture when the headset's GPU process resets under memory pressure (busy multiplayer rounds on the big maps); three.js then
+// re-sends textures from canvases that have gone blank and every surface comes up white. Patched here, before any canvas is made.
+if (typeof HTMLCanvasElement !== 'undefined' && !HTMLCanvasElement.prototype.__blCtx) {
+  const get = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.__blCtx = true;
+  HTMLCanvasElement.prototype.getContext = function (type, opts) { return get.call(this, type, type === '2d' ? Object.assign({ willReadFrequently: true }, opts) : opts); };
+}
 export const GLOSS = { // shininess, highlight brightness, reflection strength
   paint: [110, 0.75, 0.3], glass: [170, 1.0, 1.0], water: [160, 1.0, 0.38], metal: [70, 0.7, 0.26], polished: [48, 0.45, 0.16], plastic: [40, 0.35, 0.1],
   satin: [22, 0.18, 0.05], stone: [16, 0.14, 0.03], cloth: [8, 0.07, 0], matte: [4, 0.03, 0],
