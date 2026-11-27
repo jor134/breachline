@@ -24,7 +24,7 @@ export const JET = { cx: JX, w: 2.05, skin: 2.35, nose: mz(13.04), tail: mz(-12.
   seats: [JZ - 7.19, JZ + 9.59], left: [JX - 2.0, JX - 0.6], right: [JX + 0.4, JX + 1.95] };
 export const AIRSTAIR = { x0: JX + JET.skin, x1: JX + JET.skin + 4, z0: JET.door[0], z1: JET.door[1] };   // stair truck at the door, down the left side
 export const BREAKER = { x: 26.87, y: 1.4, z: 4 };
-export const SPAWN = [[-15, 64], [-15, 65.5], [-15, 67], [-15, 68.5]];
+export const SPAWN = [[-6.4, 65.2], [-6.4, 66.4], [-6.4, 67.6], [-6.4, 68.8]];   // beside the exit box (on the building's side), not in it
 export const EXIT = { x0: -24, x1: -8, z0: 58, z1: 76 };
 export const CANOPY = { x0: -3, x1: 30, z0: 55, z1: 75, y: 2 * H + 0.3 };   // the roof runs on over the forecourt
 export const TREES = [[2, 72], [13.5, 72], [25, 72]];                       // Y-shaped columns holding its front edge

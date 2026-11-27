@@ -45,7 +45,7 @@ export const TRUCKS = [[14, 8, 1], [50, 7.5, -1], [84, 8, 1], [34, 18, 1], [70, 
 export const FLOODS = [[2, 31], [100, 31], [43, 51], [2, 66], [70, 74.6], [110, 62], [30, 31]];
 export const OPS = { x0: 4, x1: 22, z0: 62, z1: 72 };
 export const BREAKER = { x: 14.5, y: 1.4, z: 67.13 };
-export const SPAWN = [[41, 80], [42.5, 80], [44, 80], [45.5, 80]];
+export const SPAWN = [[41.2, 75], [42.4, 75], [43.6, 75], [44.8, 75]];   // beside the exit box (on the building's side), not in it
 export const EXIT = { x0: 38, x1: 48, z0: 76.6, z1: 84 };
 
 export const ROOMS = [   // [floor, name, x0, z0, x1, z1, floor finish]

@@ -22,7 +22,7 @@ export const VAN = { x: 29, z: -17, turn: 0 };                       // nose to 
 // The bays are 2.7 m wide, either side of the drive (x 22-36) the van stands in.
 const BAYS = []; for (const [z, turn] of [[-6.5, 0], [-27.5, Math.PI]]) for (let k = 0; k < 20; k++) { const x = 2 + 2.7 * k; if (x + 2.7 > 22 && x < 36) continue; if (x + 2.7 <= 56.1) BAYS.push([x + 1.35, z, turn]); }
 export const PARKED = park(BAYS.filter((b, i) => (i * 7 + 3) % 10 > 2), 4);
-export const SPAWN = [[26.6, -19.5], [27.8, -19.5], [30.2, -19.5], [31.4, -19.5]];
+export const SPAWN = [[27.2, -10.4], [28.4, -10.4], [29.6, -10.4], [30.8, -10.4]];   // beside the exit box (on the building's side), not in it
 export const EXIT = { x0: 22, x1: 36, z0: -24, z1: -12 };             // back at the van
 export const BREAKER = { x: 57.87, y: 1.4, z: 13 };                  // in the storage room, on the outside wall
 export const DJ = { x: 20, z: 31.2, face: Math.PI };                  // the DJ behind her booth, facing the hall (-z)

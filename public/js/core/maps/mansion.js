@@ -7,7 +7,7 @@ export const STAIR = { x0: 13.5, x1: 15, z0: 4, z1: 9 };
 // Main electrical breaker: on the plant room's rear wall, just inside the concealed service door.
 export const BREAKER = { x: 22.6, y: -H + 1.4, z: 0.13 };
 export const CAR = { x: 22, z: 24.2, length: 4.4 };
-export const SPAWN = [[10.5, 27], [11.5, 27], [12.5, 27], [13.5, 27]];
+export const SPAWN = [[10.2, 24], [11.4, 24], [12.6, 24], [13.8, 24]];   // beside the exit box (on the building's side), not in it
 const STEP = { wood: 'wood', carpet: 'carpet', tile: 'concrete', marble: 'concrete' };
 
 // [floor, name, x0, z0, x1, z1, floorMaterial]
