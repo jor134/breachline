@@ -663,7 +663,7 @@ function applySnap(m) {
   for (const [id, name, , hp, down, h, l, r, g, w] of m.P) {
     if (id === S.me.id) { const tm = w & 2048 ? 'tango' : 'swat'; if (tm !== S.me.team) { S.me.team = tm; myBody.setTeam(tm); } S.me.locks = w >> 13 & 3; S.me.traps = w >> 15 & 3; const hd = !!(w & 4096); if (hd !== !!S.me.holding) { S.me.holding = hd; if (!hd) for (const q of hands) q.shield = false; } S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
     seen.add(id); let o = S.officers.get(id); const bot = !!(w & 1 << 17); if (!o) { o = new Officer(name, label(bot ? name + ' (AI)' : name, bot ? '#a8ffb8' : '#9fd0ff', 0, 64, 0.07)); scene.add(o.g); S.officers.set(id, o); }
-    o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team); o.bot = bot; o.bst = w >> 18 & 7; o.slot = id - 900;
+    o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team); o.tag.visible = !(S.pvp && o.team !== S.me.team); /* PvP: no name over the other side's heads (it gave them away) */ o.bot = bot; o.bst = w >> 18 & 7; o.slot = id - 900;
   }
   for (const [id, o] of S.officers) if (!seen.has(id)) { scene.remove(o.g); S.officers.delete(id); }
   voice.sync(S.me.id, [...[...S.officers.entries()].filter(([, o]) => !o.bot).map(([id]) => id), ...(S.watch ? [] : storeUI.specIds())], S.net === 'online');   // spectators: they hear the players, nobody hears them
@@ -795,8 +795,8 @@ function doKick() {
 // Your shout: a recorded line when sfx/manifest.json has 'vo_p_shout' (or 'vo_t_shout' as a terrorist), else the headset's speech
 // voice, which Quest's browser may not have, so the words also show in front of you and the controller buzzes.
 function doShout() { if (S.me.down) return; net.send({ t: 'shout' }); const t = S.pvp && S.me.team === 'tango', line = t ? 'GET DOWN! NOBODY MOVE!' : 'POLICE! HANDS UP!';
-  if (!sfx.vo(t ? 'vo_t_shout' : 'vo_p_shout', null, 1.3)) sfx.say(line.toLowerCase(), 1);
-  sayAt(head.pos.x + head.fwd.x * 1.6, head.pos.y - 0.15, head.pos.z + head.fwd.z * 1.6, line, '#ffffff'); for (const h of hands) buzz(h, 0.5, 60); }
+  if (!sfx.vo(t ? 'vo_t_shout' : 'vo_p_shout', null, 1.3)) { sfx.say(line.toLowerCase(), 1); sayAt(head.pos.x + head.fwd.x * 1.6, head.pos.y - 0.15, head.pos.z + head.fwd.z * 1.6, line, '#ffffff'); }   // the words show only when there's no recorded line to hear
+  for (const h of hands) buzz(h, 0.5, 60); }
 
 function readVR() {
   for (const h of hands) { Object.assign(h.prev, h.in); h.active = false; }
@@ -1316,7 +1316,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q108';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q109';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });
