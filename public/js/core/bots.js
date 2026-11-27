@@ -266,8 +266,8 @@ export const BotMixin = {
     p.hx = b.x; p.hz = b.z; p.y = b.y; p.hy = b.y + eye; p.light = this.night;
     p.h = [r2(b.x), r2(b.y + eye), r2(b.z), ...q];
     // hands: rifle up by default; gestures on top (working low over someone, changing magazines, reaching for a door, throwing)
-    const L0 = [0.02, -0.25, 0.5], lerp3 = (a, c, u) => a.map((v, i) => v + (c[i] - v) * u), ease = u => u * u * (3 - 2 * u);
-    let R = [0.17, -0.27, 0.22], Lh = L0, lw = null;
+    const L0 = [0.02, -0.27, 0.4], lerp3 = (a, c, u) => a.map((v, i) => v + (c[i] - v) * u), ease = u => u * u * (3 - 2 * u);
+    let R = [0.15, -0.26, 0.16], Lh = L0, lw = null;   // grip a hand in front of the shoulder, support hand under the handguard: elbows bent and low
     if (!p.down && this.t - (b.workT ?? -9) < 0.2 && b.aim < 0.15) { const w = Math.sin(this.t * 7) * 0.04; R = [0.2, -0.5, 0.12]; Lh = [-0.02, -0.72 + w, 0.42 + w]; }
     else if (b.rl > 0) { const u = 1 - b.rl / 2.4, MW = [0.08, -0.36, 0.28], BELT = [-0.16, -0.72, 0.06];
       Lh = u < 0.25 ? lerp3(L0, MW, ease(u / 0.25)) : u < 0.5 ? lerp3(MW, BELT, ease((u - 0.25) / 0.25)) : u < 0.75 ? lerp3(BELT, MW, ease((u - 0.5) / 0.25)) : lerp3(MW, L0, ease((u - 0.75) / 0.25)); R = [0.15, -0.33, 0.2]; }

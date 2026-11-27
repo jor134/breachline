@@ -517,10 +517,10 @@ export class Body {
       // quest-store: when the hand (on a controller, or locked to a gun's grip) is further from the model's shoulder than its arm is
       // long, the arm stretches to reach it instead of stopping short: upper arm and forearm lengthen together, the hand keeps its size.
       // Your real arms are rarely the model's length, and a straight arm that ended short left the hands hanging off the guns.
-      this.fns['up' + S] = (gp) => { if (!H.on) return null; H.pole.set(out * 0.5, -0.75, -0.45);
+      this.fns['up' + S] = (gp) => { if (!H.on) return null; if (S === 'R') H.pole.set(out * 0.42, -0.86, -0.28); else H.pole.set(out * 0.22, -0.95, -0.2);   // elbows hang: the gun arm's a little out, the support arm's under the handguard (they used to flare out sideways)
         // reach: the furthest your hands have got from the shoulders lately (shrinks 2 mm a second), so the arms take your arm length
         // and keep a natural elbow bend at shorter reaches, rather than only lengthening when a hand gets out of range
-        const d = gp.distanceTo(H.wp), len = H.L1 + H.L2; this.reach = Math.max(d, (this.reach ?? len * 1.25) - (this.dt || 0) * 0.002);
+        const d = gp.distanceTo(H.wp), len = H.L1 + H.L2; this.reach = Math.max(d < len * 1.3 ? d : 0, (this.reach ?? len * 1.1) - (this.dt || 0) * 0.02);   // a long reach (a throw, a door) is not your arm length: it fades in seconds
         const k = Math.min(ARM_STRETCH, Math.max(1, this.reach * 0.97 / len, d / (len - 0.004))); sk.str[r.fore[S]] = sk.str[r.hand[S]] = k;
         elbowAt(gp, H.wp, H.L1 * k, H.L2 * k, H.pole, H.el); return align2(H.up0, H.pole0, tmpA.copy(H.el).sub(gp), tmpB.copy(H.pole), IKq).multiply(sk.restQ[r.up[S]]).clone(); };
       // quest-store: the forearm takes its roll from the hand (the back of the hand at rest -> the back of the hand now), not from the

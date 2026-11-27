@@ -9,7 +9,7 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, envMap, pbrMats } from '../mats.js';
 import { ObfLoader } from '../store/obf.js';
 import { setVenueMusic, setVenueMix, venueLevel } from '../audio.js';
-import { H, FOOT, WEST, EAST, TERR, PAV, VOID, FLIGHTS, LANDINGS, YARD, DRIVE, PLAZA, ROOMS, FURNITURE, VAN, DJ, DANCERS, ROW_DX, vineRows, flightY, inPav, onTerrace, inFoot } from '../core/maps/winery.js';
+import { H, DOOR_H, OPENINGS, GLASS, FOOT, WEST, EAST, TERR, PAV, VOID, FLIGHTS, LANDINGS, YARD, DRIVE, PLAZA, ROOMS, FURNITURE, VAN, DJ, DANCERS, ROW_DX, vineRows, flightY, inPav, onTerrace, inFoot } from '../core/maps/winery.js';
 import { makeDancers } from './club-crowd.js';
 
 const VAN_TURN = Math.PI;   // the van model's nose is at its -z end: turned to face the winery
@@ -343,8 +343,17 @@ export default {
     // concrete courses through the stone (as the real walls have): one at 3 m on the wings' outer three sides, one at 6.5 m and a
     // coping on all four
     for (const [x0, x1, outX] of [[WEST.x0, WEST.x1, 'x'], [EAST.x0, EAST.x1, 'X']]) { const o = 0.16, band = (y0, y1, sides) => { const a = x0 - o, c = x1 + o, z0 = FOOT.z0 - o, z1 = FOOT.z1 + o;
-        if (sides.includes('z')) B('ochre', a, c, y0, y1, z0, z0 + 0.06, 'yYzxX'); if (sides.includes('Z')) B('ochre', a, c, y0, y1, z1 - 0.06, z1, 'yYZxX');
-        if (sides.includes('x')) B('ochre', a, a + 0.06, y0, y1, z0, z1, 'yYx'); if (sides.includes('X')) B('ochre', c - 0.06, c, y0, y1, z0, z1, 'yYX'); };
+        // each face is broken where a door, opening or window in that wall reaches up into the course (it used to run across them)
+        const runs = (wallAxis, wall, lo, hi) => { const cut = [];
+          for (const o of [...OPENINGS, ...GLASS]) { const [f, ox0, oz0, ox1, oz1, kind] = o, top = f * H + (kind === 'door' ? DOOR_H : H), bot = f * H;
+            if (top <= y0 || bot >= y1) continue;
+            if (wallAxis === 'z' && Math.abs(oz0 - wall) < 0.01 && Math.abs(oz1 - wall) < 0.01) cut.push([ox0 - 0.1, ox1 + 0.1]);
+            if (wallAxis === 'x' && Math.abs(ox0 - wall) < 0.01 && Math.abs(ox1 - wall) < 0.01) cut.push([oz0 - 0.1, oz1 + 0.1]); }
+          cut.sort((p, q) => p[0] - q[0]); const out = []; let at = lo; for (const [p, q] of cut) { if (p > at) out.push([at, Math.min(p, hi)]); at = Math.max(at, q); } if (at < hi) out.push([at, hi]); return out; };
+        if (sides.includes('z')) for (const [p, q] of runs('z', FOOT.z0, a, c)) B('ochre', p, q, y0, y1, z0, z0 + 0.06, 'yYzxX');
+        if (sides.includes('Z')) for (const [p, q] of runs('z', FOOT.z1, a, c)) B('ochre', p, q, y0, y1, z1 - 0.06, z1, 'yYZxX');
+        if (sides.includes('x')) for (const [p, q] of runs('x', x0, z0, z1)) B('ochre', a, a + 0.06, y0, y1, p, q, 'yYxzZ');
+        if (sides.includes('X')) for (const [p, q] of runs('x', x1, z0, z1)) B('ochre', c - 0.06, c, y0, y1, p, q, 'yYXzZ'); };
       band(2.9, 3.08, 'zZ' + outX); band(6.4, 6.58, 'zZxX'); band(2 * H + 1.6, 2 * H + 1.75, 'zZxX'); B('ochre', x0 - 0.16, x1 + 0.16, 2 * H + 1.6, 2 * H + 1.75, FOOT.z0 - 0.16, FOOT.z1 + 0.16, 'Y'); }
     B('ochre', TERR.x0, TERR.x1, H - 0.4, H, FOOT.z1 + 0.1, FOOT.z1 + 0.25, 'yZ'); B('ochre', TERR.x0, TERR.x1, H - 0.4, H, FOOT.z0 - 0.25, FOOT.z0 - 0.1, 'yz');   // slab edges
     // the tank gallery's underside and its slab edge over the hall (the hall's own ceiling is the roof, two storeys up)

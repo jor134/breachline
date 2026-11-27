@@ -138,6 +138,12 @@ export function buildLevel(id = 'mansion') {
         const cand = [{ ...p, x1: z.x0 }, { ...p, x0: z.x1 }, { ...p, z1: z.z0 }, { ...p, z0: z.z1 }].filter(keepable).sort((A, B) => (B.x1 - B.x0) * (B.z1 - B.z0) - (A.x1 - A.x0) * (A.z1 - A.z0));
         if (cand[0]) { next.push(cand[0]); const o = cand.find(q => q !== cand[0] && (q.x1 <= cand[0].x0 || q.x0 >= cand[0].x1 || q.z1 <= cand[0].z0 || q.z0 >= cand[0].z1) && Math.max(q.x1 - q.x0, q.z1 - q.z0) >= 0.6); if (o) next.push(o); } }
       parts = next; }
+    if (kind === 'tank') {   // a round tank on four legs: an octagon of boxes round its body (a square's corners would stop shots that miss it), legs under it
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, r = Math.min(x1 - x0, z1 - z0) / 2 * 0.94, y0 = f * H + 0.7, a = r * 0.41, c = r * 0.75, put = (hx, hz, ya, yb) => boxes.push({ f, kind: 'furn', sub: kind, face, x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz, y0: ya, y1: yb });
+      put(r, a, y0, f * H + h); put(a, r, y0, f * H + h); put(c, c, y0, f * H + h);
+      for (const [dx, dz] of [[-0.72, -0.72], [0.72, -0.72], [-0.72, 0.72], [0.72, 0.72]]) boxes.push({ f, kind: 'furn', sub: 'leg', x0: cx + dx - 0.06, x1: cx + dx + 0.06, z0: cz + dz - 0.06, z1: cz + dz + 0.06, y0: f * H, y1: y0 });
+      continue;
+    }
     for (const p of parts) boxes.push({ f, kind: 'furn', sub: kind, face, x0: p.x0, x1: p.x1, z0: p.z0, z1: p.z1, y0: f * H, y1: f * H + h });
   }
   const veg = map.veg;
