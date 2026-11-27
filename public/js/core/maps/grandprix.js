@@ -9,7 +9,7 @@ import { BUILDINGS } from './spa-path.js';
 export const H = 3.6, DOOR_H = 2.1;
 export const FOOT = { x0: 0, z0: -4, x1: 54, z1: 16 };
 export const YARD = { x0: -60, z0: -40, x1: 100, z1: 42 };   // east edge short of the circuit's own pit garages' far end and the road down from the hairpin
-export const STAIR = { x0: 12.4, x1: 13.9, z0: 10.8, z1: 15.8 };   // climbs toward -z: bottom at the back wall, top beside the upper corridor
+export const STAIR = { x0: 12.9, x1: 17.9, z0: 14.3, z1: 15.8, axis: 'x' };   // along the back wall, climbs toward -x: 1.5 m clear at its foot (the hall runs on past it on the ground floor) and at its top
 export const PITWALL = { x0: -60, x1: 100, z0: -15.35, z1: -15.05, h: 1.05, gate: [26, 28] };   // a slim concrete wall between track and pit lane, the length of the paddock; a marshals' gate across from the bomb on the far side
 export const FAR_BOMB = [0, 29.8, -29.55, 0.9];   // always one bomb here, on a marshal's flight case against the far barrier: cross the live track to reach it
 export const BREAKER = { x: 33, y: 1.4, z: 15.87 };
@@ -22,7 +22,7 @@ export const TEAMS = ['#b8234f', '#3846a8', '#16b3b0', '#8cc63f', '#7a2db8', '#e
 export const ROOMS = [
   ...G.map(i => [0, 'Garage ' + (i + 1), i * 9, -4, i * 9 + 9, 8, 'epoxy']),
   [0, 'Back corridor', 0, 8, 54, 10.5, 'tile'],
-  [0, 'Team office', 0, 10.5, 12, 16, 'carpet'], [0, 'Stair hall', 12, 10.5, 18, 16, 'tile'], [0, 'Tyre store', 18, 10.5, 30, 16, 'epoxy'],
+  [0, 'Team office', 0, 10.5, 12, 16, 'carpet'], [0, 'Stair hall', 12, 10.5, 19.5, 16, 'tile'], [0, 'Tyre store', 19.5, 10.5, 30, 16, 'epoxy'],
   [0, 'Electrical', 30, 10.5, 36, 16, 'tile'], [0, 'Briefing room', 36, 10.5, 48, 16, 'carpet'], [0, 'Paddock entrance', 48, 10.5, 54, 16, 'tile'],
   [1, 'Club lounge west', 0, -4, 18, 8, 'carpet'], [1, 'Champagne bar', 18, -4, 36, 8, 'wood'], [1, 'Club lounge east', 36, -4, 54, 8, 'carpet'],
   [1, 'VIP corridor', 0, 8, 54, 10.5, 'carpet'],
@@ -35,7 +35,7 @@ export const OPENINGS = [
   ...G.map(i => [0, i * 9 + 4, 8, i * 9 + 5, 8, 'door']),                   // garage back doors to the corridor
   ...[1, 2, 3, 4, 5].map(i => [0, i * 9, 5.5, i * 9, 6.5, 'door']),         // between neighbouring garages
   [0, 0, 9, 0, 10, 'door', 'ext'], [0, 54, 9, 54, 10, 'door', 'ext'],
-  [0, 5, 10.5, 6, 10.5, 'door'], [0, 15.5, 10.5, 16.5, 10.5, 'door'], [0, 16, 16, 17, 16, 'door', 'ext'], [0, 23.5, 10.5, 24.5, 10.5, 'door'],
+  [0, 5, 10.5, 6, 10.5, 'door'], [0, 15.5, 10.5, 16.5, 10.5, 'door'], [0, 18.3, 16, 19.3, 16, 'door', 'ext'], [0, 23.5, 10.5, 24.5, 10.5, 'door'],
   [0, 32.5, 10.5, 33.5, 10.5, 'door'], [0, 41.5, 10.5, 42.5, 10.5, 'door'], [0, 50, 10.5, 52, 10.5, 'gap'], [0, 50, 16, 52, 16, 'door', 'ext'],
   [0, 30, 12, 30, 13, 'door'],
   [1, 8, 8, 10, 8, 'arch'], [1, 26, 8, 28, 8, 'arch'], [1, 44, 8, 46, 8, 'arch'], [1, 18, 0.5, 18, 2.5, 'arch'], [1, 36, 0.5, 36, 2.5, 'arch'],
@@ -58,7 +58,7 @@ for (const i of G) {
   F.push([0, x + 1.4, 6.9, x + 3.6, 7.6, 1.3, 'console', '+z']);           // timing screens on the back wall
 }
 F.push([0, 0.3, 13, 2.4, 15.7, 0.76, 'table'], [0, 4, 15.2, 11.6, 15.8, 1.9, 'shelf', '-z'], [0, 8, 11, 11.6, 12.2, 0.76, 'table'],
-  ...[19, 21.5, 24, 26.5].map(x => [0, x, 14.6, x + 1.6, 15.8, 1.6, 'tyres']), ...[19, 21.5, 26.5].map(x => [0, x, 11, x + 1.6, 12, 1.2, 'tyres']),
+  ...[19.8, 22.3, 24.8, 27.3].map(x => [0, x, 14.6, x + 1.6, 15.8, 1.6, 'tyres']), ...[19.8, 21.7, 26.5].map(x => [0, x, 11, x + 1.6, 12, 1.2, 'tyres']),
   [0, 30.3, 15.2, 32.2, 15.8, 1.9, 'cabinet', '-z'], [0, 33.8, 15.2, 35.7, 15.8, 1.9, 'cabinet', '-z'],
   [0, 38, 12.2, 46, 14.2, 0.76, 'table'], [0, 47.3, 11, 47.8, 15.5, 1.9, 'console', '-x'], [0, 52.6, 11.2, 53.7, 13.4, 0.8, 'sofa', '-x']);
 F.push([1, 2, 1.5, 4.8, 2.4, 0.8, 'sofa', '-z'], [1, 2.2, -0.4, 4.6, 0.8, 0.45, 'table'], [1, 7, 4.5, 9.8, 5.4, 0.8, 'sofa', '+z'], [1, 7.2, 2.4, 9.6, 3.6, 0.76, 'table'],
@@ -91,10 +91,10 @@ export const HVT = { at: [1, 47, 13.6], guards: [[1, 44.5, 14.4], [1, 51, 12.6]]
 // ---- shape helpers ----
 export const inFoot = (x, z) => x >= FOOT.x0 && x <= FOOT.x1 && z >= FOOT.z0 && z <= FOOT.z1;
 export const inStair = (x, z) => x > STAIR.x0 && x < STAIR.x1 && z > STAIR.z0 && z < STAIR.z1;
-const stairT = z => (STAIR.z1 - z) / (STAIR.z1 - STAIR.z0), stairUp = z => Math.min(1, stairT(z) / 0.85) * H;
+const stairT = x => (STAIR.x1 - x) / (STAIR.x1 - STAIR.x0), stairUp = x => Math.min(1, stairT(x) / 0.85) * H;   // (the flight runs along x)
 // Every walkable surface over (x, z) as [height, nav layer]. Layers: 0 ground, 1 upper floor.
 function surfaces(x, z) {
-  if (inFoot(x, z)) { if (inStair(x, z)) return stairT(z) > 0.85 ? [[H, 1]] : [[stairUp(z), 0]]; return [[0, 0], [H, 1]]; }
+  if (inFoot(x, z)) { if (inStair(x, z)) return stairT(x) > 0.85 ? [[H, 1]] : [[stairUp(x), 0]]; return [[0, 0], [H, 1]]; }
   return [[0, 0]];
 }
 function floorRay(ox, oy, oz, dx, dy, dz, best) {
@@ -126,6 +126,7 @@ function extra({ boxes }) {
   const box = (kind, x0, x1, y0, y1, z0, z1, o = {}) => boxes.push(Object.assign({ f: 0, kind, x0, x1, y0, y1, z0, z1 }, o));
   box('pitwall', PITWALL.x0, PITWALL.gate[0], 0, PITWALL.h, PITWALL.z0, PITWALL.z1); box('pitwall', PITWALL.gate[1], PITWALL.x1, 0, PITWALL.h, PITWALL.z0, PITWALL.z1);
   box('barrier', YARD.x0, YARD.x1, 0, 1.2, TRACK.z0 - 1.2, TRACK.z0 - 0.4);
+  box('fence', STAIR.x0 + (STAIR.x1 - STAIR.x0) * 0.15, STAIR.x1, H, H + 1.05, STAIR.z0 - 0.08, STAIR.z0, { f: 1, sub: 'stairrail' });   // upstairs, along the stair well's open side
   for (const [x, z, w, d, , , , kind] of BUILDINGS) if (kind === 'pits' && x - w / 2 < YARD.x1) box('pitsM', Math.max(YARD.x0, x - w / 2), Math.min(YARD.x1 + 1, x + w / 2), 0, 4.4, z - d / 2, z + d / 2);   // the circuit's garages next door (rebuilt, closed)
   for (const t of TRUCKS) box('truck', t.x0, t.x1, 0, 4.1, t.z0, t.z1, { team: t.team });
   for (const c of PARKED) { const b = carBox(c); box('pcar', b.x0, b.x1, 0, b.h, b.z0, b.z1); }

@@ -10,7 +10,7 @@ let seed = 7; const r = () => { seed = (seed * 16807) % 2147483647; return seed 
 // ---- the ship: hull, bulwark, gangways, bridge tower ----
 export const HULL = { x0: 10, x1: 100, z0: -26, z1: -2 };
 export const TOWER = { x0: 84, x1: 96, z0: -22, z1: -6 };
-export const TSTAIR = { x0: 84.2, x1: 85.7, z0: -11.5, z1: -6.5 };
+export const TSTAIR = { x0: 84.2, x1: 85.7, z0: -12.6, z1: -7.6 };   // 1.5 m clear at its foot on both decks; its top on the bridge deck opens onto the bridge
 export const GANGWAYS = [30, 62].map(a => ({ a, b: a + 16, c: a + 18.4 }));   // ramp a..b on the quay (z 1..2.5), landing b..c crossing to the deck
 const RAMP = { z0: 1, z1: 2.5 };
 
@@ -58,7 +58,7 @@ export const OPENINGS = [
   [0, 7, 72, 8, 72, 'door', 'ext'], [0, 7.5, 62, 8.5, 62, 'door', 'ext'], [0, 12, 64, 12, 65, 'door'], [0, 12, 69, 12, 70, 'door'], [0, 17, 70, 17, 71, 'door'],
   [2, 90, -6, 91, -6, 'door', 'ext'], [2, 96, -13, 96, -12, 'door', 'ext'], [2, 84, -19, 84, -18, 'door', 'ext'], [2, 87, -14, 88, -14, 'door'], [2, 93, -14, 94, -14, 'door'], [2, 90, -18.5, 90, -17.5, 'door'],
   [3, 87, -16, 88, -16, 'door'], [3, 90, -12, 90, -11, 'door'], [3, 93, -16, 94, -16, 'door'],
-  [4, 87, -12, 88, -12, 'door'], [4, 90, -9.5, 90, -8.5, 'door'], [4, 93, -12, 94, -12, 'door'],
+  [4, 84, -12, 86.2, -12, 'gap'], [4, 87.2, -12, 88.2, -12, 'door'], [4, 90, -9.5, 90, -8.5, 'door'], [4, 93, -12, 94, -12, 'door'],
 ];
 export const GLASS = [
   [0, 13, 62, 21, 62], [0, 4, 64, 4, 70],
@@ -73,7 +73,7 @@ export const FURNITURE = [   // [floor, x0, z0, x1, z1, height, kind, face]
   [2, 92.5, -11, 95.5, -10, 0.45, 'sofa', '+z'],
   [3, 84.2, -21.8, 86.2, -19.6, 0.55, 'bed', '+x'], [3, 88.8, -21.8, 89.8, -20.2, 1.9, 'cabinet', '-x'], [3, 93.8, -21.8, 95.8, -19.6, 0.55, 'bed', '-x'], [3, 90.2, -21.8, 91.2, -20.2, 1.9, 'cabinet', '+x'],
   [3, 92, -10, 94.4, -9, 0.76, 'table'], [3, 90.2, -15.8, 92.4, -15.3, 1.9, 'shelf', '+z'], [3, 86.4, -8.4, 89.8, -7.6, 0.9, 'cabinet', '-z'],
-  [4, 86, -21.6, 94, -20.6, 1.05, 'console', '+z'], [4, 89.2, -16.8, 90.8, -15.2, 1.1, 'binnacle'], [4, 84.3, -14.5, 85.5, -12.4, 1.0, 'cabinet', '+x'],
+  [4, 86, -21.6, 94, -20.6, 1.05, 'console', '+z'], [4, 89.2, -16.8, 90.8, -15.2, 1.1, 'binnacle'], [4, 84.3, -19.4, 85.5, -17.3, 1.0, 'cabinet', '+x'],
   [4, 91, -11.6, 95.6, -10.8, 0.76, 'console', '+z'], [4, 95, -10.4, 95.8, -6.4, 1.9, 'cabinet', '-x'],
 ];
 export const SUSPECT_SPOTS = [

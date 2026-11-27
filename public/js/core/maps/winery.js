@@ -15,7 +15,7 @@ export const WEST = { x0: 0, x1: 26 }, EAST = { x0: 58, x1: 84 };   // the stone
 export const TERR = { x0: 26, x1: 58, z0: 0, z1: 34 };              // the roof terrace, at H
 export const PAV = { x0: 31, x1: 55, z0: 3, z1: 13 };               // the restaurant pavilion on it (restaurant + kitchen)
 export const VOID = { x0: 0, x1: 26, z0: 13, z1: 34 };              // the fermentation hall's upper half (open)
-export const STAIRS = [{ x0: 21.5, x1: 24.5, z0: 0.8, z1: 9.2 }, { x0: 59.5, x1: 62.5, z0: 0.8, z1: 9.2 }];   // inside the wings; climb toward -z
+export const STAIRS = [{ x0: 21.5, x1: 24.5, z0: 0.8, z1: 8.2 }, { x0: 59.5, x1: 62.5, z0: 0.8, z1: 9.2 }];   // inside the wings; climb toward -z (the west one a metre shorter and a touch steeper, ~36°: 1.5 m clear at its foot before the wall)
 // the open stairs up the front: each flight runs along the facade, rising away from the entrance (up: the way it climbs), to a
 // landing beside the wing that steps onto the terrace
 export const FLIGHTS = [{ x0: 29, x1: 38, z0: -2.8, z1: -0.1, up: -1 }, { x0: 46, x1: 55, z0: -2.8, z1: -0.1, up: 1 }];

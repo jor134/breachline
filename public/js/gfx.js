@@ -154,7 +154,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
   // floors, ceilings with recessed downlights
   // stairwells: every floor a flight passes through is open over it, except the landing strip at the top of the flight
   const holes = {}; for (const [lv, r] of map.holes || []) (holes[lv] = holes[lv] || []).push(r);   // a map's own shafts (open from floor to ceiling)
-  for (const st of map.stairs || []) for (let k = 1; k <= st.n; k++) (holes[Math.round(st.yb / H) + k] = holes[Math.round(st.yb / H) + k] || []).push([st.x0, st.z0 + (st.z1 - st.z0) * 0.15, st.x1, st.z1]);
+  for (const st of map.stairs || []) for (let k = 1; k <= st.n; k++) (holes[Math.round(st.yb / H) + k] = holes[Math.round(st.yb / H) + k] || []).push(st.axis === 'x' ? [st.x0 + (st.x1 - st.x0) * 0.15, st.z0, st.x1, st.z1] : [st.x0, st.z0 + (st.z1 - st.z0) * 0.15, st.x1, st.z1]);
   const cut = (r, hs) => { let out = [r]; for (const [hx0, hz0, hx1, hz1] of hs || []) { const nx = []; for (const [a, c, e, g] of out) { if (hx1 <= a || hx0 >= e || hz1 <= c || hz0 >= g) { nx.push([a, c, e, g]); continue; }
       if (c < hz0) nx.push([a, c, e, hz0]); if (g > hz1) nx.push([a, hz1, e, g]); const zc = Math.max(c, hz0), zg = Math.min(g, hz1); if (a < hx0) nx.push([a, zc, hx0, zg]); if (e > hx1) nx.push([hx1, zc, e, zg]); } out = nx; } return out; };
   for (const [lv, hs] of Object.entries(holes)) for (const [hx0, hz0, hx1, hz1] of hs) { const y = lv * H, m = G.slabEdge || 'fascia', d = G.slabEdge ? 0.32 : 0.22; b(m).box(hx0, hx1, y - d, y, hz1 - 0.002, hz1 + 0.04, 'z', 1); b(m).box(hx0 - 0.04, hx0 + 0.002, y - d, y, hz0, hz1, 'X', 1); b(m).box(hx1 - 0.002, hx1 + 0.04, y - d, y, hz0, hz1, 'x', 1); b(m).box(hx0, hx1, y - d, y, hz0 - 0.04, hz0 + 0.002, 'Z', 1); }   // slab edges round the opening, each facing into it (a map's own material for them: G.slabEdge)
@@ -205,13 +205,15 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
       const e = 0.28, y = w.y0 + 0.016; ao('aoBlob', [w.x0 - e, y, w.z0 - e], [w.x1 + e, y, w.z0 - e], [w.x1 + e, y, w.z1 + e], [w.x0 - e, y, w.z1 + e], [0, 1, 0]); } }
   }
   // stairs: floating treads, one flight stacked over the next (full width: a 10 cm slot each side showed the floor below)
-  for (const st of map.stairs || []) {
-    const run = (st.z1 - st.z0) * 0.85, N = 16, m = G.tread || 'walnut';
+  for (const st of map.stairs || []) {   // axis 'x': the flight runs along x instead (still climbing toward the low end)
+    const X = st.axis === 'x', a0 = X ? st.x0 : st.z0, a1 = X ? st.x1 : st.z1, c0 = (X ? st.z0 : st.x0) + 0.02, c1 = (X ? st.z1 : st.x1) - 0.02;
+    const run = (a1 - a0) * 0.85, N = 16, m = G.tread || 'walnut', bx = (u0, u1, y0, y1, faces) => X ? b(m).box(u0, u1, y0, y1, c0, c1, faces, 1) : b(m).box(c0, c1, y0, y1, u0, u1, faces, 1);
     for (let k = 0; k < st.n; k++) { const off = st.yb + k * H;
-      for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N + off; b(m).box(st.x0 + 0.02, st.x1 - 0.02, top - 0.06, top, st.z1 - (i + 1) * run / N, st.z1 - i * run / N, ALL, 1); }
-      b(m).box(st.x0 + 0.02, st.x1 - 0.02, H - 0.2 + off, H + off, st.z0, st.z1 - run, 'YZy', 1);
+      for (let i = 0; i < N; i++) { const top = (i + 0.6) * H / N + off; bx(a1 - (i + 1) * run / N, a1 - i * run / N, top - 0.06, top, ALL); }
+      bx(a0, a1 - run, H - 0.2 + off, H + off, X ? 'YXy' : 'YZy');
     }
   }
+
   const NOSHADE = { glass: 1, water: 1, glow: 1, ao: 1, aoBlob: 1, lightpool: 1, ocean: 1, ...(G.noshade || {}) };
   const zones = {}, before = new Set(root.children);
   const finish = (m, k) => { if (k === 'glass' || k === 'water') m.renderOrder = 5; if (k === 'ao' || k === 'aoBlob' || k === 'lightpool') m.renderOrder = 2; else if (!NOSHADE[k]) { m.castShadow = !(G.noCast || ['gravel']).includes(k); m.receiveShadow = true; } root.add(m); return m; };

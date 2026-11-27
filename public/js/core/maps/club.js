@@ -15,7 +15,7 @@ export const STAGE = { x0: 8, x1: 32, z0: 27.5, z1: 34, h: 1.0 };   // the stage
 export const STEPS = { x0: 28.6, x1: 30.6, z0: 25.3, z1: 27.5 };     // the steps up its front, at the east end, climbing toward +z
 export const FLOOR = { x0: 6, x1: 34, z0: 13.5, z1: 26 };           // the dance floor
 export const UPPER = [{ x0: 0, x1: 40, z0: 0, z1: 13 }, { x0: 40, x1: 58, z0: 0, z1: 20 }];   // where there is an upstairs
-export const STAIRS = [{ x0: 1, x1: 4, z0: 1, z1: 7.6 }, { x0: 42.2, x1: 45, z0: 12.4, z1: 20 }];   // west (lobby side) and staff (east); both climb toward -z
+export const STAIRS = [{ x0: 1, x1: 4, z0: 0.75, z1: 6.4 }, { x0: 42.2, x1: 45, z0: 12.4, z1: 20 }];   // west (lobby side) and staff (east); both climb toward -z (the west one ~37°, with 1.5 m landings at its top and foot)
 export const YARD = { x0: -1, z0: -34, x1: 64, z1: 48 };
 export const VAN = { x: 29, z: -17, turn: 0 };                       // nose to the club
 // Cars in the lot's bays (the casino's car pack): both rows nose in (to the club, to the street); a few bays left empty.

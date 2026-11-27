@@ -7,7 +7,7 @@ let n = 0; const t = async (name, fn) => { await fn(); n++; console.log('ok', na
 const L = buildLevel();
 Sim.BOTS = false;   // the bot tests at the end switch them back on
 
-await t('level builds walls and 14 doors', () => { assert.ok(L.boxes.filter(b => b.kind === 'wall').length > 30); assert.equal(L.doors.length, 23); assert.ok(L.boxes.filter(b => b.kind === 'glass').length >= 8); });
+await t('level builds walls and 14 doors', () => { assert.ok(L.boxes.filter(b => b.kind === 'wall').length > 30); assert.equal(L.doors.length, 22); assert.ok(L.boxes.filter(b => b.kind === 'glass').length >= 8); });
 await t('every spot is walkable and reachable from spawn', () => {
   for (const [f, x, z] of [...SUSPECT_SPOTS, ...CIV_SPOTS]) {
     assert.ok(!circleHits(L, null, x, z, 0.25, f * H), `spot blocked ${f},${x},${z}`);
@@ -113,7 +113,7 @@ await t('host protocol: join, start, snapshot, 5th player refused, restart after
   for (let i = 1; i <= 4; i++) assert.ok(h.join(i, 'P' + i)); assert.equal(h.join(5, 'X'), false); assert.equal(out.at(-1)[1].t, 'full');
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); h.message(2, { t: 'start' }); 
   h.message(1, { t: 'pose', h: [12, 1.65, 27, 0, 0, 0, 1], g: [1, 0] }); h.message(1, 'garbage'); h.message(1, { t: 'pose', h: [NaN] }); h.tick();
-  const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 14); assert.equal(snap.D.length, 23); assert.equal(snap.L.length, 23);
+  const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 14); assert.equal(snap.D.length, 22); assert.equal(snap.L.length, 22);
   assert.ok(JSON.stringify(snap).length < 3500, 'snapshot size ' + JSON.stringify(snap).length);
   h.leave(2); h.leave(3); h.leave(4); h.sim.players.get(1).down = true; h.tick(); assert.equal(h.sim.phase, 'ended');
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); assert.ok(!h.sim.players.get(1).down);
@@ -198,7 +198,7 @@ await t('paths are straightened, and walking them never clips a wall', () => {
     assert.equal(Math.round(y / H), f); }
 });
 await t('suspects accelerate and stop smoothly, and sidestep in a firefight', () => {
-  const [s, p] = mkSim(11); put(s, p, 12, 1.65, 26); s.shot(1, { o: [12, 1.5, 26], d: [0, 1, 0], w: 'rifle' });
+  const [s, p] = mkSim(11); p.hp = 1e6; put(s, p, 12, 1.65, 26);   /* (alive throughout: a mission that ends freezes everyone mid-stride) */ s.shot(1, { o: [12, 1.5, 26], d: [0, 1, 0], w: 'rifle' });
   const mover = s.npcs.filter(n => n.st === 'a' && !n.hold); let maxJump = 0, maxAcc = 0; const last = new Map(mover.map(n => [n, [n.x, n.z, 0]]));
   for (let i = 0; i < 15 * 10; i++) { s.tick(1 / 15); for (const n of mover) { const [x, z, v] = last.get(n), d = Math.hypot(n.x - x, n.z - z), sp = d * 15; maxJump = Math.max(maxJump, d); if (n.st === 'a') maxAcc = Math.max(maxAcc, Math.abs(sp - v)); last.set(n, [n.x, n.z, sp]); } }
   assert.ok(mover.length > 0 && maxJump < 0.25, 'step per tick ' + maxJump); assert.ok(maxAcc < 1.2, 'speed change per tick ' + maxAcc);
@@ -232,7 +232,7 @@ await t('grenades: thrown ones arc, bounce and stay out of walls; flashbangs stu
 });
 await t('tripwires: three rigged doors, opening one hurts and alerts, cutters disarm it', () => {
   const [s, p] = mkSim(9); const traps = s.doorTrap.map((v, i) => v ? i : -1).filter(i => i >= 0); assert.equal(traps.length, 3); for (const i of traps) assert.ok(!L.doors[i].exterior && !s.doorOpen[i]);
-  assert.equal(s.snapshot().T.length, 23); const d = L.doors[traps[0]]; s.doorLocked[traps[0]] = false; put(s, p, d.cx + (d.horiz ? 0 : 0.8), d.y + 1.65, d.cz + (d.horiz ? 0.8 : 0)); s.events.length = 0;
+  assert.equal(s.snapshot().T.length, 22); const d = L.doors[traps[0]]; s.doorLocked[traps[0]] = false; put(s, p, d.cx + (d.horiz ? 0 : 0.8), d.y + 1.65, d.cz + (d.horiz ? 0.8 : 0)); s.events.length = 0;
   s.door(1, traps[0]); assert.ok(p.hp < 100 && s.doorOpen[traps[0]] && !s.doorTrap[traps[0]]); assert.ok(s.events.some(e => e.e === 'trap'));
   const d2 = L.doors[traps[1]]; s.doorLocked[traps[1]] = false; put(s, p, d2.cx + (d2.horiz ? 0 : 0.8), d2.y + 1.65, d2.cz + (d2.horiz ? 0.8 : 0)); const hp = p.hp; s.disarm(1, traps[1]); assert.ok(!s.doorTrap[traps[1]]); s.door(1, traps[1]); assert.equal(p.hp, hp, 'disarmed door is safe');
 });
@@ -387,7 +387,8 @@ await t('pvp: terrorist players start inside, the AI ignores them, they cannot r
   const c = s.npcs.find(q => q.kind === 'c'); c.st = 'y'; s.pose(2, { h: [c.x, c.y + 1.65, c.z + 0.8, 0, 0, 0, 1] }); s.cuff(2, c.id); assert.equal(c.st, 'y');
   const b = s.bombs[0]; s.pose(2, { h: [b.x, b.y + 0.9, b.z + 0.6, 0, 0, 0, 1] }); s.cut(2, 0, b.order[0]); assert.equal(b.n, 0);
   // the officer shoots the terrorist: full damage, no friendly-fire penalty
-  s.pose(1, { h: [bad.hx, bad.hy, bad.hz + 3, 0, 0, 0, 1] }); s.t += 5; const hp0 = bad.hp; s.shot(1, { o: [bad.hx, bad.hy - 0.3, bad.hz + 2.5], d: [0, 0, -1], w: 'rifle' });
+  const dir = [[0, 1], [0, -1], [1, 0], [-1, 0]].find(([dx, dz]) => s.clear(bad.hx + dx * 2.5, bad.hy - 0.3, bad.hz + dz * 2.5, bad.hx, bad.hy - 0.3, bad.hz)) || [0, 1];   // a side with a clear line to him
+  s.pose(1, { h: [bad.hx + dir[0] * 3, bad.hy, bad.hz + dir[1] * 3, 0, 0, 0, 1] }); s.t += 5; const hp0 = bad.hp; s.shot(1, { o: [bad.hx + dir[0] * 2.5, bad.hy - 0.3, bad.hz + dir[1] * 2.5], d: [-dir[0], 0, -dir[1]], w: 'rifle' });
   assert.ok(bad.hp < hp0, 'terrorist hurt'); assert.equal(s.log.ff, 0, 'not friendly fire');
   // all officers down -> terrorists win
   s.hurt(cop, 999); s.tick(1 / 15); assert.equal(s.phase, 'ended'); assert.equal(s.report.winner, 'tango'); assert.match(s.report.result, /TERRORISTS WIN/);

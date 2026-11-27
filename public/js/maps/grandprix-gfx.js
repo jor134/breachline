@@ -4,7 +4,7 @@
 // motorhomes in the paddock. Two looks: an afternoon race and a floodlit night race.
 import * as THREE from '../../vendor/three.module.min.js';
 import { sheen, tex, grid, dedupeTris } from '../mats.js';
-import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H, YARD } from '../core/maps/grandprix.js';
+import { TEAMS, FURNITURE, TRUCKS, PITWALL, FOOT, H, YARD, STAIR } from '../core/maps/grandprix.js';
 import { TRACK } from '../core/maps/circuit.js';
 import { POLES, LINE } from '../core/maps/spa-path.js';
 import { ObfLoader } from '../store/obf.js';
@@ -116,6 +116,9 @@ export default {
     }
     b('facade').box(FOOT.x0, FOOT.x1, 2 * H, 2 * H + 0.6, FOOT.z0 - 0.05, FOOT.z1 + 0.05, 'xXYzZ', 0.5);     // roof parapet
     b('facade').box(FOOT.x0, FOOT.x1, H - 0.1, H + 0.12, FOOT.z0 - 1.2, FOOT.z0, 'xXyYz', 0.5);              // overhang over the garage fronts
+    { const x0 = STAIR.x0 + (STAIR.x1 - STAIR.x0) * 0.15, x1 = STAIR.x1, z0 = STAIR.z0 - 0.08, z1 = STAIR.z0;   // the rail round the stair well upstairs
+      b('mast').box(x0, x1, H + 1.0, H + 1.05, z0 - 0.01, z1 + 0.01, 'xXyYzZ', 1); b('mast').box(x0, x1, H + 0.5, H + 0.54, z0 + 0.02, z1 - 0.02, 'xXyYzZ', 1);
+      for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / 4) b('mast').box(Math.max(x0, x - 0.03), Math.min(x1, x + 0.03), H, H + 1.0, z0 + 0.01, z1 - 0.01, 'xXzZ', 1); }
     // parked cars in the garages (their collision is the furniture box), tyre stacks drawn as rings
     for (const [f, x0, z0, x1, z1, hh, kind, face] of FURNITURE) {
       if (kind === 'racecar') { const i = Math.floor(x0 / 9), g = raceCar(TEAMS[i]); g.position.set((x0 + x1) / 2, f * H, (z0 + z1) / 2); g.rotation.y = face === '-z' ? Math.PI : 0; root.add(g); }
