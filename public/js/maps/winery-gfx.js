@@ -369,7 +369,7 @@ export default {
     // the open stairs: each tread a block down to the ground, the stepped walls beside them, the landings
     for (const fl of FLIGHTS) { const n = 22, w = (fl.x1 - fl.x0) / n;
       for (let i = 0; i < n; i++) { const xa = fl.x0 + i * w, xc = xa + w, top = Math.max(flightY(fl, xa + 0.001), flightY(fl, xc - 0.001)) - (fl.up < 0 ? (i === 0 ? 0 : 0) : 0), y = H * (fl.up < 0 ? n - i : i + 1) / n;
-        B('stairTop', xa, xc, y - 0.04, y, fl.z0, fl.z1, 'Y'); B('ochre', xa, xc, 0, y - 0.04, fl.z0, fl.z1, fl.up < 0 ? 'X' : 'x'); void top; } }
+        B('stairTop', xa, xc, y - 0.04, y, fl.z0, fl.z1, fl.up < 0 ? 'YX' : 'Yx'); B('ochre', xa, xc, 0, y - 0.04, fl.z0, fl.z1, fl.up < 0 ? 'X' : 'x');   /* the tread's nosing too: a 4 cm open slot under each step's edge showed through */ void top; } }
     for (const ld of LANDINGS) B('stairTop', ld.x0, ld.x1, H - 0.04, H, ld.z0, ld.z1 - 0.1, 'Y');
     for (const w of level.boxes) {
       if (w.kind === 'fence' && w.sub === 'stairwall') B('ochre', w.x0, w.x1, w.y0, w.y1, w.z0, w.z1, 'xXYzZ');
