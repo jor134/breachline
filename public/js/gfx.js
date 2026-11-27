@@ -178,7 +178,7 @@ export function buildWorld(scene, id = 'mansion', tod = 'dusk') {
       const faces = hz ? 'zZ' + (wall && w.capA ? 'x' : '') + (wall && w.capB ? 'X' : '') : 'xX' + (wall && w.capA ? 'z' : '') + (wall && w.capB ? 'Z' : '');
       // a map can give each face its own finish by what room it faces (G.innerAt), split where the rooms on that side change:
       // a wall between a back corridor and the casino floor was one finish on both sides
-      const fs = faces.replace(out, '') + (wall ? '' : 'y');
+      const fs = faces.replace(out, '') + (wall ? (w.y0 > 0.05 ? 'y' : '') : 'y');   // an upper storey's wall shows its underside: over a wide opening below, you looked up into it and out (the casino lobby)
       if (G.innerAt && wall) {
         const cuts = (lo, hi) => [lo, ...[...new Set(map.rooms.filter(r => r[0] === w.f).flatMap(r => hz ? [r[2], r[4]] : [r[3], r[5]]))].filter(v => v > lo + 0.05 && v < hi - 0.05).sort((a, c) => a - c), hi];
         for (const f of fs) {

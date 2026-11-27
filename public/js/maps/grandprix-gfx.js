@@ -12,7 +12,7 @@ import { makeBuildings } from './gp-buildings.js';
 import { raceCar } from '../racecar.js';
 import { TRUCK, makeTruck, truckAt } from '../truck.js';
 
-const NAMES = ['VORTEX', 'HALCYON', 'KESTREL', 'ORBITA', 'NOVARA', 'SOLSTICE'];   // invented teams
+const NAMES = ['BRECCIA', 'HALCYON', 'KESTREL', 'BASSO', 'YOUSEFI', 'MAZIK'];   // the teams (the two invented ones kept)
 let tod = 'day', floodMat = null, beams = [], gantryMat = null;
 const M_gantry = () => gantryMat;
 const LAMPS = [[4.5, 3.3, 2, 9, 12], [22.5, 3.3, 2, 9, 12], [40.5, 3.3, 2, 9, 12], [27, 3.3, 9.2, 8, 22], [9, H + 3.1, 2, 8, 14], [27, H + 3.1, 2, 8, 14], [45, H + 3.1, 2, 8, 14], [27, H + 3.1, 13, 8, 24]];
@@ -38,6 +38,23 @@ export default {
   // the transporters' tractors and chassis (js/truck.js) in team colours, once the model has loaded
   // and the circuit around it all: "Circuit de Spa-Francorchamps 1992 layout" by Dave Love (CC BY 4.0), laid out by tools/spa_kit.py
   load() {
+    // The pit wall: the circuit's guard rail, fence mesh and posts along the far side of the straight, mirrored across the track onto
+    // the pit side (rail face on PITWALL.z0), clipped to the paddock's length and open at the marshals' gate
+    const pitFence = src => {
+      const ZM = (-30.88 + PITWALL.z0) / 2, out = new THREE.Group(), v = new THREE.Vector3(), n = new THREE.Vector3(), nm = new THREE.Matrix3();
+      const clip = (poly, x, keepAbove) => { const res = []; for (let i = 0; i < poly.length; i++) { const a = poly[i], b2 = poly[(i + 1) % poly.length], ia = keepAbove ? a[0] >= x : a[0] <= x, ib = keepAbove ? b2[0] >= x : b2[0] <= x;
+        if (ia) res.push(a); if (ia !== ib) { const t = (x - a[0]) / (b2[0] - a[0]); res.push(a.map((q, k) => q + (b2[k] - q) * t)); } } return res; };
+      src.updateMatrixWorld(true); const meshes = []; src.traverse(o => { if (o.isMesh && /grdrl|fencea|fncposts/.test(o.material.name || '')) meshes.push(o); });
+      for (const o of meshes) { const g = o.geometry, P = g.attributes.position, N = g.attributes.normal, U = g.attributes.uv, I = g.index; if (!N) continue; nm.getNormalMatrix(o.matrixWorld); const cnt = I ? I.count : P.count, ix = j => I ? I.getX(j) : j;
+        const pos = [], nor = [], uv = [];
+        for (let t = 0; t < cnt; t += 3) {
+          const vs = [0, 1, 2].map(k => { const i = ix(t + k); v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); n.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); return [v.x, v.y, v.z, n.x, n.y, n.z, U ? U.getX(i) : 0, U ? U.getY(i) : 0]; });
+          if (vs.some(q => q[2] < -31.7 || q[2] > -30.5 || q[1] > 3.2)) continue;   // the far side's rail and fence only (not its lamp posts)
+          for (const [a, c] of [[PITWALL.x0, PITWALL.gate[0]], [PITWALL.gate[1], PITWALL.x1]]) { const pg = clip(clip(vs, a, true), c, false); if (pg.length < 3) continue;
+            for (let k = 1; k < pg.length - 1; k++) for (const q of [pg[0], pg[k + 1], pg[k]]) { pos.push(q[0], q[1], 2 * ZM - q[2]); nor.push(q[3], q[4], -q[5]); uv.push(q[6], q[7]); } } }   // mirrored: winding reversed
+        if (!pos.length) continue; const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        const m = new THREE.Mesh(geo, o.material); m.receiveShadow = true; out.add(m); }
+      return out; };
     // the circuit model stacks its ground layers (grass, verges, old and new tarmac, pit lane, kerbs) in the same plane in places,
     // which z-fought; each layer gets its own depth bias so the upper one always wins
     const layerRank = n => /rmbl|grdrl|bldg/.test(n) ? 8 : /roadpit|xroadpit/.test(n) ? 7 : /road3x|roadjx|roadgrdx/.test(n) ? 6 : /road1x|road2x/.test(n) ? 5 : /rold2/.test(n) ? 4 : /rold/.test(n) ? 3 : /grvl/.test(n) ? 2 : /rdgrass|gbrm/.test(n) ? 1 : 0;
@@ -45,6 +62,7 @@ export default {
     const circuit = new Promise(res => new ObfLoader().load('models/grandprix/spa.glb', gl => {
       gl.scene.traverse(q => { if (!q.isMesh) return; q.castShadow = false; q.receiveShadow = true; q.matrixAutoUpdate = false; q.updateMatrix(); const m = q.material; if (m.map) m.map.anisotropy = 4; if (m.alphaTest) { m.transparent = false; dedupeTris(q.geometry, 0.08); }   /* the pines' cards came with back copies that z-fought */
         m.roughness = 0.95; const r = layerRank(m.name || ''); if (r) { m.polygonOffset = true; m.polygonOffsetFactor = -r; m.polygonOffsetUnits = -2 * r; } });
+      gl.scene.add(pitFence(gl.scene));
       res(gl.scene);
     }, undefined, () => res(null)));
     return Promise.all([trucks, circuit]).then(([ts, c]) => { const g = new THREE.Group(); for (const t of ts) g.add(t); if (c) g.add(c); g.add(makeBuildings()); return g; });
@@ -90,11 +108,9 @@ export default {
     flat('pitlane', YARD.x0 - 30, YARD.x1 + 30, -16.8, -13.8, -0.02, 0.1);
     flat('grass', -1400, 1400, -1400, 1400, -52, 0.01);   // far below the model's lowest valley: where the model has no ground, distance and fog
     for (let i = 0; i < 6; i++) { const x = i * 9; for (const [a, c, d, e] of [[x + 1, x + 1.12, -8.9, -4.2], [x + 7.88, x + 8, -8.9, -4.2], [x + 1, x + 8, -8.9, -8.78]]) b('team' + i).quad([a, 0.012, d], [c, 0.012, d], [c, 0.012, e], [a, 0.012, e], [0, 1, 0], 1); }
-    // a slim pit wall: painted concrete with a steel cap, open at the marshals' gate (the circuit's rails stop either side of the paddock)
-    for (const [x0, x1] of [[PITWALL.x0, PITWALL.gate[0]], [PITWALL.gate[1], PITWALL.x1]]) {
-      b('pitwallM').box(x0, x1, 0, PITWALL.h - 0.05, PITWALL.z0, PITWALL.z1, 'xXzZ', 0.5);
-      b('mast').box(x0, x1, PITWALL.h - 0.05, PITWALL.h, PITWALL.z0 - 0.03, PITWALL.z1 + 0.03, 'xXzZyY', 1);
-    }
+    // the pit wall is the circuit's own guard rail and catch fence, mirrored over from the far side of the track (load()); here, a
+    // concrete kerb along the garage fronts, over the seam where the circuit's pit-lane surface meets the paddock and garage floors
+    b('pitwallM').box(YARD.x0, YARD.x1, 0, 0.07, -4.3, -3.88, 'xXYzZ', 0.5);
     // the circuit's own light poles (POLES, from the model): a lamp head on each, turned to the nearest tarmac; at night each throws
     // a soft beam down onto it
     for (const [x, y, z] of POLES) {

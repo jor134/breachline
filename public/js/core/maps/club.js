@@ -55,7 +55,7 @@ export const OPENINGS = [
   [0, 40, 34, 44, 34, 'gap'], [0, 40, 26, 44, 26, 'gap'],                                                  // backstage, the passage, the staff corridor
   [0, 45, 12, 45, 13.2, 'door'], [0, 45, 21, 45, 22.2, 'door'], [0, 44, 28, 44, 33, 'gap'], [0, 54.4, 26, 55.6, 26, 'door'],   /* the plant room off the dock (it was an unroofed gap in the plan) */ [0, 42, 36, 43.2, 36, 'door'],   // storage, keg cooler, dock, dock office
   [0, 49, 42, 53, 42, 'gap', 'ext'], [0, 58, 30, 58, 31.2, 'door', 'ext'], [0, 3, 42, 4.2, 42, 'door', 'ext'],   // the dock's open shutter, its side door, the fire exit
-  [1, 4.2, 0.6, 4.2, 7.4, 'gap'], [1, 10, 2, 10, 6, 'gap'], [1, 10, 8, 40, 8, 'gap'], [1, 0, 8, 10, 8, 'gap'], [1, 0, 13, 40, 13, 'gap'],   // landing, lounge, balcony open over the hall
+  [1, 10, 2, 10, 6, 'gap'], [1, 10, 8, 40, 8, 'gap'], [1, 0, 8, 10, 8, 'gap'], [1, 0, 13, 40, 13, 'gap'],   // landing, lounge, balcony open over the hall
   [1, 40, 2, 40, 3.2, 'door'], [1, 45, 4, 45, 5.2, 'door'], [1, 45, 10.6, 45, 11.8, 'door'],                // lounge to the offices; manager's office; security
 ];
 export const GLASS = [[0, 18, 0, 26.4, 0], [0, 31.6, 0, 40, 0]];   // the lobby's glass front either side of the doors

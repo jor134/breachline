@@ -100,7 +100,7 @@ F.push([0, 5, 14, 8.6, 15.9, 0.78, 'bj', '+z'], [0, 5, 22, 8.6, 23.9, 0.78, 'pok
 F.push([0, 60.1, 9, 61.1, 18, 1.1, 'counter', '-x'], [0, 70.8, 9, 71.8, 19, 1.9, 'cabinet', '-x'], [0, 63, 12, 66, 13.2, 0.9, 'table']);
 F.push([0, 66.3, 0.3, 71.7, 1.0, 2.1, 'shelf', '+z'], [0, 71.0, 1.4, 71.7, 7.0, 2.1, 'shelf', '-x'], [0, 67, 4, 70, 5.2, 0.9, 'crate']);
 // security office: a desk of consoles facing the CCTV wall
-F.push([0, 62, 22.5, 70, 23.5, 1.0, 'console', '-z'], [0, 63, 26, 69, 27, 1.0, 'console', '-z'], [0, 71.2, 24, 71.8, 30, 1.9, 'cabinet', '-x']);
+F.push([0, 62, 22.5, 70, 23.5, 1.0, 'console', '-z'], [0, 63, 26, 69, 27, 1.0, 'console', '-z'], [0, 71.2, 27.4, 71.8, 31.6, 1.9, 'cabinet', '-x']   /* (clear of the CCTV wall monitor, z 23.75..26.95) */);
 // steakhouse, restrooms, gift shop, valet, lobby, back of house
 for (const [x, z] of [[62, 34], [66, 34], [62, 40], [66, 40], [62, 45], [66, 45]]) F.push([0, x, z, x + 1.4, z + 1.4, 0.76, 'table']);
 F.push([0, 0.3, 34, 1, 46, 0.9, 'counter', '+x'], [0, 2, 50, 7, 50.8, 1.6, 'shelf', '+z'], [0, 6, 53, 10, 54, 1.0, 'counter', '+z'], [0, 62, 50, 68, 51, 1.05, 'counter', '+z']);

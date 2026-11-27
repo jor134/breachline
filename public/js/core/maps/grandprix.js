@@ -10,7 +10,7 @@ export const H = 3.6, DOOR_H = 2.1;
 export const FOOT = { x0: 0, z0: -4, x1: 54, z1: 16 };
 export const YARD = { x0: -60, z0: -40, x1: 100, z1: 42 };   // east edge short of the circuit's own pit garages' far end and the road down from the hairpin
 export const STAIR = { x0: 12.9, x1: 17.9, z0: 14.3, z1: 15.8, axis: 'x' };   // along the back wall, climbs toward -x: 1.5 m clear at its foot (the hall runs on past it on the ground floor) and at its top
-export const PITWALL = { x0: -60, x1: 100, z0: -15.35, z1: -15.05, h: 1.05, gate: [26, 28] };   // a slim concrete wall between track and pit lane, the length of the paddock; a marshals' gate across from the bomb on the far side
+export const PITWALL = { x0: -60, x1: 100, z0: -15.35, z1: -14.98, h: 1.05, gate: [26, 28] };   // the pit wall: guard rail and catch fence (drawn from the circuit's far-side rail), the length of the paddock; a marshals' gate across from the bomb on the far side
 export const FAR_BOMB = [0, 29.8, -29.55, 0.9];   // always one bomb here, on a marshal's flight case against the far barrier: cross the live track to reach it
 export const BREAKER = { x: 33, y: 1.4, z: 15.87 };
 export const SPAWN = [[24, 33], [25.5, 33], [27, 33], [28.5, 33]];
