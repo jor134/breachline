@@ -33,6 +33,7 @@ export const CREDITS = [
   { use: 'Trucks', title: 'semi truck', by: 'zairiqzairiq', lic: BY, url: 'https://sketchfab.com/3d-models/semi-truck-672abd5b5e5b4cd9baf20c528a9e2f77', chg: CHG },
   { use: 'Plants', title: 'low poly nature pack', by: 'flo-bit', lic: 'CC0', url: 'https://github.com/flo-bit/low-poly-asset-packs' },
   { use: 'Gun sounds', title: 'The Free Firearm Sound Library', by: 'its recordists (mirror by buddingmonkey)',lic: 'CC0', url: 'https://github.com/buddingmonkey/FreeFirearmsSFXLibrary' },
+  { use: 'Bullet impacts', title: 'Visceral Bullet Impacts (Pixabay 6738)', by: 'freesound_community (Pixabay)', lic: 'Pixabay Content License', url: 'https://pixabay.com/sound-effects/' },
   { use: 'Being hit', title: 'Combat Impact (Pixabay 352458)', by: 'Universfield', lic: 'Pixabay Content License', url: 'https://pixabay.com/sound-effects/' },
   { use: 'Doors, impacts, explosions, interface', title: 'RPG Audio, Impact Sounds, Sci-Fi Sounds, Interface Sounds', by: 'Kenney', lic: 'CC0', url: 'https://kenney.nl' },
   { use: 'Winery music', title: 'Deep House (Pixabay track 448912)', by: 'dimdel', lic: 'Pixabay Content License', url: 'https://pixabay.com/music/' },

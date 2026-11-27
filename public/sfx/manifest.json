@@ -63,10 +63,13 @@
   "kick_3.mp3"
  ],
  "impact": [
-  "impact_1.mp3",
-  "impact_2.mp3",
-  "impact_3.mp3",
-  "impact_4.mp3"
+  "impact_v1.mp3",
+  "impact_v2.mp3",
+  "impact_v3.mp3",
+  "impact_v4.mp3",
+  "impact_v5.mp3",
+  "impact_v6.mp3",
+  "impact_v7.mp3"
  ],
  "impact_glass": [
   "impact_glass_1.mp3",
