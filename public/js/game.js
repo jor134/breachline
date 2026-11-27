@@ -476,7 +476,9 @@ const tut = window.__tut = createTutorial({ THREE, scene, S, M: () => M, head, c
 // PvP: each player picks a side on the board; one terrorist is enough to make the next mission a PvP round
 const pvpOn = () => (S.squadT || []).some(t => t === 'tango');
 const teamBtn = () => ['TEAM: ' + (S.me.team === 'tango' ? 'TERRORIST' : 'SWAT'), 'team'];
-const squadLine = () => (pvpOn() ? 'PvP  -  ' : 'Squad: ') + ((S.squad || []).map((n, i) => n + ((S.squadT || [])[i] === 'tango' ? ' (T)' : pvpOn() ? ' (SWAT)' : '')).join(', ') || '-');
+const squadLine = () => { const q = S.squad || [], T = S.squadT || [], cut = n => q.length > 4 ? String(n).slice(0, 7) : n;   // up to eight in a room: names shortened to fit
+  if (!pvpOn()) return 'Squad: ' + (q.map(cut).join(', ') || '-');
+  return 'PvP  -  SWAT: ' + (q.filter((n, i) => T[i] !== 'tango').map(cut).join(', ') || '-') + '   vs   T: ' + q.filter((n, i) => T[i] === 'tango').map(cut).join(', '); };
 function showLobbyPanel() {
   if (S.menu) return;
   if (S.watch) { if (storeUI.holdsPanel()) return storeUI.redraw(); panel.mesh.visible = false; S.panel = null; return; }   // spectators get no boards: B or Y opens their menu
@@ -646,7 +648,7 @@ function onMsg2(m) {
   if (m.t === 'welcome' && m.spec) { S.watch = true; S.me.id = m.id; applyInit(m.init); placeWatch(); showLobbyPanel(); status('Spectating room ' + S.room + '. Left stick flies, right stick up and down; B or Y: menu.'); return; }   // quest-store: spectate
   if (m.t === 'welcome') { S.watch = false; S.bstep = 'maps'; S.bpage = 0; const want = M.id; S.me.id = m.id; S.me.slot = m.slot; applyInit(m.init); placeAtSpawn(); resetLoadout(); if (m.n === 1 && (m.ph !== 'active' || m.init.map === 'training') && want !== m.init.map) net.send({ t: 'map', m: want }); }   // first in an empty room: it loads the map you picked
   else if (m.t === 'init') { applyInit(m.init); if (S.phase !== 'active' || M.training) showLobbyPanel(); }
-  else if (m.t === 'full') status('That room is full (4 officers). Try another code.');
+  else if (m.t === 'full') status('That room is full (4 SWAT and 4 terrorists, or the mission has started). Try another code.');
   else if (m.t === 's') applySnap(m);
 }
 function applySnap(m) {
@@ -681,6 +683,7 @@ function onEvent(e) {
   const a = e.n != null ? S.actors.get(e.n) : null;
   switch (e.e) {
     case 'start': S.startAt = performance.now(); S.everInside = false; if (!S.watch) { resetLoadout(); placeAtSpawn(); flyIn(); } S.report = null; S.menu = false; S.panel = null; panel.mesh.visible = false; if (M.training) showLobbyPanel(); sfx.ok(); break;
+    case 'teamfull': if (e.p === S.me.id) { sayAt(head.pos.x, head.pos.y, head.pos.z - 1.5, (e.team === 'tango' ? 'TERRORIST' : 'SWAT') + ' SIDE IS FULL (4)', '#ffd060'); sfx.beep(null, 300); } break;
     case 'th': { const t = targets[e.t]; if (t) { const p = t.g.position; if (e.ns) sayAt(p.x, p.y + t.d.h + 0.4, p.z, 'NO-SHOOT!', '#6fa8ff'); if (e.p === S.me.id) sfx.beep(p, e.ns ? 300 : 1400); } break; }
     case 'house': sfx.ok(); sayAt(head.pos.x, head.pos.y + 0.5, head.pos.z - 1.5, 'HOUSE CLEAR ' + e.time + 's' + (e.ns ? '  (' + e.ns + ' no-shoot)' : '') + (e.time <= e.best ? '  BEST' : ''), '#80ff9a'); break;
     case 'bombreset': { const o = S.bombs[e.b]; if (o) { const b = new Bomb(o.g.position.x, o.g.position.y, o.g.position.z, e.wires, e.order, o.g.rotation.y); b.order = e.order; b.n = 0; scene.remove(o.g); scene.add(b.g); S.bombs[e.b] = b; sayAt(b.g.position.x, b.g.position.y + 0.5, b.g.position.z, 'BOMB RESET', '#ffb060'); } break; }
@@ -1316,7 +1319,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q113';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q114';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

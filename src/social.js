@@ -126,7 +126,7 @@ export class Social {
         this.sql.exec('INSERT OR REPLACE INTO acct (id, call, seen, room) VALUES (?, ?, ?, ?)', me, cleanCallsign(b.call), now, room);
         const friends = this.all('SELECT f.b AS id, a.call, a.seen, a.room FROM friend f LEFT JOIN acct a ON a.id = f.b WHERE f.a = ? ORDER BY a.seen DESC', me).map(f => {
           const online = !!f.seen && now - f.seen < ONLINE, r = online && f.room ? this.roomOf(f.room) : null;
-          return { id: f.id, call: f.call || 'OFFICER', online, inRoom: !!r, canJoin: !!r && r.n < 4 };
+          return { id: f.id, call: f.call || 'OFFICER', online, inRoom: !!r, canJoin: !!r && r.n < 8 };
         });
         const requests = this.all('SELECT r.src AS id, a.call FROM req r LEFT JOIN acct a ON a.id = r.src WHERE r.dst = ? AND NOT EXISTS (SELECT 1 FROM block k WHERE k.a = ? AND k.b = r.src) ORDER BY r.at DESC LIMIT 20', me, me).map(r => ({ id: r.id, call: r.call || 'OFFICER' }));
         return json({ friends, requests });
@@ -144,11 +144,11 @@ export class Social {
         if (!other || !this.isFriend(me, other) || this.blocked(me, other)) return json({ error: 'Not your friend' }, 403);
         const f = this.one('SELECT seen, room FROM acct WHERE id = ?', other), r = f && now - f.seen < ONLINE && f.room ? this.roomOf(f.room) : null;
         if (!r) return json({ error: 'Your friend is not in a room right now.' }, 404);
-        if (r.n >= 4 && !b.watch) return json({ error: "Your friend's room is full." }, 409);   // watch: spectating does not take a place
+        if (r.n >= 8 && !b.watch) return json({ error: "Your friend's room is full." }, 409);   // watch: spectating does not take a place
         return json({ room: r.code });
       }
       if (p === '/match') {   // QUICK MATCH: a stranger, as a terrorist, into an open SWAT room
-        const rooms = this.all('SELECT * FROM room WHERE open = 1 AND lobby = 1 AND swat >= 1 AND tango < 2 AND n < 4 AND at > ? ORDER BY tango ASC, n DESC, at DESC', now - ROOM_FRESH);
+        const rooms = this.all('SELECT * FROM room WHERE open = 1 AND lobby = 1 AND swat >= 1 AND tango < 4 AND n < 8 AND at > ? ORDER BY tango ASC, n DESC, at DESC', now - ROOM_FRESH);
         for (const r of rooms) {
           const accts = JSON.parse(r.accts || '[]'); if (accts.includes(me) || accts.some(a => this.blocked(me, a))) continue;
           this.sql.exec('UPDATE room SET n = n + 1, tango = tango + 1 WHERE code = ?', r.code);   // hold the place until the room reports again

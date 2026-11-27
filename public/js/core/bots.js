@@ -23,7 +23,7 @@ export const BotMixin = {
     const used = new Set(humans.map(p => p.slot));
     for (let i = 0; i < n; i++) {
       let slot = 0; while (used.has(slot)) slot++; used.add(slot);
-      const [x, z] = this.M.spawn[slot % this.M.spawn.length], id = 900 + i;
+      const [x, z] = this.M.spawn[(swat + i) % this.M.spawn.length], id = 900 + i;   // the start spots after the human SWAT players'
       const y0 = this.M.spawnY ?? this.yAt(0, x, z);
       this.players.set(id, { id, name: BOT_NAMES[i], slot, hp: 100, down: false, hx: x, hy: y0 + 1.62, hz: z, y: y0, h: null, l: null, r: null, g: [0, 1], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: true, w: 0, med: false, fl: 2, sm: 1, team: 'swat', entered: false, locks: 0, traps: 0,
         bot: { i, x, z, y: y0, yaw: Math.PI, path: null, pi: 0, spd: 0, base: 'follow', task: null, st: 0, aim: 0, cool: 0, burst: 3, foe: null, sayT: -9, shoutT: -9, repath: 0, seen: {}, hold: null, crouch: false, pitch: 0, lead: null, heard: null } });

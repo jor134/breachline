@@ -15,6 +15,7 @@ const KNEEL = { k: 1, y: 1, u: 1, w: 1, h: 1 }, DONE = { d: 1, u: 1, i: 1, j: 1 
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
 export class Sim {
+  static TEAM_MAX = 4;   // players a side
   constructor(mapId = 'mansion') { this.setMap(mapId); this.players = new Map(); this.pfLeft = 3; this.events = []; this.night = false; this.wxPick = 'random'; this.todPick = 'random'; this.raceT = 0; this.weather = 'clear'; this.reset(1); }
   // Put a bomb at the edge of whatever it sits on, on the side an officer can stand at, wires toward him, so it is in arm's reach.
   edgeSpot(x, z, top, floorY) {
@@ -44,7 +45,13 @@ export class Sim {
     const [qx, qy, qz, qw] = p.h ? p.h.slice(3, 7) : [0, 0, 0, 1]; let fx = -2 * (qx * qz + qw * qy), fz = -(1 - 2 * (qx * qx + qy * qy)); const L = Math.hypot(fx, fz) || 1; fx /= L; fz /= L;
     n.x = p.hx + fx * 0.48 + fz * 0.14; n.z = p.hz + fz * 0.48 - fx * 0.14; n.y = p.y; n.yaw = Math.atan2(fx, fz);
   }
-  setTeam(id, team) { const p = this.players.get(id); if (!p || (this.phase === 'active' && !this.M.training) || (team !== 'swat' && team !== 'tango')) return; p.team = team; this.ev({ e: 'team', p: id, team }); }
+  setTeam(id, team) { const p = this.players.get(id); if (!p || (this.phase === 'active' && !this.M.training) || (team !== 'swat' && team !== 'tango') || p.team === team) return;
+    if (this.humans(team) >= Sim.TEAM_MAX) { this.ev({ e: 'teamfull', p: id, team }); return; }   // up to four a side
+    p.team = team; this.ev({ e: 'team', p: id, team }); }
+  humans(team) { let n = 0; for (const p of this.players.values()) if (!p.bot && (p.team === 'tango') === (team === 'tango')) n++; return n; }
+  // Up to four SWAT and four terrorists. Someone joining a room whose SWAT side is full comes in as a terrorist, but only before the
+  // mission starts (terrorist players begin inside, at the suspects' posts).
+  canJoin() { if (this.humans('swat') < Sim.TEAM_MAX) return true; return (this.M.training || this.phase !== 'active') && this.humans('tango') < Sim.TEAM_MAX; }   // (the lobby is the training room)
   choose(m) { if (this.M.training && MISSION_IDS.includes(m.m)) this.nextMap = m.m; if (m.wx === 'random' || WEATHER.includes(m.wx)) this.wxPick = m.wx; if (m.tod === 'random' || m.tod === 'day' || m.tod === 'night') this.todPick = m.tod; }
   setMap(id) { this.level = buildLevel(MAPS[id] ? id : 'mansion'); this.M = this.level.map; this.mapId = this.level.id; this.targets = null; }
   reset(seed) {
@@ -102,8 +109,11 @@ export class Sim {
     if (this.pvp) {
       const [sx, sz] = M.spawn[0], used = new Set(this.npcs.map(n => n.kind === 's' ? n.post[0] + ',' + n.post[1] : ''));
       const posts = M.spots.s.filter(([, x, z]) => !used.has(x + ',' + z)).map(([f, x, z]) => [Math.hypot(x - sx, z - sz), f, x, z]).sort((a, b) => b[0] - a[0]);
-      tangos.forEach((p, i) => { const [, f, x, z] = posts[(i * 3) % Math.max(1, posts.length)] || [0, 0, ...M.spawn[0]]; p.spawn = [x, this.yAt(f, x, z), z]; p.hx = x; p.hz = z; p.y = p.spawn[1]; p.hy = p.y + 1.65; });
+      const step = Math.max(1, Math.min(3, Math.floor(posts.length / tangos.length)));   // spread out, but never two on one post (four terrorists now)
+      tangos.forEach((p, i) => { const [, f, x, z] = posts[(i * step) % Math.max(1, posts.length)] || [0, 0, ...M.spawn[0]]; p.spawn = [x, this.yAt(f, x, z), z]; p.hx = x; p.hz = z; p.y = p.spawn[1]; p.hy = p.y + 1.65; });
     }
+    // the SWAT players take the squad's start spots in turn (slots run to 8 now, so slot % 4 could put two on one spot)
+    [...this.players.values()].filter(p => !p.bot && p.team !== 'tango').sort((a, c) => a.slot - c.slot).forEach((p, i) => { const [x, z] = M.spawn[i % M.spawn.length], y = M.spawnY ?? this.yAt(0, x, z); p.spawn = [x, y, z]; p.hx = x; p.hz = z; p.y = y; p.hy = y + 1.65; });
     this.spawnBots();
   }
   start(seed, night = false, wx = this.wxPick, map = this.mapId, tod) { this.night = !!night; if (tod === 'random' || tod === 'day' || tod === 'night') this.todPick = tod; if (map !== this.mapId && MAPS[map]) this.setMap(map);   // every mission starts with the power on; night falls when someone throws the breaker
@@ -113,7 +123,7 @@ export class Sim {
     if (this.phase === 'active' && !this.M.training && [...this.players.values()].some(q => q.bot)) this.dropBot();   // a friend takes a bot's place
     const used = new Set([...this.players.values()].map(p => p.slot)); let slot = 0; while (used.has(slot)) slot++;
     const [x, z] = this.M.spawn[slot % 4];
-    const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: false, w: 0, med: false, fl: 2, sm: 1, team: 'swat' };
+    const p = { id, name: String(name || 'Officer').slice(0, 14), slot, hp: 100, down: false, hx: x, hy: 1.65, hz: z, y: 0, h: [x, 1.65, z, 0, 0, 0, 1], l: null, r: null, g: [0, 0], lastShot: -9, lastShout: -9, lastKick: -9, lastBrk: -9, has: false, w: 0, med: false, fl: 2, sm: 1, team: this.humans('swat') >= Sim.TEAM_MAX ? 'tango' : 'swat' };
     if (this.M.training) p.tr = { hits: 0, shots: 0, ns: 0 };
     this.players.set(id, p); return p;
   }

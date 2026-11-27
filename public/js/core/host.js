@@ -5,7 +5,7 @@ export class RoomHost {
   constructor(send) { this.send = send; this.sim = new Sim('training'); }   // send(idOrNull, object)
   get count() { let n = 0; for (const p of this.sim.players.values()) if (!p.bot) n++; return n; }   // humans: bots give their place up
   join(id, name) {
-    if (this.count >= 4) { this.send(id, { t: 'full' }); return false; }
+    if (!this.sim.canJoin()) { this.send(id, { t: 'full' }); return false; }   // four a side
     const p = this.sim.addPlayer(id, name);
     this.send(id, { t: 'welcome', id, slot: p.slot, init: this.sim.init(), n: this.count, ph: this.sim.phase });
     return true;

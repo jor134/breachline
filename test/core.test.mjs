@@ -108,9 +108,9 @@ await t('perfect run scores A', () => {
   const [s] = mkSim(21); for (const o of s.npcs) o.st = 'u'; for (const b of s.bombs) b.defused = true; s.tick(0.1);
   assert.equal(s.report.result, 'MISSION COMPLETE'); assert.equal(s.report.total, 100); assert.equal(s.report.grade, 'A');
 });
-await t('host protocol: join, start, snapshot, 5th player refused, restart after end', () => {
+await t('host protocol: join, start, snapshot, a 5th player joins the other side, restart after end', () => {
   const out = []; const h = new RoomHost((id, o) => out.push([id, o]));
-  for (let i = 1; i <= 4; i++) assert.ok(h.join(i, 'P' + i)); assert.equal(h.join(5, 'X'), false); assert.equal(out.at(-1)[1].t, 'full');
+  for (let i = 1; i <= 4; i++) assert.ok(h.join(i, 'P' + i)); assert.ok(h.join(5, 'X')); assert.equal(h.sim.players.get(5).team, 'tango', 'a fifth comes in on the terrorist side'); h.leave(5);
   h.message(1, { t: 'start' }); assert.equal(h.sim.phase, 'active'); h.message(2, { t: 'start' }); 
   h.message(1, { t: 'pose', h: [12, 1.65, 27, 0, 0, 0, 1], g: [1, 0] }); h.message(1, 'garbage'); h.message(1, { t: 'pose', h: [NaN] }); h.tick();
   const snap = out.at(-1)[1]; assert.equal(snap.t, 's'); assert.equal(snap.P.length, 4); assert.equal(snap.N.length, 14); assert.equal(snap.D.length, 22); assert.equal(snap.L.length, 22);
@@ -754,5 +754,14 @@ await t('no suspect or hostage starts inside furniture', () => {
   for (const id of ['training', 'mansion', 'terminal', 'grandprix', 'airport', 'casino', 'stadium', 'club', 'winery']) { const M = buildLevel(id).map, sp = M.spots || {};
     for (const p of [...(sp.s || []), ...(sp.c || []), ...(M.civMust || [])]) { if (!Array.isArray(p)) continue; const [f, x, z] = p;
       const o = M.furniture.find(q => q[0] === f && q[6] !== 'dancer' && x > q[1] - 0.25 && x < q[3] + 0.25 && z > q[2] - 0.25 && z < q[4] + 0.25); assert.ok(!o, id + ': spot ' + p + ' in ' + (o && o[6])); } }
+});
+await t('4 v 4: eight players, four a side, each on their own start spot; a ninth is turned away', async () => {
+  const { RoomHost } = await import('../public/js/core/host.js'); const out = [];
+  const h = new RoomHost((id, m) => out.push([id, m])); for (let i = 1; i <= 8; i++) assert.ok(h.join(i, 'P' + i), 'joined ' + i);
+  assert.equal(h.sim.humans('swat'), 4); assert.equal(h.sim.humans('tango'), 4); assert.ok(!h.join(9, 'P9'), 'ninth is full');
+  h.sim.setTeam(1, 'tango'); assert.equal(h.sim.players.get(1).team, 'swat', 'no fifth terrorist');
+  h.sim.start(3, false, 'clear', 'mansion'); assert.ok(h.sim.pvp); assert.equal(h.sim.bots().length, 0, 'a full squad: no bots');
+  const sp = [...h.sim.players.values()].map(p => p.spawn); assert.ok(sp.every(Boolean)); assert.equal(new Set(sp.map(s => s[0].toFixed(1) + ',' + s[2].toFixed(1))).size, 8, 'eight different spots');
+  h.leave(5); assert.ok(!h.join(10, 'P10'), 'mid-mission: the open place is a terrorist one, and they start inside: no');
 });
 console.log(n + ' tests passed');

@@ -26,7 +26,7 @@ const n1 = a.msgs.filter(m => m.t === 's').length; await sleep(400); const rate 
 // voice chat set-up passes from one player to the other untouched, tagged with the sender, and never reaches the game
 const idA = a.msgs[0].id, idB = b.msgs[0].id; a.ws.send(JSON.stringify({ t: 'sig', to: idB, data: { desc: { type: 'offer', sdp: 'v=0' } } })); await sleep(100);
 const sig = b.msgs.find(m => m.t === 'sig'); assert.ok(sig && sig.from === idA && sig.data.desc.type === 'offer', 'signal relayed'); assert.ok(!c.msgs.some(m => m.t === 'sig'), 'only to the addressee');
-for (let i = 0; i < 4; i++) await join('/ws/FULLRM?name=p' + i); const extra = await join('/ws/FULLRM?name=late'); await sleep(100); assert.equal(extra.msgs[0].t, 'full');
+for (let i = 0; i < 8; i++) await join('/ws/FULLRM?name=p' + i); const extra = await join('/ws/FULLRM?name=late'); await sleep(100); assert.equal(extra.msgs[0].t, 'full');
 // quest-store: the first player in owns the room; only they can remove someone, and the owner passes on when they leave
 { const o = await join('/ws/PWNRRR?name=Owner'), g = await join('/ws/PWNRRR?name=Guest'), h = await join('/ws/PWNRRR?name=Third'); await sleep(100);
   const oid = o.msgs[0].id, gid = g.msgs[0].id, hid = h.msgs[0].id;
