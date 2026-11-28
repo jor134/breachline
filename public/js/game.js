@@ -662,10 +662,10 @@ function applySnap(m) {
   if (m.pw != null && S.night === !!m.pw) { S.night = !m.pw; applyLook(); }
   if (m.T) for (let i = 0; i < S.doorTrap.length; i++) { const v = +m.T[i]; S.doorTrap[i] = v; const d = world.doors[i]; d.trap.visible = v > 0 && m.ph === 'active'; if (v) { const o = (v === 1 ? 0.3 : -0.3); d.trap.position.set(level.doors[i].x0 + (d.horiz ? 0 : o), level.doors[i].y, level.doors[i].z0 + (d.horiz ? o : 0)); } }
   nadeView(m.G || [], m.SM || []);
-  for (const [id, name, , hp, down, h, l, r, g, w] of m.P) {
+  for (const [id, name, , hp, down, h, l, r, g, w, ts] of m.P) {
     if (id === S.me.id) { const tm = w & 2048 ? 'tango' : 'swat'; if (tm !== S.me.team) { S.me.team = tm; myBody.setTeam(tm); } S.me.locks = w >> 13 & 3; S.me.traps = w >> 15 & 3; const hd = !!(w & 4096); if (hd !== !!S.me.holding) { S.me.holding = hd; if (!hd) for (const q of hands) q.shield = false; } S.me.hp = hp; S.me.down = !!down; S.me.w = w & 63; S.me.med = !!(w & 64); S.me.fl = w >> 7 & 3; S.me.sm = w >> 9 & 3; continue; }
     seen.add(id); let o = S.officers.get(id); const bot = !!(w & 1 << 17); if (!o) { o = new Officer(name, label(bot ? name + ' (AI)' : name, bot ? '#a8ffb8' : '#9fd0ff', 0, 64, 0.07)); scene.add(o.g); S.officers.set(id, o); }
-    o.set(h, l, r, g, down); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team); o.tag.visible = !(S.pvp && o.team !== S.me.team); /* PvP: no name over the other side's heads (it gave them away) */ o.bot = bot; o.bst = w >> 18 & 7; o.slot = id - 900;
+    o.set(h, l, r, g, down, ts); o.down = !!down; o.id = id; o.name = name; o.team = w & 2048 ? 'tango' : 'swat'; o.body.setTeam(o.team); o.tag.visible = !(S.pvp && o.team !== S.me.team); /* PvP: no name over the other side's heads (it gave them away) */ o.bot = bot; o.bst = w >> 18 & 7; o.slot = id - 900;
   }
   for (const [id, o] of S.officers) if (!seen.has(id)) { scene.remove(o.g); S.officers.delete(id); }
   voice.sync(S.me.id, [...[...S.officers.entries()].filter(([, o]) => !o.bot).map(([id]) => id), ...(S.watch ? [] : storeUI.specIds())], S.net === 'online');   // spectators: they hear the players, nobody hears them
@@ -1259,7 +1259,7 @@ function frame(t) {
   { const ins = level.inside(head.pos.x, head.pos.z, head.pos.y); setListener(head.pos, head.fwd, ins); setEnvInside(ins); }   // the reflections show pot lights indoors, the sky outside
   if (!S.watch) { footsteps(dt); exitPrompt(dt); }
   hostageCries(dt);
-  if (S.mode && !S.watch && (poseT -= dt) < 0) { poseT = 1 / 12; net.send({ t: 'pose', h: arr7(fo(head.pos), head.quat), l: hands[0].active ? (lh => arr7(fo(lh.pos), lh.quat))(handOnGun(hands[0])) : null, r: hands[1].active ? (rh => arr7(fo(rh.pos), rh.quat))(handOnGun(hands[1])) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.intensity > 0 ? 1 : 0 }); }
+  if (S.mode && !S.watch && (poseT -= dt) < 0) { poseT = 1 / 20; net.send({ t: 'pose', ts: Math.round(performance.now()), h: arr7(fo(head.pos), head.quat), l: hands[0].active ? (lh => arr7(fo(lh.pos), lh.quat))(handOnGun(hands[0])) : null, r: hands[1].active ? (rh => arr7(fo(rh.pos), rh.quat))(handOnGun(hands[1])) : null, g: [code(hands[0]), code(hands[1])], f: S.light && torch.intensity > 0 ? 1 : 0 }); }
   const c1 = performance.now(); renderer.render(scene, camera); perf.cpuNote(c1 - c0, performance.now() - c1, renderer.info.render.calls);
 }
 renderer.setAnimationLoop(frame);
@@ -1319,7 +1319,7 @@ let installEvt = null; addEventListener('beforeinstallprompt', e => { e.preventD
 $('install').onclick = async () => { if (installEvt) { installEvt.prompt(); installEvt = null; $('install').style.display = 'none'; } };
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 // Self-update: a home-screen app can sit in memory for days; when it comes back to the front, check for a newer build and reload (never mid-mission)
-const BUILD = 'q114';   // quest-store builds: q1, q2... (main uses vNN)
+const BUILD = 'q115';   // quest-store builds: q1, q2... (main uses vNN)
 DBG.build = BUILD;
 function checkBuild() { fetch('version.txt', { cache: 'no-store' }).then(r => r.ok ? r.text() : BUILD).then(v => { v = v.trim(); if (v && v !== BUILD && S.phase !== 'active' && !renderer.xr.isPresenting) location.reload(); }).catch(() => { }); }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkBuild(); });

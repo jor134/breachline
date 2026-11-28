@@ -653,20 +653,32 @@ export class Officer {   // another player
     this.tag = tag; tag.position.y = 0.3; this.head.add(tag);
     this.g.add(this.head, this.body.g, ...this.items); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(0, 0, 0, 'YXZ'); this.hp = [{ pos: new THREE.Vector3(), quat: new THREE.Quaternion() }, { pos: new THREE.Vector3(), quat: new THREE.Quaternion() }];
   }
-  // A snapshot arrives ~15 times a second; tick() draws the officer a little in the past, between the last two, so he moves
-  // smoothly instead of hopping (and the legs see a steady speed to step to).
-  set(h, l, r, items, down) {
-    if (!h) return; const now = performance.now() / 1000, sm = this.smp || (this.smp = []);
-    sm.push({ t: now, h: h.slice(), l: l ? l.slice() : null, r: r ? r.slice() : null, items, down: !!down }); while (sm.length > 4) sm.shift();
+  // A snapshot arrives ~15 times a second; tick() draws the officer a little in the past, between two poses, so he moves smoothly
+  // instead of hopping (and the legs see a steady speed to step to). Each pose carries the time its sender took it (ts, their clock,
+  // ms): poses are placed on that timeline, not on when they happened to arrive, so network jitter and the sender's 20 Hz against
+  // the room's 15 Hz no longer show as stutter. A repeat of the same pose is skipped. (Poses without ts fall back to arrival time.)
+  set(h, l, r, items, down, ts) {
+    if (!h) return; const now = performance.now() / 1000, sm = this.smp || (this.smp = []); let t = now;
+    if (Number.isFinite(ts)) {
+      const last = sm[sm.length - 1]; if (last && last.ts === ts) { last.items = items; last.down = !!down; return; }
+      const off = now - ts / 1000;   // arrival minus sending: the delay, plus the clocks' difference
+      if (this.off == null || Math.abs(off - this.off) > 2) { this.off = off; sm.length = 0; }   // first pose, or the sender restarted
+      else this.off = off < this.off ? off : this.off + (off - this.off) * 0.01;   // the quickest arrival, creeping up if the link slows
+      t = ts / 1000 + this.off;
+      if (last && t <= last.t) return;
+    }
+    sm.push({ t, ts, h: h.slice(), l: l ? l.slice() : null, r: r ? r.slice() : null, items, down: !!down }); while (sm.length > 10) sm.shift();
     if (sm.length === 1) this.tick(0, now);
   }
   tick(dt, now = performance.now() / 1000) {
     const sm = this.smp; if (!sm || !sm.length) return;
-    const gap = sm.length > 1 ? Math.min(0.25, Math.max(0.04, (sm[sm.length - 1].t - sm[0].t) / (sm.length - 1))) : 0.067, rt = now - gap * 1.25;
+    const stamped = sm[sm.length - 1].ts != null, gap = sm.length > 1 ? Math.min(0.25, Math.max(0.04, (sm[sm.length - 1].t - sm[0].t) / (sm.length - 1))) : 0.067;
+    const rt = stamped ? now - 0.12 : now - gap * 1.25;   // stamped: 120 ms behind the quickest arrival rides out jitter up to that
     let a = sm[0], b = sm[0]; for (let i = 0; i < sm.length - 1; i++) if (sm[i].t <= rt) { a = sm[i]; b = sm[i + 1]; }
-    if (rt >= sm[sm.length - 1].t) a = b = sm[sm.length - 1];
+    let ext = 1;   // a pose running late: carry on the last step's movement for up to 0.1 s rather than freeze and then jump
+    if (rt >= sm[sm.length - 1].t) { if (stamped && sm.length > 1) { a = sm[sm.length - 2]; b = sm[sm.length - 1]; ext = Math.min(1 + 0.1 / Math.max(0.03, b.t - a.t), (rt - a.t) / (b.t - a.t)); } else a = b = sm[sm.length - 1]; }
     const u = b === a ? 1 : Math.max(0, Math.min(1, (rt - a.t) / (b.t - a.t))), jump = Math.hypot(b.h[0] - a.h[0], b.h[2] - a.h[2]) > 3;   // a respawn or teleport: no sliding across the map
-    const k = jump ? 1 : u, lp = (x, y) => x + (y - x) * k;
+    const k = jump ? 1 : u, kp = jump ? 1 : Math.max(u, ext > 1 ? ext : u), lp = (x, y) => x + (y - x) * kp;
     this.head.position.set(lp(a.h[0], b.h[0]), lp(a.h[1], b.h[1]), lp(a.h[2], b.h[2])); this.head.quaternion.set(a.h[3], a.h[4], a.h[5], a.h[6]).slerp(this.q.set(b.h[3], b.h[4], b.h[5], b.h[6]), k); this.e.setFromQuaternion(this.head.quaternion, 'YXZ');
     const hands = [0, 1].map(i => { const g = this.items[i], A = i ? a.r : a.l, B = i ? b.r : b.l, X = B || A; g.visible = !!X; if (!X) return null; const o = this.hp[i], P = A && B ? A : X;
       o.pos.set(lp(P[0], X[0]), lp(P[1], X[1]), lp(P[2], X[2])); o.quat.set(P[3], P[4], P[5], P[6]).slerp(_q.set(X[3], X[4], X[5], X[6]), k); g.position.copy(o.pos); g.quaternion.copy(o.quat);

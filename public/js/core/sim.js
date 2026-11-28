@@ -133,7 +133,7 @@ export class Sim {
   }
   pose(id, m) {
     const p = this.players.get(id); if (!p || !Array.isArray(m.h) || m.h.length < 7 || !m.h.every(Number.isFinite)) return;
-    p.h = m.h; p.l = m.l || null; p.r = m.r || null; p.g = m.g || [0, 0]; p.hx = m.h[0]; p.hy = m.h[1]; p.hz = m.h[2]; p.has = true; p.light = !!m.f;
+    p.h = m.h; p.l = m.l || null; p.r = m.r || null; p.g = m.g || [0, 0]; p.hx = m.h[0]; p.hy = m.h[1]; p.hz = m.h[2]; p.has = true; p.light = !!m.f; p.ts = Number.isFinite(m.ts) ? m.ts : undefined;   // the sender's own clock (ms): others play the pose back on it
     const gy = this.level.groundY(p.hx, p.hz, p.hy - 1.0); p.y = p.hy - gy > 2.6 ? p.hy - 1.6 : gy;   // hanging on a rope (or in the air): feet under the head, not on the ground far below
   }
   near(p, x, y, z, d) { return Math.hypot(p.hx - x, p.hz - z) < d && Math.abs(p.y - y) < 1.8; }
@@ -680,7 +680,7 @@ export class Sim {
     return { result, lines, total, grade, time: Math.round(this.M.time - this.timer) };
   }
   snapshot() {
-    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9) | (p.team === 'tango' ? 2048 : 0) | (p.hold ? 4096 : 0) | ((p.locks || 0) & 3) << 13 | ((p.traps || 0) & 3) << 15 | (p.bot ? 1 << 17 | p.bot.st << 18 : 0)]);
+    const P = [...this.players.values()].map(p => [p.id, p.name, p.slot, Math.round(p.hp), p.down ? 1 : 0, p.h, p.l, p.r, p.g, p.w | (p.med ? 64 : 0) | (p.fl << 7) | (p.sm << 9) | (p.team === 'tango' ? 2048 : 0) | (p.hold ? 4096 : 0) | ((p.locks || 0) & 3) << 13 | ((p.traps || 0) & 3) << 15 | (p.bot ? 1 << 17 | p.bot.st << 18 : 0), p.bot ? Math.round(this.t * 1000) : p.ts]);
     const N = this.npcs.map(n => [n.id, r2(n.x), r2(n.y), r2(n.z), r2(n.yaw), n.stun > 0 && (n.st === 'a' || n.st === 'g' || n.st === 'c') ? 'z' : n.st === 'c' && n.crouch ? 'h' : n.st, (n.kind === 's' && n.armed ? 1 : 0) | (n.crouch && n.st !== 'c' ? 2 : 0) | (n.rl > 0 ? 4 : 0) | (n.medic && n.medT > 0 ? 8 : 0)]);   // flags: armed, crouched, reloading, working on someone
     const E = this.events; this.events = [];
     const s = { t: 's', X: this.extractT > 0 ? Math.ceil(5 - this.extractT) : 0, ph: this.phase, tm: Math.ceil(this.timer), P, N, D: this.doorOpen.map(o => o ? 1 : 0).join(''), L: this.doorLocked.map(o => o ? 1 : 0).join(''), pw: this.night ? 0 : 1, T: this.doorTrap.join(''), G: this.gren.map(g => [g.k === 'flash' ? 0 : 1, r2(g.x), r2(g.y), r2(g.z)]), SM: this.smokes.map(s => [r2(s.x), r2(s.y), r2(s.z), Math.round(s.t * 10) / 10]), B: this.bombs.map(b => [b.cut.map(c => c ? 1 : 0).join(''), b.defused ? 1 : 0, b.n]), E };
